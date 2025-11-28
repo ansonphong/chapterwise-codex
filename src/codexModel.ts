@@ -24,9 +24,12 @@ export interface CodexNode {
   lineNumber?: number;          // Line number in source file (for navigation)
   children: CodexNode[];        // Child nodes
   attributes?: CodexAttribute[];
+  contentSections?: CodexContentSection[];  // Content array sections
   relations?: CodexRelation[];
   tags?: string[];
   image?: string;
+  hasAttributes: boolean;       // Whether node has attributes array
+  hasContentSections: boolean;  // Whether node has content array
 }
 
 /**
@@ -37,6 +40,19 @@ export interface CodexAttribute {
   name?: string;
   value: unknown;
   dataType?: string;
+  id?: string;
+  type?: string;
+}
+
+/**
+ * Represents a content section on a node
+ */
+export interface CodexContentSection {
+  key: string;
+  name: string;
+  value: string;
+  id?: string;
+  type?: string;
 }
 
 /**
@@ -190,6 +206,9 @@ function parseNode(
   
   const { field: proseField, value: proseValue, availableFields } = getProseField(nodeObj);
   
+  const hasAttributes = Array.isArray(nodeObj.attributes) && nodeObj.attributes.length > 0;
+  const hasContentSections = Array.isArray(nodeObj.content) && nodeObj.content.length > 0;
+  
   const node: CodexNode = {
     id,
     type,
@@ -200,6 +219,8 @@ function parseNode(
     path: [...path],
     lineNumber: doc ? findLineNumber(doc, path) : undefined,
     children: [],
+    hasAttributes,
+    hasContentSections,
   };
   
   // Parse attributes
@@ -211,6 +232,22 @@ function parseNode(
         name: a.name as string | undefined,
         value: a.value,
         dataType: a.dataType as string | undefined,
+        id: a.id as string | undefined,
+        type: a.type as string | undefined,
+      };
+    });
+  }
+  
+  // Parse content sections
+  if (Array.isArray(nodeObj.content)) {
+    node.contentSections = nodeObj.content.map((item: unknown) => {
+      const c = item as Record<string, unknown>;
+      return {
+        key: (c.key as string) ?? '',
+        name: (c.name as string) ?? '',
+        value: (c.value as string) ?? '',
+        id: c.id as string | undefined,
+        type: c.type as string | undefined,
       };
     });
   }
@@ -413,6 +450,224 @@ export function setNodeProse(
     }
   } catch {
     // If something goes wrong, return original text
+    return codexDoc.rawText;
+  }
+}
+
+/**
+ * Get the attributes array for a specific node
+ */
+export function getNodeAttributes(codexDoc: CodexDocument, node: CodexNode): CodexAttribute[] {
+  try {
+    let current: unknown;
+    
+    if (codexDoc.isJson) {
+      current = JSON.parse(codexDoc.rawText);
+    } else if (codexDoc.rawDoc) {
+      current = codexDoc.rawDoc.toJS();
+    } else {
+      return [];
+    }
+    
+    // Navigate to the node
+    for (const segment of node.path) {
+      if (current === null || current === undefined) {
+        return [];
+      }
+      current = (current as Record<string, unknown>)[segment as string];
+    }
+    
+    if (!current || typeof current !== 'object') {
+      return [];
+    }
+    
+    const attrs = (current as Record<string, unknown>).attributes;
+    if (!Array.isArray(attrs)) {
+      return [];
+    }
+    
+    return attrs.map((a: unknown) => {
+      const attr = a as Record<string, unknown>;
+      return {
+        key: (attr.key as string) ?? '',
+        name: attr.name as string | undefined,
+        value: attr.value,
+        dataType: attr.dataType as string | undefined,
+        id: attr.id as string | undefined,
+        type: attr.type as string | undefined,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Set the attributes array for a specific node
+ */
+export function setNodeAttributes(
+  codexDoc: CodexDocument,
+  node: CodexNode,
+  attributes: CodexAttribute[]
+): string {
+  try {
+    if (codexDoc.isJson) {
+      const obj = JSON.parse(codexDoc.rawText);
+      let current = obj;
+      
+      for (const segment of node.path) {
+        current = current[segment];
+      }
+      
+      if (current && typeof current === 'object') {
+        current.attributes = attributes.map(attr => ({
+          key: attr.key,
+          name: attr.name,
+          value: attr.dataType === 'int' ? Number(attr.value) : attr.value,
+          dataType: attr.dataType,
+          id: attr.id,
+          type: attr.type,
+        }));
+      }
+      
+      return JSON.stringify(obj, null, 2);
+    } else {
+      const doc = YAML.parseDocument(codexDoc.rawText);
+      const fullPath = [...node.path, 'attributes'];
+      const pathKeys = fullPath.map(p => typeof p === 'number' ? p : String(p));
+      
+      // Convert attributes to YAML-friendly format
+      const yamlAttrs = attributes.map(attr => {
+        const item: Record<string, unknown> = {
+          key: attr.key,
+        };
+        if (attr.name) item.name = attr.name;
+        item.value = attr.dataType === 'int' ? Number(attr.value) : attr.value;
+        if (attr.dataType) item.dataType = attr.dataType;
+        if (attr.id) item.id = attr.id;
+        if (attr.type) item.type = attr.type;
+        return item;
+      });
+      
+      doc.setIn(pathKeys, yamlAttrs);
+      return doc.toString();
+    }
+  } catch {
+    return codexDoc.rawText;
+  }
+}
+
+/**
+ * Get the content sections array for a specific node
+ */
+export function getNodeContentSections(codexDoc: CodexDocument, node: CodexNode): CodexContentSection[] {
+  try {
+    let current: unknown;
+    
+    if (codexDoc.isJson) {
+      current = JSON.parse(codexDoc.rawText);
+    } else if (codexDoc.rawDoc) {
+      current = codexDoc.rawDoc.toJS();
+    } else {
+      return [];
+    }
+    
+    // Navigate to the node
+    for (const segment of node.path) {
+      if (current === null || current === undefined) {
+        return [];
+      }
+      current = (current as Record<string, unknown>)[segment as string];
+    }
+    
+    if (!current || typeof current !== 'object') {
+      return [];
+    }
+    
+    const content = (current as Record<string, unknown>).content;
+    if (!Array.isArray(content)) {
+      return [];
+    }
+    
+    return content.map((c: unknown) => {
+      const section = c as Record<string, unknown>;
+      return {
+        key: (section.key as string) ?? '',
+        name: (section.name as string) ?? '',
+        value: (section.value as string) ?? '',
+        id: section.id as string | undefined,
+        type: section.type as string | undefined,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Set the content sections array for a specific node
+ */
+export function setNodeContentSections(
+  codexDoc: CodexDocument,
+  node: CodexNode,
+  contentSections: CodexContentSection[]
+): string {
+  try {
+    if (codexDoc.isJson) {
+      const obj = JSON.parse(codexDoc.rawText);
+      let current = obj;
+      
+      for (const segment of node.path) {
+        current = current[segment];
+      }
+      
+      if (current && typeof current === 'object') {
+        current.content = contentSections.map(section => ({
+          key: section.key,
+          name: section.name,
+          value: section.value,
+          id: section.id,
+          type: section.type,
+        }));
+      }
+      
+      return JSON.stringify(obj, null, 2);
+    } else {
+      const doc = YAML.parseDocument(codexDoc.rawText);
+      const fullPath = [...node.path, 'content'];
+      const pathKeys = fullPath.map(p => typeof p === 'number' ? p : String(p));
+      
+      // Convert content sections to YAML-friendly format with block scalars for values
+      const yamlContent = contentSections.map(section => {
+        const item = doc.createNode({
+          key: section.key,
+          name: section.name,
+          value: section.value,
+          id: section.id,
+          type: section.type,
+        });
+        
+        // Make the value a block scalar if multiline
+        if (YAML.isMap(item)) {
+          const valuePair = item.items.find(p => {
+            const key = YAML.isScalar(p.key) ? p.key.value : p.key;
+            return key === 'value';
+          });
+          if (valuePair && YAML.isScalar(valuePair.value) && 
+              typeof valuePair.value.value === 'string' && 
+              valuePair.value.value.includes('\n')) {
+            valuePair.value.type = YAML.Scalar.BLOCK_LITERAL;
+          }
+        }
+        
+        return item;
+      });
+      
+      const seq = doc.createNode(yamlContent);
+      doc.setIn(pathKeys, seq);
+      return doc.toString();
+    }
+  } catch {
     return codexDoc.rawText;
   }
 }
