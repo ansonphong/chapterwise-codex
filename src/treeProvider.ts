@@ -4,7 +4,35 @@
  */
 
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { CodexNode, CodexDocument, parseCodex, isCodexFile } from './codexModel';
+
+/**
+ * Tree item representing the file header at the top of the tree
+ */
+export class CodexFileHeaderItem extends vscode.TreeItem {
+  constructor(
+    public readonly documentUri: vscode.Uri
+  ) {
+    const fileName = path.basename(documentUri.fsPath);
+    super(fileName, vscode.TreeItemCollapsibleState.None);
+    
+    this.description = '';
+    this.tooltip = `Open ${documentUri.fsPath}`;
+    this.iconPath = new vscode.ThemeIcon('file-code');
+    this.contextValue = 'codexFileHeader';
+    
+    // Click to open the file in editor
+    this.command = {
+      command: 'vscode.open',
+      title: 'Open File',
+      arguments: [documentUri],
+    };
+  }
+}
+
+/** Union type for all tree items */
+export type CodexTreeItemType = CodexTreeItem | CodexFileHeaderItem;
 
 /**
  * Tree item representing a Codex node in the sidebar
@@ -13,12 +41,15 @@ export class CodexTreeItem extends vscode.TreeItem {
   constructor(
     public readonly codexNode: CodexNode,
     public readonly documentUri: vscode.Uri,
-    private readonly hasChildren: boolean
+    private readonly hasChildren: boolean,
+    private readonly expandByDefault: boolean = false
   ) {
     super(
       codexNode.name || codexNode.id || '(untitled)',
       hasChildren 
-        ? vscode.TreeItemCollapsibleState.Collapsed 
+        ? (expandByDefault 
+            ? vscode.TreeItemCollapsibleState.Expanded 
+            : vscode.TreeItemCollapsibleState.Collapsed)
         : vscode.TreeItemCollapsibleState.None
     );
     
@@ -89,8 +120,8 @@ export class CodexTreeItem extends vscode.TreeItem {
 /**
  * Provides data for the Codex Navigator tree view
  */
-export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItem> {
-  private _onDidChangeTreeData = new vscode.EventEmitter<CodexTreeItem | undefined | null | void>();
+export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemType> {
+  private _onDidChangeTreeData = new vscode.EventEmitter<CodexTreeItemType | undefined | null | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
   
   private activeDocument: vscode.TextDocument | null = null;
@@ -247,11 +278,11 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItem>
   
   // TreeDataProvider implementation
   
-  getTreeItem(element: CodexTreeItem): vscode.TreeItem {
+  getTreeItem(element: CodexTreeItemType): vscode.TreeItem {
     return element;
   }
   
-  getChildren(element?: CodexTreeItem): vscode.ProviderResult<CodexTreeItem[]> {
+  getChildren(element?: CodexTreeItemType): vscode.ProviderResult<CodexTreeItemType[]> {
     if (!this.activeDocument) {
       // Return empty - the welcome view will show
       return [];
@@ -265,15 +296,18 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItem>
     const uri = this.activeDocument.uri;
     
     if (!element) {
-      // Root level - return the root node or filtered nodes
+      // Root level - start with file header, then content
+      const items: CodexTreeItemType[] = [new CodexFileHeaderItem(uri)];
+      
       if (this.filterType) {
         // When filtering, show flat list of matching nodes
         const matchingNodes = this.codexDoc.allNodes.filter(
           (n) => n.type === this.filterType
         );
-        return matchingNodes.map(
+        items.push(...matchingNodes.map(
           (node) => new CodexTreeItem(node, uri, false)
-        );
+        ));
+        return items;
       }
       
       // No filter - show hierarchical view starting from root
@@ -281,15 +315,20 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItem>
         const root = this.codexDoc.rootNode;
         // If root has meaningful content, show it; otherwise show its children
         if (root.id || root.type !== 'unknown') {
-          return [new CodexTreeItem(root, uri, root.children.length > 0)];
+          items.push(new CodexTreeItem(root, uri, root.children.length > 0, true));
         } else {
           // Root is just a container, show children directly
-          return root.children.map(
-            (child) => new CodexTreeItem(child, uri, child.children.length > 0)
-          );
+          items.push(...root.children.map(
+            (child) => new CodexTreeItem(child, uri, child.children.length > 0, true)
+          ));
         }
       }
       
+      return items;
+    }
+    
+    // File header has no children
+    if (element instanceof CodexFileHeaderItem) {
       return [];
     }
     
@@ -299,7 +338,7 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItem>
     );
   }
   
-  getParent(element: CodexTreeItem): vscode.ProviderResult<CodexTreeItem> {
+  getParent(element: CodexTreeItemType): vscode.ProviderResult<CodexTreeItemType> {
     // Could implement for reveal functionality
     return null;
   }
@@ -310,7 +349,7 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItem>
  */
 export function createCodexTreeView(context: vscode.ExtensionContext): {
   treeProvider: CodexTreeProvider;
-  treeView: vscode.TreeView<CodexTreeItem>;
+  treeView: vscode.TreeView<CodexTreeItemType>;
 } {
   const treeProvider = new CodexTreeProvider();
   
