@@ -112,10 +112,27 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItem>
       }
     });
     
+    // Watch for documents opening
+    vscode.workspace.onDidOpenTextDocument((doc) => {
+      if (isCodexFile(doc.fileName) && !this.activeDocument) {
+        this.setActiveDocument(doc);
+      }
+    });
+    
     // Initialize with current editor if it's a codex file
     const editor = vscode.window.activeTextEditor;
     if (editor && isCodexFile(editor.document.fileName)) {
+      console.log('[ChapterWise Codex] Found active codex file:', editor.document.fileName);
       this.setActiveDocument(editor.document);
+    }
+    
+    // Also scan all open documents
+    for (const doc of vscode.workspace.textDocuments) {
+      if (isCodexFile(doc.fileName)) {
+        console.log('[ChapterWise Codex] Found open codex file:', doc.fileName);
+        this.setActiveDocument(doc);
+        break;
+      }
     }
   }
   
@@ -209,7 +226,13 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItem>
   }
   
   getChildren(element?: CodexTreeItem): vscode.ProviderResult<CodexTreeItem[]> {
-    if (!this.codexDoc || !this.activeDocument) {
+    if (!this.activeDocument) {
+      // Return empty - the welcome view will show
+      return [];
+    }
+    
+    if (!this.codexDoc) {
+      // Document exists but couldn't parse
       return [];
     }
     
@@ -274,4 +297,5 @@ export function createCodexTreeView(context: vscode.ExtensionContext): {
   
   return { treeProvider, treeView };
 }
+
 

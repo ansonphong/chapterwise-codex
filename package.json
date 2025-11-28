@@ -23,11 +23,7 @@
     "worldbuilding"
   ],
   "activationEvents": [
-    "onLanguage:yaml",
-    "onLanguage:json",
-    "workspaceContains:**/*.codex.yaml",
-    "workspaceContains:**/*.codex.json",
-    "workspaceContains:**/*.codex"
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -64,7 +60,7 @@
       "activitybar": [
         {
           "id": "chapterwiseCodex",
-          "title": "Codex",
+          "title": "ChapterWise Codex",
           "icon": "media/codex.svg"
         }
       ]
@@ -73,10 +69,16 @@
       "chapterwiseCodex": [
         {
           "id": "chapterwiseCodexNavigator",
-          "name": "Codex Navigator"
+          "name": "ChapterWise Codex Navigator"
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "chapterwiseCodexNavigator",
+        "contents": "No Codex file is currently open.\n\nOpen a .codex.yaml or .codex.json file to see its structure here.\n\n[Open Codex File](command:workbench.action.files.openFile)"
+      }
+    ],
     "menus": {
       "view/title": [
         {
@@ -162,4 +164,5 @@
     "typescript": "^5.4.0"
   }
 }
+
 

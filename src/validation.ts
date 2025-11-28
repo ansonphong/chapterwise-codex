@@ -287,3 +287,7 @@ export function getDiagnosticCollection(): vscode.DiagnosticCollection {
   return diagnosticCollection;
 }
 
+
+
+
+

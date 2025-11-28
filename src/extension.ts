@@ -17,39 +17,67 @@ let statusBarItem: vscode.StatusBarItem;
  * Extension activation
  */
 export function activate(context: vscode.ExtensionContext): void {
-  console.log('ChapterWise Codex extension activated');
+  console.log('ChapterWise Codex extension activating...');
   
-  // Initialize tree view
-  const { treeProvider: tp, treeView } = createCodexTreeView(context);
-  treeProvider = tp;
-  
-  // Initialize Writer View manager
-  writerViewManager = new WriterViewManager(context);
-  
-  // Initialize validation system
-  initializeValidation(context);
-  
-  // Create status bar item
-  statusBarItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Right,
-    100
-  );
-  statusBarItem.command = 'chapterwiseCodex.openNavigator';
-  context.subscriptions.push(statusBarItem);
-  
-  // Register commands
-  registerCommands(context);
-  
-  // Update status bar based on active editor
-  updateStatusBar();
-  context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor(() => updateStatusBar())
-  );
-  
-  // Set initial document if one is open
-  const activeEditor = vscode.window.activeTextEditor;
-  if (activeEditor && isCodexFile(activeEditor.document.fileName)) {
-    treeProvider.setActiveDocument(activeEditor.document);
+  try {
+    // Initialize tree view
+    const { treeProvider: tp, treeView } = createCodexTreeView(context);
+    treeProvider = tp;
+    console.log('ChapterWise Codex: Tree view created');
+    
+    // Initialize Writer View manager
+    writerViewManager = new WriterViewManager(context);
+    console.log('ChapterWise Codex: Writer view manager created');
+    
+    // Initialize validation system
+    initializeValidation(context);
+    console.log('ChapterWise Codex: Validation initialized');
+    
+    // Create status bar item
+    statusBarItem = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Right,
+      100
+    );
+    statusBarItem.command = 'chapterwiseCodex.openNavigator';
+    context.subscriptions.push(statusBarItem);
+    
+    // Register commands
+    registerCommands(context);
+    console.log('ChapterWise Codex: Commands registered');
+    
+    // Update status bar based on active editor
+    updateStatusBar();
+    context.subscriptions.push(
+      vscode.window.onDidChangeActiveTextEditor(() => {
+        updateStatusBar();
+        // Also update tree when active editor changes to a codex file
+        const editor = vscode.window.activeTextEditor;
+        if (editor && isCodexFile(editor.document.fileName)) {
+          treeProvider.setActiveDocument(editor.document);
+        }
+      })
+    );
+    
+    // Set initial document if one is open
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor && isCodexFile(activeEditor.document.fileName)) {
+      console.log('ChapterWise Codex: Setting active document from editor:', activeEditor.document.fileName);
+      treeProvider.setActiveDocument(activeEditor.document);
+    }
+    
+    // Also check all open documents in case active editor detection failed
+    for (const doc of vscode.workspace.textDocuments) {
+      if (isCodexFile(doc.fileName)) {
+        console.log('ChapterWise Codex: Found open codex document:', doc.fileName);
+        treeProvider.setActiveDocument(doc);
+        break;
+      }
+    }
+    
+    console.log('ChapterWise Codex extension activated successfully!');
+  } catch (error) {
+    console.error('ChapterWise Codex activation failed:', error);
+    vscode.window.showErrorMessage(`ChapterWise Codex failed to activate: ${error}`);
   }
 }
 
@@ -75,6 +103,10 @@ function registerCommands(context: vscode.ExtensionContext): void {
   // Refresh tree command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.refresh', () => {
+      const editor = vscode.window.activeTextEditor;
+      if (editor && isCodexFile(editor.document.fileName)) {
+        treeProvider.setActiveDocument(editor.document);
+      }
       treeProvider.refresh();
     })
   );
@@ -195,7 +227,7 @@ function updateStatusBar(): void {
   const editor = vscode.window.activeTextEditor;
   
   if (editor && isCodexFile(editor.document.fileName)) {
-    const codexDoc = treeProvider.getCodexDocument();
+    const codexDoc = treeProvider?.getCodexDocument();
     const nodeCount = codexDoc?.allNodes.length ?? 0;
     const typeCount = codexDoc?.types.size ?? 0;
     
@@ -203,7 +235,7 @@ function updateStatusBar(): void {
     statusBarItem.tooltip = `ChapterWise Codex\n${nodeCount} nodes, ${typeCount} types\nClick to open Navigator`;
     statusBarItem.show();
   } else {
-    statusBarItem.hide();
+    statusBarItem?.hide();
   }
 }
 
@@ -214,4 +246,3 @@ export function deactivate(): void {
   writerViewManager?.dispose();
   console.log('ChapterWise Codex extension deactivated');
 }
-
