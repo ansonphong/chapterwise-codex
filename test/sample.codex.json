@@ -1,0 +1,28 @@
+{
+  "metadata": {
+    "formatVersion": "1.1",
+    "documentVersion": "1.0.0",
+    "created": "2025-11-28T12:00:00Z"
+  },
+  "id": "json-sample-001",
+  "type": "book",
+  "name": "JSON Test Book",
+  "summary": "A sample book in JSON format to test JSON parsing.",
+  "body": "This is the main content of the JSON test book.\n\nIt demonstrates that the extension works with both YAML and JSON formats.",
+  "children": [
+    {
+      "id": "json-char-001",
+      "type": "character",
+      "name": "Test Character",
+      "summary": "A character defined in JSON format.",
+      "body": "This character exists to test JSON parsing in the Codex extension."
+    },
+    {
+      "id": "json-ch-001",
+      "type": "chapter",
+      "name": "Chapter 1",
+      "body": "The first chapter of our JSON test book."
+    }
+  ]
+}
+

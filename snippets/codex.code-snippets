@@ -1,0 +1,111 @@
+{
+    "Codex Metadata": {
+      "prefix": "codex-meta",
+      "body": [
+        "metadata:",
+        "  formatVersion: \"1.1\"",
+        "  documentVersion: \"${1:1.0.0}\"",
+        "  created: \"${CURRENT_YEAR}-${CURRENT_MONTH}-${CURRENT_DATE}T${CURRENT_HOUR}:${CURRENT_MINUTE}:${CURRENT_SECOND}Z\"",
+        "  author: \"${2:Author Name}\"",
+        "",
+        "id: \"${3:uuid}\"",
+        "type: ${4:book}",
+        "name: \"${5:Title}\"",
+        "$0"
+      ],
+      "description": "Create a new Codex file with metadata"
+    },
+    "Codex Character": {
+      "prefix": "codex-character",
+      "body": [
+        "- id: \"char-${1:name}-${RANDOM_HEX}\"",
+        "  type: character",
+        "  name: \"${2:Character Name}\"",
+        "  summary: |",
+        "    ${3:Brief description of the character}",
+        "  body: |",
+        "    ${4:Detailed background and history}",
+        "  attributes:",
+        "    - key: role",
+        "      name: \"Role\"",
+        "      value: \"${5:protagonist}\"",
+        "  tags:",
+        "    - ${6:tag}"
+      ],
+      "description": "Add a character node"
+    },
+    "Codex Chapter": {
+      "prefix": "codex-chapter",
+      "body": [
+        "- id: \"ch-${1:number}-${RANDOM_HEX}\"",
+        "  type: chapter",
+        "  name: \"${2:Chapter Title}\"",
+        "  summary: |",
+        "    ${3:Chapter summary}",
+        "  body: |",
+        "    ${4:Chapter content}",
+        "  children:",
+        "    $0"
+      ],
+      "description": "Add a chapter node"
+    },
+    "Codex Scene": {
+      "prefix": "codex-scene",
+      "body": [
+        "- id: \"scene-${RANDOM_HEX}\"",
+        "  type: scene",
+        "  name: \"${1:Scene Title}\"",
+        "  body: |",
+        "    ${2:Scene content}",
+        "  attributes:",
+        "    - key: location",
+        "      name: \"Location\"",
+        "      value: \"${3:Location}\"",
+        "    - key: time",
+        "      name: \"Time\"",
+        "      value: \"${4:Time}\""
+      ],
+      "description": "Add a scene node"
+    },
+    "Codex Location": {
+      "prefix": "codex-location",
+      "body": [
+        "- id: \"loc-${1:name}-${RANDOM_HEX}\"",
+        "  type: location",
+        "  name: \"${2:Location Name}\"",
+        "  summary: |",
+        "    ${3:Brief description}",
+        "  body: |",
+        "    ${4:Detailed description of the location}",
+        "  image: \"${5:/images/locations/placeholder.jpg}\""
+      ],
+      "description": "Add a location node"
+    },
+    "Codex Attribute": {
+      "prefix": "codex-attr",
+      "body": [
+        "- key: ${1:key}",
+        "  name: \"${2:Display Name}\"",
+        "  value: ${3:value}"
+      ],
+      "description": "Add an attribute"
+    },
+    "Codex Relation": {
+      "prefix": "codex-rel",
+      "body": [
+        "- type: ${1:knows}",
+        "  target: \"${2:target-id}\"",
+        "  description: \"${3:Relationship description}\""
+      ],
+      "description": "Add a relation"
+    },
+    "Codex Children Array": {
+      "prefix": "codex-children",
+      "body": [
+        "children:",
+        "  $0"
+      ],
+      "description": "Add children array"
+    }
+  }
+  

@@ -1,0 +1,136 @@
+metadata:
+  formatVersion: "1.1"
+  documentVersion: "1.0.0"
+  created: "2025-11-28T12:00:00Z"
+  author: "Test Author"
+
+id: "book-sample-001"
+type: book
+name: "The Chronicles of Codex"
+summary: |
+  A sample book demonstrating the ChapterWise Codex format.
+  This file can be used to test the extension.
+
+body: |
+  Welcome to the world of Codex. This is the main body text
+  of the book, where you would typically place your introduction
+  or overview content.
+
+attributes:
+  - key: genre
+    name: "Genre"
+    value: "Fantasy"
+  - key: wordCount
+    name: "Target Word Count"
+    value: 80000
+    dataType: int
+
+tags:
+  - fantasy
+  - sample
+  - test
+
+children:
+  - id: "char-hero-001"
+    type: character
+    name: "Aria Lightbringer"
+    summary: |
+      The protagonist of our story. A young mage discovering her powers.
+    body: |
+      Aria was born in the small village of Moonhaven, nestled at the 
+      foot of the Crystal Mountains. From an early age, she showed an 
+      unusual affinity for light magic, able to create small orbs of 
+      illumination even before she could properly speak.
+      
+      Her journey begins when the village elder recognizes her potential
+      and sends her to the Academy of Arcane Arts in the capital city.
+    attributes:
+      - key: age
+        name: "Age"
+        value: 17
+        dataType: int
+      - key: role
+        name: "Role"
+        value: "Protagonist"
+    relations:
+      - type: mentored-by
+        target: "char-elder-001"
+        description: "Trained by the village elder"
+    tags:
+      - protagonist
+      - mage
+
+  - id: "char-elder-001"
+    type: character
+    name: "Elder Moonshadow"
+    summary: |
+      The wise elder of Moonhaven who recognizes Aria's potential.
+    body: |
+      Elder Moonshadow has watched over Moonhaven for over a century.
+      Once a powerful mage herself, she now serves as the village's
+      protector and historian.
+
+  - id: "loc-moonhaven-001"
+    type: location
+    name: "Moonhaven Village"
+    summary: |
+      A peaceful village at the foot of the Crystal Mountains.
+    body: |
+      Moonhaven is a small, idyllic village known for its skilled
+      craftspeople and the mysterious silver moonflowers that bloom
+      only in its meadows. The village has remained hidden from the
+      greater conflicts of the realm for generations.
+    image: "/images/locations/moonhaven.jpg"
+
+  - id: "ch-001"
+    type: chapter
+    name: "Chapter 1: The Awakening"
+    summary: |
+      Aria discovers her true power during the Festival of Lights.
+    body: |
+      The Festival of Lights came once a year to Moonhaven, when
+      the three moons aligned in the sky and the village was bathed
+      in silver radiance. It was during this festival, in her
+      seventeenth year, that Aria's life changed forever.
+      
+      She stood at the edge of the village square, watching the
+      other children release their carefully crafted paper lanterns
+      into the night sky. Each lantern carried a wish, a hope,
+      a dream for the coming year.
+    children:
+      - id: "scene-001"
+        type: scene
+        name: "The Festival Begins"
+        body: |
+          Torchlight flickered across the cobblestones as villagers
+          gathered in the square. The smell of honey cakes and
+          spiced cider filled the air.
+        attributes:
+          - key: location
+            name: "Location"
+            value: "Moonhaven Village Square"
+          - key: time
+            name: "Time"
+            value: "Evening, Festival Night"
+
+      - id: "scene-002"
+        type: scene
+        name: "The Light Manifests"
+        body: |
+          As Aria reached for her lantern, something strange happened.
+          Light began to pour from her fingertips, not the soft glow
+          of a candle, but brilliant beams of pure radiance.
+
+  - id: "ch-002"
+    type: chapter
+    name: "Chapter 2: The Journey Begins"
+    summary: |
+      Aria leaves Moonhaven to begin her training at the Academy.
+    body: |
+      Three days after the Festival, Elder Moonshadow called Aria
+      to her cottage at the edge of the village. The old mage's
+      eyes held both pride and sorrow as she handed the young woman
+      a sealed letter.
+      
+      "The Academy has accepted you," she said. "You must go."
+

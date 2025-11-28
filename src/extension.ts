@@ -1,0 +1,217 @@
+/**
+ * ChapterWise Codex Extension
+ * Transform .codex.yaml and .codex.json editing into a Scrivener-like writing experience
+ */
+
+import * as vscode from 'vscode';
+import { CodexTreeProvider, CodexTreeItem, createCodexTreeView } from './treeProvider';
+import { WriterViewManager } from './writerView';
+import { initializeValidation } from './validation';
+import { isCodexFile } from './codexModel';
+
+let treeProvider: CodexTreeProvider;
+let writerViewManager: WriterViewManager;
+let statusBarItem: vscode.StatusBarItem;
+
+/**
+ * Extension activation
+ */
+export function activate(context: vscode.ExtensionContext): void {
+  console.log('ChapterWise Codex extension activated');
+  
+  // Initialize tree view
+  const { treeProvider: tp, treeView } = createCodexTreeView(context);
+  treeProvider = tp;
+  
+  // Initialize Writer View manager
+  writerViewManager = new WriterViewManager(context);
+  
+  // Initialize validation system
+  initializeValidation(context);
+  
+  // Create status bar item
+  statusBarItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    100
+  );
+  statusBarItem.command = 'chapterwiseCodex.openNavigator';
+  context.subscriptions.push(statusBarItem);
+  
+  // Register commands
+  registerCommands(context);
+  
+  // Update status bar based on active editor
+  updateStatusBar();
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(() => updateStatusBar())
+  );
+  
+  // Set initial document if one is open
+  const activeEditor = vscode.window.activeTextEditor;
+  if (activeEditor && isCodexFile(activeEditor.document.fileName)) {
+    treeProvider.setActiveDocument(activeEditor.document);
+  }
+}
+
+/**
+ * Register all commands
+ */
+function registerCommands(context: vscode.ExtensionContext): void {
+  // Open Navigator command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chapterwiseCodex.openNavigator', () => {
+      const editor = vscode.window.activeTextEditor;
+      if (editor && isCodexFile(editor.document.fileName)) {
+        treeProvider.setActiveDocument(editor.document);
+        vscode.commands.executeCommand('chapterwiseCodexNavigator.focus');
+      } else {
+        vscode.window.showInformationMessage(
+          'Open a .codex.yaml or .codex.json file to use the Codex Navigator'
+        );
+      }
+    })
+  );
+  
+  // Refresh tree command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chapterwiseCodex.refresh', () => {
+      treeProvider.refresh();
+    })
+  );
+  
+  // Filter by type command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chapterwiseCodex.filterByType', async () => {
+      const types = treeProvider.getTypes();
+      
+      if (types.length === 0) {
+        vscode.window.showInformationMessage('No node types found in the current document');
+        return;
+      }
+      
+      const currentFilter = treeProvider.getFilter();
+      const items = [
+        {
+          label: '$(list-flat) Show All',
+          description: currentFilter === null ? '(current)' : '',
+          value: null as string | null,
+        },
+        ...types.map((type) => ({
+          label: `$(symbol-misc) ${type}`,
+          description: currentFilter === type ? '(current)' : '',
+          value: type,
+        })),
+      ];
+      
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Filter nodes by type',
+        title: 'Codex Node Filter',
+      });
+      
+      if (selected !== undefined) {
+        treeProvider.setFilter(selected.value);
+        
+        if (selected.value) {
+          vscode.window.setStatusBarMessage(`Filtering: ${selected.value}`, 2000);
+        } else {
+          vscode.window.setStatusBarMessage('Showing all nodes', 2000);
+        }
+      }
+    })
+  );
+  
+  // Open Writer View command
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'chapterwiseCodex.openWriterView',
+      async (treeItem?: CodexTreeItem) => {
+        if (treeItem) {
+          await writerViewManager.openWriterView(treeItem);
+        } else {
+          vscode.window.showInformationMessage(
+            'Select a node in the Codex Navigator to open Writer View'
+          );
+        }
+      }
+    )
+  );
+  
+  // Go to YAML command
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'chapterwiseCodex.goToYaml',
+      async (treeItem?: CodexTreeItem) => {
+        if (!treeItem) {
+          return;
+        }
+        
+        const document = treeProvider.getActiveTextDocument();
+        if (!document) {
+          return;
+        }
+        
+        // Navigate to the node's line in the source file
+        const lineNumber = treeItem.codexNode.lineNumber;
+        if (lineNumber !== undefined) {
+          const editor = await vscode.window.showTextDocument(document);
+          const position = new vscode.Position(lineNumber - 1, 0);
+          editor.selection = new vscode.Selection(position, position);
+          editor.revealRange(
+            new vscode.Range(position, position),
+            vscode.TextEditorRevealType.InCenter
+          );
+        } else {
+          // Fallback: just open the document
+          await vscode.window.showTextDocument(document);
+        }
+      }
+    )
+  );
+  
+  // Copy ID command
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'chapterwiseCodex.copyId',
+      async (treeItem?: CodexTreeItem) => {
+        if (!treeItem || !treeItem.codexNode.id) {
+          vscode.window.showInformationMessage('No ID to copy');
+          return;
+        }
+        
+        await vscode.env.clipboard.writeText(treeItem.codexNode.id);
+        vscode.window.setStatusBarMessage(
+          `Copied: ${treeItem.codexNode.id}`,
+          2000
+        );
+      }
+    )
+  );
+}
+
+/**
+ * Update status bar based on current editor
+ */
+function updateStatusBar(): void {
+  const editor = vscode.window.activeTextEditor;
+  
+  if (editor && isCodexFile(editor.document.fileName)) {
+    const codexDoc = treeProvider.getCodexDocument();
+    const nodeCount = codexDoc?.allNodes.length ?? 0;
+    const typeCount = codexDoc?.types.size ?? 0;
+    
+    statusBarItem.text = `$(book) Codex: ${nodeCount} nodes`;
+    statusBarItem.tooltip = `ChapterWise Codex\n${nodeCount} nodes, ${typeCount} types\nClick to open Navigator`;
+    statusBarItem.show();
+  } else {
+    statusBarItem.hide();
+  }
+}
+
+/**
+ * Extension deactivation
+ */
+export function deactivate(): void {
+  writerViewManager?.dispose();
+  console.log('ChapterWise Codex extension deactivated');
+}
+
