@@ -19,6 +19,7 @@ export interface CodexNode {
   name: string;
   proseField: string;           // Which field contains prose: 'body', 'summary', etc.
   proseValue: string;           // The actual prose content
+  availableFields: string[];    // All prose fields available on this node
   path: PathSegment[];          // Path to this node in the document
   lineNumber?: number;          // Line number in source file (for navigation)
   children: CodexNode[];        // Child nodes
@@ -102,19 +103,30 @@ function isJsonContent(text: string): boolean {
 }
 
 /**
+ * All possible prose fields in priority order
+ */
+export const PROSE_FIELDS = ['body', 'summary', 'description', 'content', 'text'];
+
+/**
+ * Gets all available prose fields from a node object
+ */
+function getAvailableProseFields(nodeObj: Record<string, unknown>): string[] {
+  return PROSE_FIELDS.filter(field => field in nodeObj && typeof nodeObj[field] === 'string');
+}
+
+/**
  * Gets the primary prose field from a node object
  */
-function getProseField(nodeObj: Record<string, unknown>): { field: string; value: string } {
-  // Priority order for prose fields
-  const proseFields = ['body', 'summary', 'description', 'content', 'text'];
+function getProseField(nodeObj: Record<string, unknown>): { field: string; value: string; availableFields: string[] } {
+  const availableFields = getAvailableProseFields(nodeObj);
   
-  for (const field of proseFields) {
+  for (const field of PROSE_FIELDS) {
     if (field in nodeObj && typeof nodeObj[field] === 'string') {
-      return { field, value: nodeObj[field] as string };
+      return { field, value: nodeObj[field] as string, availableFields };
     }
   }
   
-  return { field: 'body', value: '' };
+  return { field: 'body', value: '', availableFields };
 }
 
 /**
@@ -176,7 +188,7 @@ function parseNode(
   const type = (nodeObj.type as string) ?? 'unknown';
   const name = (nodeObj.name as string) ?? (nodeObj.title as string) ?? id ?? '(untitled)';
   
-  const { field: proseField, value: proseValue } = getProseField(nodeObj);
+  const { field: proseField, value: proseValue, availableFields } = getProseField(nodeObj);
   
   const node: CodexNode = {
     id,
@@ -184,6 +196,7 @@ function parseNode(
     name,
     proseField,
     proseValue,
+    availableFields,
     path: [...path],
     lineNumber: doc ? findLineNumber(doc, path) : undefined,
     children: [],
@@ -314,7 +327,7 @@ export function parseCodex(text: string): CodexDocument | null {
 /**
  * Get the prose value for a specific node from the document
  */
-export function getNodeProse(codexDoc: CodexDocument, node: CodexNode): string {
+export function getNodeProse(codexDoc: CodexDocument, node: CodexNode, field?: string): string {
   try {
     let current: unknown;
     
@@ -338,7 +351,8 @@ export function getNodeProse(codexDoc: CodexDocument, node: CodexNode): string {
       return '';
     }
     
-    const value = (current as Record<string, unknown>)[node.proseField];
+    const fieldToGet = field ?? node.proseField;
+    const value = (current as Record<string, unknown>)[fieldToGet];
     return typeof value === 'string' ? value : '';
   } catch {
     return '';
@@ -352,8 +366,11 @@ export function getNodeProse(codexDoc: CodexDocument, node: CodexNode): string {
 export function setNodeProse(
   codexDoc: CodexDocument,
   node: CodexNode,
-  newValue: string
+  newValue: string,
+  field?: string
 ): string {
+  const fieldToSet = field ?? node.proseField;
+  
   try {
     if (codexDoc.isJson) {
       // For JSON, we parse, modify, and re-stringify
@@ -366,7 +383,7 @@ export function setNodeProse(
       }
       
       if (current && typeof current === 'object') {
-        current[node.proseField] = newValue;
+        current[fieldToSet] = newValue;
       }
       
       return JSON.stringify(obj, null, 2);
@@ -375,7 +392,7 @@ export function setNodeProse(
       const doc = YAML.parseDocument(codexDoc.rawText);
       
       // Build the full path including the prose field
-      const fullPath = [...node.path, node.proseField];
+      const fullPath = [...node.path, fieldToSet];
       
       // Get or create the scalar node
       const pathKeys = fullPath.map(p => typeof p === 'number' ? p : String(p));

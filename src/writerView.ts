@@ -62,20 +62,33 @@ export class WriterViewManager {
     // Set initial HTML
     panel.webview.html = this.getWebviewHtml(panel.webview, node, prose);
     
+    // Track current field for this panel
+    let currentField = node.proseField;
+    
     // Handle messages from webview (closure captures node and documentUri)
     panel.webview.onDidReceiveMessage(
       async (message) => {
         switch (message.type) {
           case 'save':
-            await this.handleSave(documentUri, node, message.text);
+            const fieldToSave = message.field || currentField;
+            await this.handleSave(documentUri, node, message.text, fieldToSave);
             panel.webview.postMessage({ type: 'saved' });
             break;
-          case 'requestContent':
-            // Re-fetch content from document
+          case 'switchField':
+            currentField = message.field;
             const doc = await vscode.workspace.openTextDocument(documentUri);
             const parsed = parseCodex(doc.getText());
             if (parsed) {
-              const currentProse = getNodeProse(parsed, node);
+              const fieldContent = getNodeProse(parsed, node, message.field);
+              panel.webview.postMessage({ type: 'fieldContent', text: fieldContent, field: message.field });
+            }
+            break;
+          case 'requestContent':
+            // Re-fetch content from document
+            const docReq = await vscode.workspace.openTextDocument(documentUri);
+            const parsedReq = parseCodex(docReq.getText());
+            if (parsedReq) {
+              const currentProse = getNodeProse(parsedReq, node, currentField);
               panel.webview.postMessage({ type: 'content', text: currentProse });
             }
             break;
@@ -97,7 +110,8 @@ export class WriterViewManager {
   private async handleSave(
     documentUri: vscode.Uri,
     node: CodexNode,
-    newText: string
+    newText: string,
+    field?: string
   ): Promise<void> {
     try {
       const document = await vscode.workspace.openTextDocument(documentUri);
@@ -109,7 +123,7 @@ export class WriterViewManager {
       }
       
       // Generate new document text
-      const newDocText = setNodeProse(codexDoc, node, newText);
+      const newDocText = setNodeProse(codexDoc, node, newText, field);
       
       // Apply the edit
       const edit = new vscode.WorkspaceEdit();
@@ -209,6 +223,12 @@ export class WriterViewManager {
       gap: 0.125rem;
     }
     
+    .node-type-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
     .node-type {
       font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
       font-size: 0.7rem;
@@ -217,20 +237,38 @@ export class WriterViewManager {
       color: var(--text-muted);
     }
     
-    .node-name {
-      font-size: 1rem;
-      font-weight: 600;
-      color: var(--text-primary);
-    }
-    
-    .node-field {
+    .field-selector {
       font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
       font-size: 0.65rem;
       color: var(--accent);
       background: rgba(88, 166, 255, 0.1);
+      border: 1px solid rgba(88, 166, 255, 0.3);
       padding: 0.125rem 0.375rem;
       border-radius: 3px;
-      margin-left: 0.5rem;
+      cursor: pointer;
+      outline: none;
+      transition: all 0.15s ease;
+    }
+    
+    .field-selector:hover {
+      background: rgba(88, 166, 255, 0.2);
+      border-color: var(--accent);
+    }
+    
+    .field-selector:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+    }
+    
+    .field-selector option {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+    }
+    
+    .node-name {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary);
     }
     
     .header-right {
@@ -376,8 +414,17 @@ export class WriterViewManager {
   <div class="header">
     <div class="header-left">
       <div class="node-info">
-        <span class="node-type">${this.escapeHtml(node.type)}</span>
-        <span class="node-name">${this.escapeHtml(node.name)}<span class="node-field">${this.escapeHtml(node.proseField)}</span></span>
+        <div class="node-type-row">
+          <span class="node-type">${this.escapeHtml(node.type)}</span>
+          <select class="field-selector" id="fieldSelector">
+            ${node.availableFields.map(f => 
+              `<option value="${f}" ${f === node.proseField ? 'selected' : ''}>${f}</option>`
+            ).join('')}
+            ${!node.availableFields.includes('body') ? '<option value="body">body (new)</option>' : ''}
+            ${!node.availableFields.includes('summary') ? '<option value="summary">summary (new)</option>' : ''}
+          </select>
+        </div>
+        <span class="node-name">${this.escapeHtml(node.name)}</span>
       </div>
     </div>
     <div class="header-right">
@@ -416,10 +463,12 @@ export class WriterViewManager {
     const saveIndicator = document.getElementById('saveIndicator');
     const wordCountEl = document.getElementById('wordCount');
     const charCountEl = document.getElementById('charCount');
+    const fieldSelector = document.getElementById('fieldSelector');
     
     let isDirty = false;
     let originalContent = editor.innerText;
     let saveTimeout = null;
+    let currentField = '${node.proseField}';
     
     // Update word count
     function updateCounts() {
@@ -456,9 +505,27 @@ export class WriterViewManager {
       
       vscode.postMessage({
         type: 'save',
-        text: editor.innerText
+        text: editor.innerText,
+        field: currentField
       });
     }
+    
+    // Handle field change
+    fieldSelector.addEventListener('change', (e) => {
+      // Save current content first if dirty
+      if (isDirty) {
+        save();
+      }
+      
+      const newField = e.target.value;
+      currentField = newField;
+      
+      // Request content for the new field
+      vscode.postMessage({
+        type: 'switchField',
+        field: newField
+      });
+    });
     
     // Handle content changes
     editor.addEventListener('input', () => {
@@ -514,6 +581,17 @@ export class WriterViewManager {
             editor.innerText = message.text;
             updateCounts();
           }
+          break;
+        case 'fieldContent':
+          // Switched to a new field
+          editor.innerText = message.text || '';
+          currentField = message.field;
+          originalContent = editor.innerText;
+          isDirty = false;
+          saveIndicator.classList.remove('dirty');
+          saveIndicator.textContent = '';
+          updateCounts();
+          editor.focus();
           break;
       }
     });
