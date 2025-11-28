@@ -11,9 +11,7 @@ import { CodexTreeItem } from './treeProvider';
  * Manages Writer View webview panels
  */
 export class WriterViewManager {
-  private panel: vscode.WebviewPanel | null = null;
-  private currentNode: CodexNode | null = null;
-  private currentDocumentUri: vscode.Uri | null = null;
+  private panels: Map<string, vscode.WebviewPanel> = new Map();
   
   constructor(private readonly context: vscode.ExtensionContext) {}
   
@@ -23,6 +21,16 @@ export class WriterViewManager {
   async openWriterView(treeItem: CodexTreeItem): Promise<void> {
     const node = treeItem.codexNode;
     const documentUri = treeItem.documentUri;
+    
+    // Create a unique key for this panel
+    const panelKey = `${documentUri.toString()}#${node.id || node.path.join('/')}`;
+    
+    // Check if panel already exists - just focus it
+    let existingPanel = this.panels.get(panelKey);
+    if (existingPanel) {
+      existingPanel.reveal(vscode.ViewColumn.Active);
+      return;
+    }
     
     // Get the document
     const document = await vscode.workspace.openTextDocument(documentUri);
@@ -35,23 +43,11 @@ export class WriterViewManager {
     // Get current prose value
     const prose = getNodeProse(codexDoc, node);
     
-    // Store current node info for saving
-    this.currentNode = node;
-    this.currentDocumentUri = documentUri;
-    
-    // If panel exists, just update it
-    if (this.panel) {
-      this.panel.title = `✍️ ${node.name || 'Writer'}`;
-      this.panel.webview.html = this.getWebviewHtml(this.panel.webview, node, prose);
-      this.panel.reveal(vscode.ViewColumn.Beside);
-      return;
-    }
-    
-    // Create new panel
+    // Create new panel in the ACTIVE editor group (same frame, new tab)
     let panel = vscode.window.createWebviewPanel(
       'chapterwiseCodexWriter',
       `✍️ ${node.name || 'Writer'}`,
-      vscode.ViewColumn.Beside,
+      vscode.ViewColumn.Active,  // Opens in current editor group as new tab
       {
         enableScripts: true,
         retainContextWhenHidden: true,
@@ -61,30 +57,26 @@ export class WriterViewManager {
       }
     );
     
-    this.panel = panel;
+    this.panels.set(panelKey, panel);
     
     // Set initial HTML
     panel.webview.html = this.getWebviewHtml(panel.webview, node, prose);
     
-    // Handle messages from webview
+    // Handle messages from webview (closure captures node and documentUri)
     panel.webview.onDidReceiveMessage(
       async (message) => {
         switch (message.type) {
           case 'save':
-            if (this.currentDocumentUri && this.currentNode) {
-              await this.handleSave(this.currentDocumentUri, this.currentNode, message.text);
-              this.panel?.webview.postMessage({ type: 'saved' });
-            }
+            await this.handleSave(documentUri, node, message.text);
+            panel.webview.postMessage({ type: 'saved' });
             break;
           case 'requestContent':
             // Re-fetch content from document
-            if (this.currentDocumentUri && this.currentNode) {
-              const doc = await vscode.workspace.openTextDocument(this.currentDocumentUri);
-              const parsed = parseCodex(doc.getText());
-              if (parsed) {
-                const currentProse = getNodeProse(parsed, this.currentNode);
-                this.panel?.webview.postMessage({ type: 'content', text: currentProse });
-              }
+            const doc = await vscode.workspace.openTextDocument(documentUri);
+            const parsed = parseCodex(doc.getText());
+            if (parsed) {
+              const currentProse = getNodeProse(parsed, node);
+              panel.webview.postMessage({ type: 'content', text: currentProse });
             }
             break;
         }
@@ -95,9 +87,7 @@ export class WriterViewManager {
     
     // Handle panel disposal
     panel.onDidDispose(() => {
-      this.panel = null;
-      this.currentNode = null;
-      this.currentDocumentUri = null;
+      this.panels.delete(panelKey);
     });
   }
   
@@ -563,13 +553,13 @@ export class WriterViewManager {
   }
   
   /**
-   * Dispose the panel
+   * Dispose all panels
    */
   dispose(): void {
-    this.panel?.dispose();
-    this.panel = null;
-    this.currentNode = null;
-    this.currentDocumentUri = null;
+    for (const panel of this.panels.values()) {
+      panel.dispose();
+    }
+    this.panels.clear();
   }
 }
 
