@@ -110,99 +110,20 @@ export class WriterViewManager {
             }
             break;
             
-          // Attributes CRUD
-          case 'getAttributes':
-            const docAttr = await vscode.workspace.openTextDocument(documentUri);
-            const parsedAttr = parseCodex(docAttr.getText());
-            if (parsedAttr) {
-              currentAttributes = getNodeAttributes(parsedAttr, node);
-              panel.webview.postMessage({ 
-                type: 'attributesData', 
-                html: this.renderAttributesTable(currentAttributes)
-              });
-            }
-            break;
-            
-          case 'addAttribute':
-            currentAttributes.push({
-              key: '',
-              name: '',
-              value: '',
-              dataType: 'string',
-              id: generateUuid(),
-              type: 'entity'
-            });
+          // Attributes - batch save (local state is managed in webview for instant UI)
+          case 'saveAttributes':
+            // Receive full array from webview and save once
+            currentAttributes = message.attributes || [];
             await this.handleSaveAttributes(documentUri, node, currentAttributes);
-            panel.webview.postMessage({ 
-              type: 'attributesData', 
-              html: this.renderAttributesTable(currentAttributes)
-            });
+            panel.webview.postMessage({ type: 'saveComplete' });
             break;
             
-          case 'updateAttribute':
-            if (message.index >= 0 && message.index < currentAttributes.length) {
-              const attr = currentAttributes[message.index];
-              (attr as Record<string, unknown>)[message.field] = message.value;
-              await this.handleSaveAttributes(documentUri, node, currentAttributes);
-            }
-            break;
-            
-          case 'deleteAttribute':
-            if (message.index >= 0 && message.index < currentAttributes.length) {
-              currentAttributes.splice(message.index, 1);
-              await this.handleSaveAttributes(documentUri, node, currentAttributes);
-              panel.webview.postMessage({ 
-                type: 'attributesData', 
-                html: this.renderAttributesTable(currentAttributes)
-              });
-            }
-            break;
-            
-          // Content Sections CRUD
-          case 'getContentSections':
-            const docContent = await vscode.workspace.openTextDocument(documentUri);
-            const parsedContent = parseCodex(docContent.getText());
-            if (parsedContent) {
-              currentContentSections = getNodeContentSections(parsedContent, node);
-              panel.webview.postMessage({ 
-                type: 'contentSectionsData', 
-                html: this.renderContentSections(currentContentSections)
-              });
-            }
-            break;
-            
-          case 'addContentSection':
-            currentContentSections.push({
-              key: '',
-              name: 'New Section',
-              value: '',
-              id: generateUuid(),
-              type: 'entity'
-            });
+          // Content Sections - batch save (local state is managed in webview for instant UI)
+          case 'saveContentSections':
+            // Receive full array from webview and save once
+            currentContentSections = message.sections || [];
             await this.handleSaveContentSections(documentUri, node, currentContentSections);
-            panel.webview.postMessage({ 
-              type: 'contentSectionsData', 
-              html: this.renderContentSections(currentContentSections)
-            });
-            break;
-            
-          case 'updateContentSection':
-            if (message.index >= 0 && message.index < currentContentSections.length) {
-              const section = currentContentSections[message.index];
-              (section as Record<string, unknown>)[message.field] = message.value;
-              await this.handleSaveContentSections(documentUri, node, currentContentSections);
-            }
-            break;
-            
-          case 'deleteContentSection':
-            if (message.index >= 0 && message.index < currentContentSections.length) {
-              currentContentSections.splice(message.index, 1);
-              await this.handleSaveContentSections(documentUri, node, currentContentSections);
-              panel.webview.postMessage({ 
-                type: 'contentSectionsData', 
-                html: this.renderContentSections(currentContentSections)
-              });
-            }
+            panel.webview.postMessage({ type: 'saveComplete' });
             break;
         }
       },
@@ -938,6 +859,13 @@ export class WriterViewManager {
     let originalContent = editor.innerText;
     let saveTimeout = null;
     let currentField = '${node.proseField}';
+    let currentEditorMode = 'prose'; // 'prose', 'attributes', 'content'
+    
+    // LOCAL STATE - these are modified instantly, only saved on Save button click
+    let localAttributes = ${JSON.stringify(node.attributes || [])};
+    let localContentSections = ${JSON.stringify(node.contentSections || [])};
+    let attributesDirty = false;
+    let contentSectionsDirty = false;
     
     // Update word count
     function updateCounts() {
@@ -948,35 +876,74 @@ export class WriterViewManager {
       charCountEl.textContent = chars + ' chars';
     }
     
-    // Mark as dirty
+    // Mark prose as dirty
     function markDirty() {
-      if (!isDirty) {
-        isDirty = true;
+      isDirty = true;
+      updateDirtyIndicator();
+    }
+    
+    function markAttributesDirty() {
+      attributesDirty = true;
+      updateDirtyIndicator();
+    }
+    
+    function markContentSectionsDirty() {
+      contentSectionsDirty = true;
+      updateDirtyIndicator();
+    }
+    
+    function updateDirtyIndicator() {
+      const anyDirty = isDirty || attributesDirty || contentSectionsDirty;
+      if (anyDirty) {
         saveIndicator.classList.add('dirty');
         saveIndicator.textContent = 'unsaved';
+      } else {
+        saveIndicator.classList.remove('dirty');
+        saveIndicator.textContent = 'saved';
       }
     }
     
     // Mark as clean
     function markClean() {
       isDirty = false;
-      saveIndicator.classList.remove('dirty');
-      saveIndicator.textContent = '';
+      attributesDirty = false;
+      contentSectionsDirty = false;
+      updateDirtyIndicator();
       originalContent = editor.innerText;
     }
     
-    // Save function
+    // Save function - saves ALL pending changes
     function save() {
-      if (!isDirty) return;
+      const anyDirty = isDirty || attributesDirty || contentSectionsDirty;
+      if (!anyDirty) return;
       
       saveBtn.disabled = true;
       saveBtnText.textContent = 'Saving...';
       
-      vscode.postMessage({
-        type: 'save',
-        text: editor.innerText,
-        field: currentField
-      });
+      // Save prose if dirty
+      if (isDirty) {
+        vscode.postMessage({
+          type: 'save',
+          text: editor.innerText,
+          field: currentField
+        });
+      }
+      
+      // Save attributes if dirty
+      if (attributesDirty) {
+        vscode.postMessage({
+          type: 'saveAttributes',
+          attributes: localAttributes
+        });
+      }
+      
+      // Save content sections if dirty
+      if (contentSectionsDirty) {
+        vscode.postMessage({
+          type: 'saveContentSections',
+          sections: localContentSections
+        });
+      }
     }
     
     // Editor containers
@@ -1004,13 +971,18 @@ export class WriterViewManager {
       // Determine which editor to show
       if (newField === '__attributes__') {
         showEditor('attributes');
-        vscode.postMessage({ type: 'getAttributes' });
+        currentEditorMode = 'attributes';
+        // Render from local state (no network call needed)
+        renderAttributesTable();
       } else if (newField === '__content__') {
         showEditor('content');
-        vscode.postMessage({ type: 'getContentSections' });
+        currentEditorMode = 'content';
+        // Render from local state (no network call needed)
+        renderContentSections();
       } else {
         showEditor('prose');
-        // Request content for the new field
+        currentEditorMode = 'prose';
+        // Request content for the new field (prose still needs fetch)
         vscode.postMessage({
           type: 'switchField',
           field: newField
@@ -1018,12 +990,43 @@ export class WriterViewManager {
       }
     });
     
-    // Attributes Editor Handlers
+    // Attributes Editor Handlers - LOCAL STATE ONLY (fast!)
     const addAttrBtn = document.getElementById('addAttrBtn');
     const attributesContainer = document.getElementById('attributesContainer');
     
+    // Re-render attributes table from local state
+    function renderAttributesTable() {
+      const tbody = attributesContainer.querySelector('tbody');
+      if (!tbody) return;
+      
+      tbody.innerHTML = localAttributes.map((attr, i) => \`
+        <tr data-index="\${i}">
+          <td><input type="text" class="attr-input" data-field="key" value="\${escapeHtml(attr.key || '')}" placeholder="key"></td>
+          <td><input type="text" class="attr-input" data-field="name" value="\${escapeHtml(attr.name || '')}" placeholder="Display Name"></td>
+          <td><input type="text" class="attr-input" data-field="value" value="\${escapeHtml(String(attr.value || ''))}" placeholder="value"></td>
+          <td>
+            <select class="type-select" data-field="type">
+              <option value="auto" \${attr.type === 'auto' || !attr.type ? 'selected' : ''}>auto</option>
+              <option value="string" \${attr.type === 'string' ? 'selected' : ''}>string</option>
+              <option value="int" \${attr.type === 'int' ? 'selected' : ''}>int</option>
+              <option value="float" \${attr.type === 'float' ? 'selected' : ''}>float</option>
+              <option value="bool" \${attr.type === 'bool' ? 'selected' : ''}>bool</option>
+            </select>
+          </td>
+          <td><button class="delete-btn" title="Delete">🗑</button></td>
+        </tr>
+      \`).join('');
+    }
+    
+    function escapeHtml(str) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    
     addAttrBtn.addEventListener('click', () => {
-      vscode.postMessage({ type: 'addAttribute' });
+      // Add to local state instantly
+      localAttributes.push({ key: '', name: '', value: '', type: 'auto' });
+      markAttributesDirty();
+      renderAttributesTable();
     });
     
     attributesContainer.addEventListener('input', (e) => {
@@ -1032,12 +1035,11 @@ export class WriterViewManager {
         const row = target.closest('tr');
         const index = parseInt(row.dataset.index);
         const field = target.dataset.field;
-        vscode.postMessage({
-          type: 'updateAttribute',
-          index: index,
-          field: field,
-          value: target.value
-        });
+        // Update local state instantly (no network call!)
+        if (localAttributes[index]) {
+          localAttributes[index][field] = target.value;
+          markAttributesDirty();
+        }
       }
     });
     
@@ -1048,18 +1050,59 @@ export class WriterViewManager {
         if (row) {
           const index = parseInt(row.dataset.index);
           if (confirm('Delete this attribute?')) {
-            vscode.postMessage({ type: 'deleteAttribute', index: index });
+            // Remove from local state instantly
+            localAttributes.splice(index, 1);
+            markAttributesDirty();
+            renderAttributesTable();
           }
         }
       }
     });
     
-    // Content Sections Editor Handlers
+    // Content Sections Editor Handlers - LOCAL STATE ONLY (fast!)
     const addContentBtn = document.getElementById('addContentBtn');
     const contentContainer = document.getElementById('contentContainer');
     
+    // Re-render content sections from local state
+    function renderContentSections() {
+      contentContainer.innerHTML = localContentSections.map((section, i) => \`
+        <div class="content-section" data-index="\${i}">
+          <div class="content-section-header">
+            <div class="content-section-title">
+              <span class="content-section-toggle">▶</span>
+              <span class="content-section-name">\${escapeHtml(section.name || 'Untitled')}</span>
+              <span class="content-section-key">\${escapeHtml(section.key || '')}</span>
+            </div>
+            <button class="delete-btn" title="Delete section">🗑</button>
+          </div>
+          <div class="content-section-body">
+            <div class="content-section-meta">
+              <div style="flex: 1;">
+                <label>Key</label>
+                <input type="text" value="\${escapeHtml(section.key || '')}" data-field="key" class="section-input">
+              </div>
+              <div style="flex: 2;">
+                <label>Name</label>
+                <input type="text" value="\${escapeHtml(section.name || '')}" data-field="name" class="section-input">
+              </div>
+            </div>
+            <div>
+              <label>Content</label>
+              <textarea class="content-textarea" data-field="body">\${escapeHtml(section.body || '')}</textarea>
+            </div>
+          </div>
+        </div>
+      \`).join('');
+    }
+    
     addContentBtn.addEventListener('click', () => {
-      vscode.postMessage({ type: 'addContentSection' });
+      // Add to local state instantly
+      localContentSections.push({ key: '', name: '', body: '' });
+      markContentSectionsDirty();
+      renderContentSections();
+      // Expand the new section
+      const newSection = contentContainer.querySelector('.content-section:last-child');
+      if (newSection) newSection.classList.add('expanded');
     });
     
     contentContainer.addEventListener('click', (e) => {
@@ -1071,7 +1114,10 @@ export class WriterViewManager {
         if (section) {
           const index = parseInt(section.dataset.index);
           if (confirm('Delete this content section?')) {
-            vscode.postMessage({ type: 'deleteContentSection', index: index });
+            // Remove from local state instantly
+            localContentSections.splice(index, 1);
+            markContentSectionsDirty();
+            renderContentSections();
           }
         }
         return; // Don't toggle when clicking delete
@@ -1091,12 +1137,19 @@ export class WriterViewManager {
         const section = target.closest('.content-section');
         const index = parseInt(section.dataset.index);
         const field = target.dataset.field;
-        vscode.postMessage({
-          type: 'updateContentSection',
-          index: index,
-          field: field,
-          value: target.value
-        });
+        // Update local state instantly (no network call!)
+        if (localContentSections[index]) {
+          localContentSections[index][field] = target.value;
+          markContentSectionsDirty();
+          // Update the header display if name changed
+          if (field === 'name') {
+            const nameEl = section.querySelector('.content-section-name');
+            if (nameEl) nameEl.textContent = target.value || 'Untitled';
+          } else if (field === 'key') {
+            const keyEl = section.querySelector('.content-section-key');
+            if (keyEl) keyEl.textContent = target.value;
+          }
+        }
       }
     });
     
@@ -1140,6 +1193,12 @@ export class WriterViewManager {
       const message = event.data;
       switch (message.type) {
         case 'saved':
+          // Only mark prose as clean; attributes/content have their own tracking
+          isDirty = false;
+          checkAllClean();
+          break;
+        case 'saveComplete':
+          // All saves complete - mark everything clean
           markClean();
           saveBtn.disabled = false;
           saveBtn.classList.add('saved');
@@ -1161,21 +1220,25 @@ export class WriterViewManager {
           currentField = message.field;
           originalContent = editor.innerText;
           isDirty = false;
-          saveIndicator.classList.remove('dirty');
-          saveIndicator.textContent = '';
+          updateDirtyIndicator();
           updateCounts();
           editor.focus();
           break;
-        case 'attributesData':
-          // Update attributes table HTML
-          attributesContainer.innerHTML = message.html;
-          break;
-        case 'contentSectionsData':
-          // Update content sections HTML
-          contentContainer.innerHTML = message.html;
-          break;
       }
     });
+    
+    // Check if all saves are complete
+    function checkAllClean() {
+      if (!isDirty && !attributesDirty && !contentSectionsDirty) {
+        saveBtn.disabled = false;
+        saveBtn.classList.add('saved');
+        saveBtnText.textContent = '✓ Saved';
+        setTimeout(() => {
+          saveBtn.classList.remove('saved');
+          saveBtnText.textContent = 'Save';
+        }, 1500);
+      }
+    }
     
     // Initial counts
     updateCounts();
