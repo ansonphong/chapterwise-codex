@@ -148,8 +148,9 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "compile:tsc": "tsc -p ./",
     "pretest": "npm run compile",
     "lint": "eslint src --ext ts",
     "package": "vsce package"
@@ -161,8 +162,7 @@
     "@types/node": "^20.10.0",
     "@types/vscode": "^1.80.0",
     "@vscode/vsce": "^2.22.0",
+    "esbuild": "^0.20.2",
     "typescript": "^5.4.0"
   }
 }
-
-
