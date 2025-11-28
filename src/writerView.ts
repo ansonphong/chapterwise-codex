@@ -994,28 +994,51 @@ export class WriterViewManager {
     const addAttrBtn = document.getElementById('addAttrBtn');
     const attributesContainer = document.getElementById('attributesContainer');
     
-    // Re-render attributes table from local state
+    // Re-render attributes table from local state (full table, not just tbody)
     function renderAttributesTable() {
-      const tbody = attributesContainer.querySelector('tbody');
-      if (!tbody) return;
+      if (localAttributes.length === 0) {
+        attributesContainer.innerHTML = \`
+          <div class="empty-state">
+            <div class="empty-state-icon">📊</div>
+            <p>No attributes yet</p>
+            <p style="font-size: 0.8rem;">Click "+ Add Attribute" to create one</p>
+          </div>
+        \`;
+        return;
+      }
       
-      tbody.innerHTML = localAttributes.map((attr, i) => \`
-        <tr data-index="\${i}">
-          <td><input type="text" class="attr-input" data-field="key" value="\${escapeHtml(attr.key || '')}" placeholder="key"></td>
-          <td><input type="text" class="attr-input" data-field="name" value="\${escapeHtml(attr.name || '')}" placeholder="Display Name"></td>
-          <td><input type="text" class="attr-input" data-field="value" value="\${escapeHtml(String(attr.value || ''))}" placeholder="value"></td>
-          <td>
-            <select class="type-select" data-field="type">
-              <option value="auto" \${attr.type === 'auto' || !attr.type ? 'selected' : ''}>auto</option>
-              <option value="string" \${attr.type === 'string' ? 'selected' : ''}>string</option>
-              <option value="int" \${attr.type === 'int' ? 'selected' : ''}>int</option>
-              <option value="float" \${attr.type === 'float' ? 'selected' : ''}>float</option>
-              <option value="bool" \${attr.type === 'bool' ? 'selected' : ''}>bool</option>
-            </select>
-          </td>
-          <td><button class="delete-btn" title="Delete">🗑</button></td>
-        </tr>
-      \`).join('');
+      attributesContainer.innerHTML = \`
+        <table class="attr-table">
+          <thead>
+            <tr>
+              <th style="width: 20%;">Key</th>
+              <th style="width: 25%;">Name</th>
+              <th style="width: 35%;">Value</th>
+              <th style="width: 12%;">Type</th>
+              <th style="width: 8%;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            \${localAttributes.map((attr, i) => \`
+              <tr data-index="\${i}">
+                <td><input type="text" class="attr-input" data-field="key" value="\${escapeHtml(attr.key || '')}" placeholder="key"></td>
+                <td><input type="text" class="attr-input" data-field="name" value="\${escapeHtml(attr.name || '')}" placeholder="Display Name"></td>
+                <td><input type="text" class="attr-input" data-field="value" value="\${escapeHtml(String(attr.value || ''))}" placeholder="value"></td>
+                <td>
+                  <select class="type-select" data-field="type">
+                    <option value="auto" \${attr.type === 'auto' || !attr.type ? 'selected' : ''}>auto</option>
+                    <option value="string" \${attr.type === 'string' ? 'selected' : ''}>string</option>
+                    <option value="int" \${attr.type === 'int' ? 'selected' : ''}>int</option>
+                    <option value="float" \${attr.type === 'float' ? 'selected' : ''}>float</option>
+                    <option value="bool" \${attr.type === 'bool' ? 'selected' : ''}>bool</option>
+                  </select>
+                </td>
+                <td><button class="delete-btn" title="Delete">🗑</button></td>
+              </tr>
+            \`).join('')}
+          </tbody>
+        </table>
+      \`;
     }
     
     function escapeHtml(str) {
@@ -1065,6 +1088,17 @@ export class WriterViewManager {
     
     // Re-render content sections from local state
     function renderContentSections() {
+      if (localContentSections.length === 0) {
+        contentContainer.innerHTML = \`
+          <div class="empty-state">
+            <div class="empty-state-icon">📝</div>
+            <p>No content sections yet</p>
+            <p style="font-size: 0.8rem;">Click "+ Add Section" to create one</p>
+          </div>
+        \`;
+        return;
+      }
+      
       contentContainer.innerHTML = localContentSections.map((section, i) => \`
         <div class="content-section" data-index="\${i}">
           <div class="content-section-header">
@@ -1088,7 +1122,7 @@ export class WriterViewManager {
             </div>
             <div>
               <label>Content</label>
-              <textarea class="content-textarea" data-field="body">\${escapeHtml(section.body || '')}</textarea>
+              <textarea class="content-textarea" data-field="value">\${escapeHtml(section.value || '')}</textarea>
             </div>
           </div>
         </div>
@@ -1097,7 +1131,7 @@ export class WriterViewManager {
     
     addContentBtn.addEventListener('click', () => {
       // Add to local state instantly
-      localContentSections.push({ key: '', name: '', body: '' });
+      localContentSections.push({ key: '', name: '', value: '' });
       markContentSectionsDirty();
       renderContentSections();
       // Expand the new section
