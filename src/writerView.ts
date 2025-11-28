@@ -25,6 +25,7 @@ import { CodexTreeItem } from './treeProvider';
  */
 export class WriterViewManager {
   private panels: Map<string, vscode.WebviewPanel> = new Map();
+  private lastSelectedField: string = 'body';  // Remember field across node switches
   
   constructor(private readonly context: vscode.ExtensionContext) {}
   
@@ -72,8 +73,8 @@ export class WriterViewManager {
     
     this.panels.set(panelKey, panel);
     
-    // Set initial HTML
-    panel.webview.html = this.getWebviewHtml(panel.webview, node, prose);
+    // Set initial HTML with remembered field
+    panel.webview.html = this.getWebviewHtml(panel.webview, node, prose, this.lastSelectedField);
     
     // Track current field for this panel
     let currentField = node.proseField;
@@ -92,11 +93,16 @@ export class WriterViewManager {
             
           case 'switchField':
             currentField = message.field;
-            const doc = await vscode.workspace.openTextDocument(documentUri);
-            const parsed = parseCodex(doc.getText());
-            if (parsed) {
-              const fieldContent = getNodeProse(parsed, node, message.field);
-              panel.webview.postMessage({ type: 'fieldContent', text: fieldContent, field: message.field });
+            this.lastSelectedField = message.field;  // Remember across node switches
+            
+            // Only fetch prose content for regular fields (not attributes/content)
+            if (message.field !== '__attributes__' && message.field !== '__content__') {
+              const doc = await vscode.workspace.openTextDocument(documentUri);
+              const parsed = parseCodex(doc.getText());
+              if (parsed) {
+                const fieldContent = getNodeProse(parsed, node, message.field);
+                panel.webview.postMessage({ type: 'fieldContent', text: fieldContent, field: message.field });
+              }
             }
             break;
             
@@ -256,7 +262,8 @@ export class WriterViewManager {
   private getWebviewHtml(
     webview: vscode.Webview,
     node: CodexNode,
-    prose: string
+    prose: string,
+    initialField: string = 'body'
   ): string {
     const nonce = this.getNonce();
     
@@ -783,13 +790,13 @@ export class WriterViewManager {
           <span class="node-type">${this.escapeHtml(node.type)}</span>
           <select class="field-selector" id="fieldSelector">
             ${node.availableFields.map(f => 
-              `<option value="${f}" ${f === node.proseField ? 'selected' : ''}>${f}</option>`
+              `<option value="${f}" ${f === initialField ? 'selected' : ''}>${f}</option>`
             ).join('')}
-            ${!node.availableFields.includes('body') ? '<option value="body">body (new)</option>' : ''}
-            ${!node.availableFields.includes('summary') ? '<option value="summary">summary (new)</option>' : ''}
+            ${!node.availableFields.includes('body') ? `<option value="body" ${initialField === 'body' && !node.availableFields.includes('body') ? 'selected' : ''}>body (new)</option>` : ''}
+            ${!node.availableFields.includes('summary') ? `<option value="summary" ${initialField === 'summary' && !node.availableFields.includes('summary') ? 'selected' : ''}>summary (new)</option>` : ''}
             <option disabled>───────────</option>
-            <option value="__attributes__" ${node.hasAttributes ? '' : 'data-new="true"'}>📊 attributes${node.attributes ? ` (${node.attributes.length})` : ' (new)'}</option>
-            <option value="__content__" ${node.hasContentSections ? '' : 'data-new="true"'}>📝 content sections${node.contentSections ? ` (${node.contentSections.length})` : ' (new)'}</option>
+            <option value="__attributes__" ${initialField === '__attributes__' ? 'selected' : ''} ${node.hasAttributes ? '' : 'data-new="true"'}>📊 attributes${node.attributes ? ` (${node.attributes.length})` : ' (new)'}</option>
+            <option value="__content__" ${initialField === '__content__' ? 'selected' : ''} ${node.hasContentSections ? '' : 'data-new="true"'}>📝 content sections${node.contentSections ? ` (${node.contentSections.length})` : ' (new)'}</option>
           </select>
         </div>
         <span class="node-name">${this.escapeHtml(node.name)}</span>
@@ -858,8 +865,8 @@ export class WriterViewManager {
     let isDirty = false;
     let originalContent = editor.innerText;
     let saveTimeout = null;
-    let currentField = '${node.proseField}';
-    let currentEditorMode = 'prose'; // 'prose', 'attributes', 'content'
+    let currentField = '${initialField}';
+    let currentEditorMode = '${initialField === '__attributes__' ? 'attributes' : initialField === '__content__' ? 'content' : 'prose'}';
     
     // LOCAL STATE - these are modified instantly, only saved on Save button click
     let localAttributes = ${JSON.stringify(node.attributes || [])};
@@ -1273,8 +1280,17 @@ export class WriterViewManager {
     // Initial counts
     updateCounts();
     
-    // Focus editor
-    editor.focus();
+    // Initialize with remembered field/editor mode
+    if (currentEditorMode === 'attributes') {
+      showEditor('attributes');
+      renderAttributesTable();
+    } else if (currentEditorMode === 'content') {
+      showEditor('content');
+      renderContentSections();
+    } else {
+      showEditor('prose');
+      editor.focus();
+    }
   </script>
 </body>
 </html>`;
