@@ -98,6 +98,8 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItem>
   private filterType: string | null = null;
   
   constructor() {
+    console.log('[ChapterWise Codex] TreeProvider constructor called');
+    
     // Watch for document changes
     vscode.workspace.onDidChangeTextDocument((e) => {
       if (this.activeDocument && e.document.uri.toString() === this.activeDocument.uri.toString()) {
@@ -105,35 +107,59 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItem>
       }
     });
     
-    // Watch for active editor changes
+    // Watch for active editor changes - ALWAYS update when switching to a codex file
     vscode.window.onDidChangeActiveTextEditor((editor) => {
+      console.log('[ChapterWise Codex] Active editor changed:', editor?.document?.fileName);
       if (editor && isCodexFile(editor.document.fileName)) {
+        console.log('[ChapterWise Codex] Setting active document from editor change');
         this.setActiveDocument(editor.document);
       }
     });
     
     // Watch for documents opening
     vscode.workspace.onDidOpenTextDocument((doc) => {
-      if (isCodexFile(doc.fileName) && !this.activeDocument) {
+      console.log('[ChapterWise Codex] Document opened:', doc.fileName);
+      if (isCodexFile(doc.fileName)) {
+        console.log('[ChapterWise Codex] Codex file opened, setting as active');
         this.setActiveDocument(doc);
       }
     });
     
     // Initialize with current editor if it's a codex file
+    this.initializeActiveDocument();
+  }
+  
+  /**
+   * Initialize by finding the first codex document
+   */
+  private initializeActiveDocument(): void {
+    // Try active editor first
     const editor = vscode.window.activeTextEditor;
     if (editor && isCodexFile(editor.document.fileName)) {
-      console.log('[ChapterWise Codex] Found active codex file:', editor.document.fileName);
+      console.log('[ChapterWise Codex] Init: Found active codex file:', editor.document.fileName);
       this.setActiveDocument(editor.document);
+      return;
     }
     
-    // Also scan all open documents
-    for (const doc of vscode.workspace.textDocuments) {
-      if (isCodexFile(doc.fileName)) {
-        console.log('[ChapterWise Codex] Found open codex file:', doc.fileName);
-        this.setActiveDocument(doc);
-        break;
+    // Scan all visible editors
+    for (const visibleEditor of vscode.window.visibleTextEditors) {
+      if (isCodexFile(visibleEditor.document.fileName)) {
+        console.log('[ChapterWise Codex] Init: Found visible codex file:', visibleEditor.document.fileName);
+        this.setActiveDocument(visibleEditor.document);
+        return;
       }
     }
+    
+    // Scan all open documents
+    for (const doc of vscode.workspace.textDocuments) {
+      if (isCodexFile(doc.fileName)) {
+        console.log('[ChapterWise Codex] Init: Found open codex file:', doc.fileName);
+        this.setActiveDocument(doc);
+        return;
+      }
+    }
+    
+    console.log('[ChapterWise Codex] Init: No codex files found');
   }
   
   /**
