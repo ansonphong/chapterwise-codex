@@ -1042,11 +1042,14 @@ export class WriterViewManager {
     });
     
     attributesContainer.addEventListener('click', (e) => {
-      if (e.target.classList.contains('delete-btn')) {
-        const row = e.target.closest('tr');
-        const index = parseInt(row.dataset.index);
-        if (confirm('Delete this attribute?')) {
-          vscode.postMessage({ type: 'deleteAttribute', index: index });
+      const deleteBtn = e.target.closest('.delete-btn');
+      if (deleteBtn) {
+        const row = deleteBtn.closest('tr');
+        if (row) {
+          const index = parseInt(row.dataset.index);
+          if (confirm('Delete this attribute?')) {
+            vscode.postMessage({ type: 'deleteAttribute', index: index });
+          }
         }
       }
     });
@@ -1060,20 +1063,25 @@ export class WriterViewManager {
     });
     
     contentContainer.addEventListener('click', (e) => {
-      // Toggle section expand/collapse
-      const header = e.target.closest('.content-section-header');
-      if (header && !e.target.classList.contains('delete-btn')) {
-        const section = header.closest('.content-section');
-        section.classList.toggle('expanded');
-      }
+      const deleteBtn = e.target.closest('.delete-btn');
       
       // Delete section
-      if (e.target.classList.contains('delete-btn')) {
-        const section = e.target.closest('.content-section');
-        const index = parseInt(section.dataset.index);
-        if (confirm('Delete this content section?')) {
-          vscode.postMessage({ type: 'deleteContentSection', index: index });
+      if (deleteBtn) {
+        const section = deleteBtn.closest('.content-section');
+        if (section) {
+          const index = parseInt(section.dataset.index);
+          if (confirm('Delete this content section?')) {
+            vscode.postMessage({ type: 'deleteContentSection', index: index });
+          }
         }
+        return; // Don't toggle when clicking delete
+      }
+      
+      // Toggle section expand/collapse
+      const header = e.target.closest('.content-section-header');
+      if (header) {
+        const section = header.closest('.content-section');
+        section.classList.toggle('expanded');
       }
     });
     
