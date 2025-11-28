@@ -1072,12 +1072,10 @@ export class WriterViewManager {
         const row = deleteBtn.closest('tr');
         if (row) {
           const index = parseInt(row.dataset.index);
-          if (confirm('Delete this attribute?')) {
-            // Remove from local state instantly
-            localAttributes.splice(index, 1);
-            markAttributesDirty();
-            renderAttributesTable();
-          }
+          // Remove from local state instantly (no confirm - it doesn't work in webviews)
+          localAttributes.splice(index, 1);
+          markAttributesDirty();
+          renderAttributesTable();
         }
       }
     });
@@ -1147,12 +1145,10 @@ export class WriterViewManager {
         const section = deleteBtn.closest('.content-section');
         if (section) {
           const index = parseInt(section.dataset.index);
-          if (confirm('Delete this content section?')) {
-            // Remove from local state instantly
-            localContentSections.splice(index, 1);
-            markContentSectionsDirty();
-            renderContentSections();
-          }
+          // Remove from local state instantly (no confirm - it doesn't work in webviews)
+          localContentSections.splice(index, 1);
+          markContentSectionsDirty();
+          renderContentSections();
         }
         return; // Don't toggle when clicking delete
       }
