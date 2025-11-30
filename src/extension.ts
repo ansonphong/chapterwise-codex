@@ -11,6 +11,7 @@ import { isCodexFile } from './codexModel';
 import { runAutoFixer, disposeAutoFixer } from './autoFixer';
 import { runExplodeCodex, disposeExplodeCodex } from './explodeCodex';
 import { runImplodeCodex, disposeImplodeCodex } from './implodeCodex';
+import { runUpdateWordCount, disposeWordCount } from './wordCount';
 
 let treeProvider: CodexTreeProvider;
 let writerViewManager: WriterViewManager;
@@ -294,6 +295,15 @@ function registerCommands(context: vscode.ExtensionContext): void {
       treeProvider.refresh();
     })
   );
+  
+  // Update Word Count command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chapterwiseCodex.updateWordCount', async () => {
+      await runUpdateWordCount();
+      // Refresh the tree after updating word counts
+      treeProvider.refresh();
+    })
+  );
 }
 
 /**
@@ -323,5 +333,6 @@ export function deactivate(): void {
   disposeAutoFixer();
   disposeExplodeCodex();
   disposeImplodeCodex();
+  disposeWordCount();
   console.log('ChapterWise Codex extension deactivated');
 }

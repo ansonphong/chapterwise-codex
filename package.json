@@ -77,6 +77,10 @@
       {
         "command": "chapterwiseCodex.implodeCodex",
         "title": "ChapterWise Codex: Implode Codex (Merge Included Files)"
+      },
+      {
+        "command": "chapterwiseCodex.updateWordCount",
+        "title": "ChapterWise Codex: Update Word Count"
       }
     ],
     "viewsContainers": {
