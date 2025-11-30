@@ -81,6 +81,10 @@
       {
         "command": "chapterwiseCodex.updateWordCount",
         "title": "ChapterWise Codex: Update Word Count"
+      },
+      {
+        "command": "chapterwiseCodex.generateTags",
+        "title": "ChapterWise Codex: Generate Tags"
       }
     ],
     "viewsContainers": {

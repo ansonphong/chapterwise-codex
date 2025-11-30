@@ -12,6 +12,7 @@ import { runAutoFixer, disposeAutoFixer } from './autoFixer';
 import { runExplodeCodex, disposeExplodeCodex } from './explodeCodex';
 import { runImplodeCodex, disposeImplodeCodex } from './implodeCodex';
 import { runUpdateWordCount, disposeWordCount } from './wordCount';
+import { runGenerateTags, disposeTagGenerator } from './tagGenerator';
 
 let treeProvider: CodexTreeProvider;
 let writerViewManager: WriterViewManager;
@@ -304,6 +305,15 @@ function registerCommands(context: vscode.ExtensionContext): void {
       treeProvider.refresh();
     })
   );
+  
+  // Generate Tags command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chapterwiseCodex.generateTags', async () => {
+      await runGenerateTags();
+      // Refresh the tree after generating tags
+      treeProvider.refresh();
+    })
+  );
 }
 
 /**
@@ -334,5 +344,6 @@ export function deactivate(): void {
   disposeExplodeCodex();
   disposeImplodeCodex();
   disposeWordCount();
+  disposeTagGenerator();
   console.log('ChapterWise Codex extension deactivated');
 }
