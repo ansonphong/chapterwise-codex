@@ -9,6 +9,8 @@ import { WriterViewManager } from './writerView';
 import { initializeValidation } from './validation';
 import { isCodexFile } from './codexModel';
 import { runAutoFixer, disposeAutoFixer } from './autoFixer';
+import { runExplodeCodex, disposeExplodeCodex } from './explodeCodex';
+import { runImplodeCodex, disposeImplodeCodex } from './implodeCodex';
 
 let treeProvider: CodexTreeProvider;
 let writerViewManager: WriterViewManager;
@@ -274,6 +276,24 @@ function registerCommands(context: vscode.ExtensionContext): void {
       treeProvider.refresh();
     })
   );
+  
+  // Explode Codex command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chapterwiseCodex.explodeCodex', async () => {
+      await runExplodeCodex();
+      // Refresh the tree after exploding
+      treeProvider.refresh();
+    })
+  );
+  
+  // Implode Codex command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chapterwiseCodex.implodeCodex', async () => {
+      await runImplodeCodex();
+      // Refresh the tree after imploding
+      treeProvider.refresh();
+    })
+  );
 }
 
 /**
@@ -301,5 +321,7 @@ function updateStatusBar(): void {
 export function deactivate(): void {
   writerViewManager?.dispose();
   disposeAutoFixer();
+  disposeExplodeCodex();
+  disposeImplodeCodex();
   console.log('ChapterWise Codex extension deactivated');
 }

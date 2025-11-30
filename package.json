@@ -69,6 +69,14 @@
         "command": "chapterwiseCodex.autoFixRegenIds",
         "title": "ChapterWise Codex: Auto-Fix (Regenerate All IDs)",
         "icon": "$(sync)"
+      },
+      {
+        "command": "chapterwiseCodex.explodeCodex",
+        "title": "ChapterWise Codex: Explode Codex (Extract Children to Files)"
+      },
+      {
+        "command": "chapterwiseCodex.implodeCodex",
+        "title": "ChapterWise Codex: Implode Codex (Merge Included Files)"
       }
     ],
     "viewsContainers": {

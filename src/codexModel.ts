@@ -30,6 +30,8 @@ export interface CodexNode {
   image?: string;
   hasAttributes: boolean;       // Whether node has attributes array
   hasContentSections: boolean;  // Whether node has content array
+  isInclude?: boolean;          // Whether this is an include directive (not a real node)
+  includePath?: string;         // Path to included file
 }
 
 /**
@@ -218,9 +220,15 @@ function parseNode(
   path: PathSegment[],
   doc: YAML.Document.Parsed | null
 ): CodexNode {
+  // Check if this is an include directive
+  const isInclude = 'include' in nodeObj && typeof nodeObj.include === 'string';
+  const includePath = isInclude ? (nodeObj.include as string) : undefined;
+  
   const id = (nodeObj.id as string) ?? '';
-  const type = (nodeObj.type as string) ?? 'unknown';
-  const name = (nodeObj.name as string) ?? (nodeObj.title as string) ?? id ?? '(untitled)';
+  const type = isInclude ? 'include' : ((nodeObj.type as string) ?? 'unknown');
+  const name = isInclude 
+    ? includePath!.split('/').pop()?.replace('.codex.yaml', '').replace('.codex.json', '') ?? '(include)'
+    : ((nodeObj.name as string) ?? (nodeObj.title as string) ?? id ?? '(untitled)');
   
   const { field: proseField, value: proseValue, availableFields } = getProseField(nodeObj);
   
@@ -239,6 +247,8 @@ function parseNode(
     children: [],
     hasAttributes,
     hasContentSections,
+    isInclude,
+    includePath,
   };
   
   // Parse attributes
@@ -762,10 +772,10 @@ export function validateCodex(codexDoc: CodexDocument | null, text: string): Cod
     });
   }
   
-  // Check for nodes without IDs
+  // Check for nodes without IDs (skip include directives - they don't need IDs)
   const seenIds = new Set<string>();
   for (const node of codexDoc.allNodes) {
-    if (!node.id && node.type !== 'unknown') {
+    if (!node.id && node.type !== 'unknown' && !node.isInclude) {
       issues.push({
         message: `Node of type '${node.type}' is missing an 'id' field`,
         severity: 'warning',
@@ -787,8 +797,8 @@ export function validateCodex(codexDoc: CodexDocument | null, text: string): Cod
       seenIds.add(node.id);
     }
     
-    // Check for nodes without type
-    if (node.type === 'unknown' && node.path.length > 0) {
+    // Check for nodes without type (skip include directives)
+    if (node.type === 'unknown' && node.path.length > 0 && !node.isInclude) {
       issues.push({
         message: `Node '${node.name}' is missing a 'type' field`,
         severity: 'info',
