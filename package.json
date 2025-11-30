@@ -54,6 +54,21 @@
       {
         "command": "chapterwiseCodex.copyId",
         "title": "Copy ID"
+      },
+      {
+        "command": "chapterwiseCodex.toggleFields",
+        "title": "ChapterWise Codex: Toggle Field Display",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "chapterwiseCodex.autoFix",
+        "title": "ChapterWise Codex: Auto-Fix Document",
+        "icon": "$(wand)"
+      },
+      {
+        "command": "chapterwiseCodex.autoFixRegenIds",
+        "title": "ChapterWise Codex: Auto-Fix (Regenerate All IDs)",
+        "icon": "$(sync)"
       }
     ],
     "viewsContainers": {
@@ -61,7 +76,7 @@
         {
           "id": "chapterwiseCodex",
           "title": "ChapterWise Codex",
-          "icon": "media/codex.svg"
+          "icon": "media/codex-v4.svg"
         }
       ]
     },
@@ -80,7 +95,43 @@
       }
     ],
     "menus": {
+      "editor/title": [
+        {
+          "command": "chapterwiseCodex.autoFix",
+          "when": "resourceFilename =~ /\\.codex\\.(yaml|json)$/ || resourceFilename =~ /\\.codex$/",
+          "group": "navigation"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "chapterwiseCodex.autoFix",
+          "when": "resourceFilename =~ /\\.codex\\.(yaml|json)$/ || resourceFilename =~ /\\.codex$/",
+          "group": "codex@1"
+        },
+        {
+          "command": "chapterwiseCodex.autoFixRegenIds",
+          "when": "resourceFilename =~ /\\.codex\\.(yaml|json)$/ || resourceFilename =~ /\\.codex$/",
+          "group": "codex@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "chapterwiseCodex.autoFix",
+          "when": "resourceFilename =~ /\\.codex\\.(yaml|json)$/ || resourceFilename =~ /\\.codex$/",
+          "group": "codex"
+        }
+      ],
       "view/title": [
+        {
+          "command": "chapterwiseCodex.autoFix",
+          "when": "view == chapterwiseCodexNavigator",
+          "group": "navigation"
+        },
+        {
+          "command": "chapterwiseCodex.toggleFields",
+          "when": "view == chapterwiseCodexNavigator",
+          "group": "navigation"
+        },
         {
           "command": "chapterwiseCodex.filterByType",
           "when": "view == chapterwiseCodexNavigator",
@@ -144,7 +195,17 @@
           ".codex.json"
         ]
       }
-    ]
+    ],
+    "configuration": {
+      "title": "ChapterWise Codex",
+      "properties": {
+        "chapterwiseCodex.showFieldsInTree": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show field entries (body, summary, attributes, content) as expandable children under nodes in the Codex Navigator tree"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

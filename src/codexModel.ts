@@ -119,6 +119,24 @@ function isJsonContent(text: string): boolean {
 }
 
 /**
+ * Threshold for when to use block scalar style (pipe |)
+ */
+const BLOCK_SCALAR_THRESHOLD = 60;
+
+/**
+ * Creates a YAML block scalar for long strings, or returns the string as-is for short ones.
+ * Used to ensure consistent pipe (|) syntax for long content in YAML output.
+ */
+function createBlockScalarIfNeeded(doc: YAML.Document, value: string): YAML.Scalar | string {
+  if (typeof value === 'string' && (value.includes('\n') || value.length > BLOCK_SCALAR_THRESHOLD)) {
+    const scalar = new YAML.Scalar(value);
+    scalar.type = YAML.Scalar.BLOCK_LITERAL;
+    return scalar;
+  }
+  return value;
+}
+
+/**
  * All possible prose fields in priority order
  */
 export const PROSE_FIELDS = ['body', 'summary', 'description', 'content', 'text'];
@@ -434,17 +452,9 @@ export function setNodeProse(
       // Get or create the scalar node
       const pathKeys = fullPath.map(p => typeof p === 'number' ? p : String(p));
       
-      // Check if the value should be block style (multiline)
-      const shouldBeBlock = newValue.includes('\n') || newValue.length > 80;
-      
-      if (shouldBeBlock) {
-        // Create a block scalar
-        const scalar = new YAML.Scalar(newValue);
-        scalar.type = YAML.Scalar.BLOCK_LITERAL;
-        doc.setIn(pathKeys, scalar);
-      } else {
-        doc.setIn(pathKeys, newValue);
-      }
+      // Use block scalar for long strings (consistent threshold across all fields)
+      const valueToSet = createBlockScalarIfNeeded(doc, newValue);
+      doc.setIn(pathKeys, valueToSet);
       
       return doc.toString();
     }
@@ -536,20 +546,37 @@ export function setNodeAttributes(
       const fullPath = [...node.path, 'attributes'];
       const pathKeys = fullPath.map(p => typeof p === 'number' ? p : String(p));
       
-      // Convert attributes to YAML-friendly format
+      // Convert attributes to YAML nodes with block scalars for long string values
       const yamlAttrs = attributes.map(attr => {
-        const item: Record<string, unknown> = {
+        const attrNode = doc.createNode({
           key: attr.key,
-        };
-        if (attr.name) item.name = attr.name;
-        item.value = attr.dataType === 'int' ? Number(attr.value) : attr.value;
-        if (attr.dataType) item.dataType = attr.dataType;
-        if (attr.id) item.id = attr.id;
-        if (attr.type) item.type = attr.type;
-        return item;
+        }) as YAML.YAMLMap;
+        
+        // Add name if present
+        if (attr.name) {
+          const nameValue = createBlockScalarIfNeeded(doc, attr.name);
+          attrNode.set('name', nameValue);
+        }
+        
+        // Add value with block scalar for long strings
+        const rawValue = attr.dataType === 'int' ? Number(attr.value) : attr.value;
+        if (typeof rawValue === 'string') {
+          const valueScalar = createBlockScalarIfNeeded(doc, rawValue);
+          attrNode.set('value', valueScalar);
+        } else {
+          attrNode.set('value', rawValue);
+        }
+        
+        // Add optional fields
+        if (attr.dataType) attrNode.set('dataType', attr.dataType);
+        if (attr.id) attrNode.set('id', attr.id);
+        if (attr.type) attrNode.set('type', attr.type);
+        
+        return attrNode;
       });
       
-      doc.setIn(pathKeys, yamlAttrs);
+      const seq = doc.createNode(yamlAttrs);
+      doc.setIn(pathKeys, seq);
       return doc.toString();
     }
   } catch {
@@ -637,30 +664,29 @@ export function setNodeContentSections(
       const fullPath = [...node.path, 'content'];
       const pathKeys = fullPath.map(p => typeof p === 'number' ? p : String(p));
       
-      // Convert content sections to YAML-friendly format with block scalars for values
+      // Convert content sections to YAML nodes with block scalars for long strings
       const yamlContent = contentSections.map(section => {
-        const item = doc.createNode({
+        const sectionNode = doc.createNode({
           key: section.key,
-          name: section.name,
-          value: section.value,
-          id: section.id,
-          type: section.type,
-        });
+        }) as YAML.YAMLMap;
         
-        // Make the value a block scalar if multiline
-        if (YAML.isMap(item)) {
-          const valuePair = item.items.find(p => {
-            const key = YAML.isScalar(p.key) ? p.key.value : p.key;
-            return key === 'value';
-          });
-          if (valuePair && YAML.isScalar(valuePair.value) && 
-              typeof valuePair.value.value === 'string' && 
-              valuePair.value.value.includes('\n')) {
-            valuePair.value.type = YAML.Scalar.BLOCK_LITERAL;
-          }
+        // Add name with block scalar if needed
+        if (section.name) {
+          const nameValue = createBlockScalarIfNeeded(doc, section.name);
+          sectionNode.set('name', nameValue);
         }
         
-        return item;
+        // Add value with block scalar for long strings
+        if (section.value) {
+          const valueScalar = createBlockScalarIfNeeded(doc, section.value);
+          sectionNode.set('value', valueScalar);
+        }
+        
+        // Add optional fields
+        if (section.id) sectionNode.set('id', section.id);
+        if (section.type) sectionNode.set('type', section.type);
+        
+        return sectionNode;
       });
       
       const seq = doc.createNode(yamlContent);

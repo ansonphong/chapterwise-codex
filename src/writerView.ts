@@ -18,7 +18,7 @@ import {
   setNodeContentSections,
   generateUuid
 } from './codexModel';
-import { CodexTreeItem } from './treeProvider';
+import { CodexTreeItem, CodexFieldTreeItem } from './treeProvider';
 
 /**
  * Manages Writer View webview panels
@@ -127,6 +127,116 @@ export class WriterViewManager {
           // Content Sections - batch save (local state is managed in webview for instant UI)
           case 'saveContentSections':
             // Receive full array from webview and save once
+            currentContentSections = message.sections || [];
+            await this.handleSaveContentSections(documentUri, node, currentContentSections);
+            panel.webview.postMessage({ type: 'saveComplete' });
+            break;
+        }
+      },
+      undefined,
+      this.context.subscriptions
+    );
+    
+    // Handle panel disposal
+    panel.onDidDispose(() => {
+      this.panels.delete(panelKey);
+    });
+  }
+  
+  /**
+   * Open Writer View for a specific field of a node
+   */
+  async openWriterViewForField(node: CodexNode, documentUri: vscode.Uri, targetField: string): Promise<void> {
+    // Create a unique key for this panel (same as openWriterView)
+    const panelKey = `${documentUri.toString()}#${node.id || node.path.join('/')}`;
+    
+    // Check if panel already exists
+    let existingPanel = this.panels.get(panelKey);
+    if (existingPanel) {
+      existingPanel.reveal(vscode.ViewColumn.Active);
+      // If panel exists, send message to switch to the target field
+      existingPanel.webview.postMessage({ 
+        type: 'switchToField', 
+        field: targetField 
+      });
+      return;
+    }
+    
+    // Get the document
+    const document = await vscode.workspace.openTextDocument(documentUri);
+    const codexDoc = parseCodex(document.getText());
+    if (!codexDoc) {
+      vscode.window.showErrorMessage('Unable to parse Codex document');
+      return;
+    }
+    
+    // Get prose value for the target field
+    const prose = targetField.startsWith('__') ? '' : getNodeProse(codexDoc, node, targetField);
+    
+    // Create new panel
+    let panel = vscode.window.createWebviewPanel(
+      'chapterwiseCodexWriter',
+      `✍️ ${node.name || 'Writer'}`,
+      vscode.ViewColumn.Active,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [
+          vscode.Uri.joinPath(this.context.extensionUri, 'media'),
+        ],
+      }
+    );
+    
+    this.panels.set(panelKey, panel);
+    
+    // Set initial HTML with the target field selected
+    panel.webview.html = this.getWebviewHtml(panel.webview, node, prose, targetField);
+    
+    // Track current field for this panel
+    let currentField = targetField;
+    let currentAttributes: CodexAttribute[] = node.attributes || [];
+    let currentContentSections: CodexContentSection[] = node.contentSections || [];
+    
+    // Handle messages from webview (same handlers as openWriterView)
+    panel.webview.onDidReceiveMessage(
+      async (message) => {
+        switch (message.type) {
+          case 'save':
+            const fieldToSave = message.field || currentField;
+            await this.handleSave(documentUri, node, message.text, fieldToSave);
+            panel.webview.postMessage({ type: 'saved' });
+            break;
+            
+          case 'switchField':
+            currentField = message.field;
+            this.lastSelectedField = message.field;
+            
+            if (message.field !== '__attributes__' && message.field !== '__content__') {
+              const doc = await vscode.workspace.openTextDocument(documentUri);
+              const parsed = parseCodex(doc.getText());
+              if (parsed) {
+                const fieldContent = getNodeProse(parsed, node, message.field);
+                panel.webview.postMessage({ type: 'fieldContent', text: fieldContent, field: message.field });
+              }
+            }
+            break;
+            
+          case 'requestContent':
+            const docReq = await vscode.workspace.openTextDocument(documentUri);
+            const parsedReq = parseCodex(docReq.getText());
+            if (parsedReq) {
+              const currentProse = getNodeProse(parsedReq, node, currentField);
+              panel.webview.postMessage({ type: 'content', text: currentProse });
+            }
+            break;
+            
+          case 'saveAttributes':
+            currentAttributes = message.attributes || [];
+            await this.handleSaveAttributes(documentUri, node, currentAttributes);
+            panel.webview.postMessage({ type: 'saveComplete' });
+            break;
+            
+          case 'saveContentSections':
             currentContentSections = message.sections || [];
             await this.handleSaveContentSections(documentUri, node, currentContentSections);
             panel.webview.postMessage({ type: 'saveComplete' });
@@ -1260,6 +1370,12 @@ export class WriterViewManager {
           updateDirtyIndicator();
           updateCounts();
           editor.focus();
+          break;
+          
+        case 'switchToField':
+          // External request to switch to a specific field
+          fieldSelector.value = message.field;
+          fieldSelector.dispatchEvent(new Event('change'));
           break;
       }
     });

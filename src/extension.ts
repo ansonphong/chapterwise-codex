@@ -4,10 +4,11 @@
  */
 
 import * as vscode from 'vscode';
-import { CodexTreeProvider, CodexTreeItem, createCodexTreeView } from './treeProvider';
+import { CodexTreeProvider, CodexTreeItem, CodexFieldTreeItem, createCodexTreeView } from './treeProvider';
 import { WriterViewManager } from './writerView';
 import { initializeValidation } from './validation';
 import { isCodexFile } from './codexModel';
+import { runAutoFixer, disposeAutoFixer } from './autoFixer';
 
 let treeProvider: CodexTreeProvider;
 let writerViewManager: WriterViewManager;
@@ -218,6 +219,61 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     )
   );
+  
+  // Toggle field display command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chapterwiseCodex.toggleFields', async () => {
+      await treeProvider.toggleShowFields();
+      const showFields = treeProvider.getShowFields();
+      vscode.window.setStatusBarMessage(
+        showFields ? '$(list-tree) Fields shown in tree' : '$(list-flat) Fields hidden in tree',
+        2000
+      );
+    })
+  );
+  
+  // Open Writer View for a specific field
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'chapterwiseCodex.openWriterViewForField',
+      async (fieldItem?: CodexFieldTreeItem) => {
+        if (!fieldItem) {
+          return;
+        }
+        
+        // Determine which field to open
+        let targetField: string;
+        if (fieldItem.fieldType === 'attributes') {
+          targetField = '__attributes__';
+        } else if (fieldItem.fieldType === 'content') {
+          targetField = '__content__';
+        } else {
+          // Extract field name (remove any count suffix like "body" from "body (123 words)")
+          targetField = fieldItem.fieldName.split(' ')[0].toLowerCase();
+        }
+        
+        await writerViewManager.openWriterViewForField(fieldItem.parentNode, fieldItem.documentUri, targetField);
+      }
+    )
+  );
+  
+  // Auto-Fix command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chapterwiseCodex.autoFix', async () => {
+      await runAutoFixer(false);
+      // Refresh the tree after fixing
+      treeProvider.refresh();
+    })
+  );
+  
+  // Auto-Fix with ID regeneration command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chapterwiseCodex.autoFixRegenIds', async () => {
+      await runAutoFixer(true);
+      // Refresh the tree after fixing
+      treeProvider.refresh();
+    })
+  );
 }
 
 /**
@@ -244,5 +300,6 @@ function updateStatusBar(): void {
  */
 export function deactivate(): void {
   writerViewManager?.dispose();
+  disposeAutoFixer();
   console.log('ChapterWise Codex extension deactivated');
 }

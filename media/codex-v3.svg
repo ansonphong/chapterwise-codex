@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#4EC9B0">
+  <!-- Classic fountain pen nib -->
+  <path d="M12 2C10.5 6 9 10 8 14c-.5 2-.8 4-.5 5.5.2 1 .8 1.8 1.5 2.2.5.3 1.2.3 1.8.3h2.4c.6 0 1.3 0 1.8-.3.7-.4 1.3-1.2 1.5-2.2.3-1.5 0-3.5-.5-5.5-1-4-2.5-8-4-12z"/>
+  <!-- Nib slit -->
+  <path d="M12 8v10" stroke="#1e1e1e" stroke-width="1" fill="none"/>
+  <!-- Nib hole -->
+  <circle cx="12" cy="10" r="1" fill="#1e1e1e"/>
+</svg>
