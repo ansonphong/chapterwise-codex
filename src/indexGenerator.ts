@@ -2,7 +2,7 @@
  * Index Generator - Auto-generate index.codex.yaml files
  * 
  * Scans workspace folders and generates V2.1 format index files
- * with gitignore-like pattern matching, typeStyles, and visibility support.
+ * with gitignore-like pattern matching, typeStyles, and status support.
  */
 
 import * as vscode from 'vscode';
@@ -121,7 +121,7 @@ interface IndexChild {
   expanded?: boolean;
   emoji?: string;
   thumbnail?: string;
-  visibility?: 'published' | 'private';
+  status?: 'published' | 'private' | 'draft';
   featured?: boolean;
   featuredOrder?: number;
   children?: IndexChild[];
@@ -150,7 +150,7 @@ interface IndexData {
   patterns: IndexPatterns;
   typeStyles: TypeStyle[];
   gallery?: IndexGallery;
-  visibility: 'published' | 'private';
+  status: 'published' | 'private' | 'draft';
   children: IndexChild[];
 }
 
@@ -161,7 +161,7 @@ export interface GenerateIndexOptions {
   projectName?: string;
   patterns?: Partial<IndexPatterns>;
   typeStyles?: TypeStyle[];
-  visibility?: 'published' | 'private';
+  status?: 'published' | 'private' | 'draft';
   preserveManualEdits?: boolean;
 }
 
@@ -220,7 +220,7 @@ export class IndexGenerator {
       ],
       patterns,
       typeStyles,
-      visibility: options.visibility || 'published',
+      status: options.status || 'private',
       children,
     };
 
@@ -495,7 +495,7 @@ export class IndexGenerator {
           ...(existingChild.title && { title: existingChild.title }),
           ...(existingChild.emoji && { emoji: existingChild.emoji }),
           ...(existingChild.thumbnail && { thumbnail: existingChild.thumbnail }),
-          ...(existingChild.visibility && { visibility: existingChild.visibility }),
+          ...(existingChild.status && { status: existingChild.status }),
           ...(existingChild.featured !== undefined && { featured: existingChild.featured }),
           ...(existingChild.featuredOrder !== undefined && { featuredOrder: existingChild.featuredOrder }),
         };
@@ -805,19 +805,20 @@ export async function runGenerateIndex(): Promise<void> {
     return;
   }
 
-  // Default visibility
-  const visibilityChoice = await vscode.window.showQuickPick(
+  // Default status (private by default - must explicitly publish)
+  const statusChoice = await vscode.window.showQuickPick(
     [
+      { label: '$(lock) Private', description: 'Only visible to owner (default)', value: 'private' as const },
+      { label: '$(edit) Draft', description: 'Work in progress, owner only', value: 'draft' as const },
       { label: '$(globe) Published', description: 'Visible to everyone', value: 'published' as const },
-      { label: '$(lock) Private', description: 'Only visible to owner', value: 'private' as const },
     ],
     {
-      title: 'Default Visibility',
-      placeHolder: 'Set default visibility for all items',
+      title: 'Default Status',
+      placeHolder: 'Set default status for all items (recommended: Private)',
     }
   );
 
-  const visibility = visibilityChoice?.value || 'published';
+  const status = statusChoice?.value || 'private';
 
   // Generate index
   await vscode.window.withProgress(
@@ -832,7 +833,7 @@ export async function runGenerateIndex(): Promise<void> {
       const generator = new IndexGenerator();
       const indexData = await generator.generateIndex(basePath, {
         projectName,
-        visibility,
+        status,
       });
 
       progress.report({ message: 'Writing index file...' });
