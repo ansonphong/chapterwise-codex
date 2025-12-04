@@ -1,9 +1,13 @@
 /**
  * Codex Model - Parsing and manipulation of YAML/JSON codex files
- * Supports ChapterWise Codex Format V1.0 and V1.1
+ * Supports ChapterWise Codex Format V1.0, V1.1, and Codex Lite (Markdown)
+ * 
+ * Codex Lite: Markdown files with YAML frontmatter are treated as flat
+ * codex documents with a single root node.
  */
 
 import * as YAML from 'yaml';
+import * as path from 'path';
 
 /**
  * Represents a path segment to navigate to a node in the document
@@ -76,7 +80,9 @@ export interface CodexDocument {
   types: Set<string>;           // All unique node types
   rawDoc: YAML.Document.Parsed | null;
   isJson: boolean;
+  isMarkdown: boolean;          // True for Codex Lite (.md) files
   rawText: string;
+  frontmatter?: Record<string, unknown>;  // Original frontmatter (for markdown)
 }
 
 /**
@@ -110,6 +116,20 @@ export function isCodexFile(fileName: string): boolean {
   return lower.endsWith('.codex.yaml') || 
          lower.endsWith('.codex.json') || 
          lower.endsWith('.codex');
+}
+
+/**
+ * Determines if a file is a Markdown file (Codex Lite)
+ */
+export function isMarkdownFile(fileName: string): boolean {
+  return fileName.toLowerCase().endsWith('.md');
+}
+
+/**
+ * Determines if a file is Codex-like (full Codex OR Markdown/Codex Lite)
+ */
+export function isCodexLikeFile(fileName: string): boolean {
+  return isCodexFile(fileName) || isMarkdownFile(fileName);
 }
 
 /**
@@ -382,11 +402,236 @@ export function parseCodex(text: string): CodexDocument | null {
       types,
       rawDoc,
       isJson,
+      isMarkdown: false,
       rawText: text,
     };
   } catch {
     return null;
   }
+}
+
+/**
+ * Codex Lite field mappings - fields that map directly to codex root
+ */
+const CODEX_LITE_ROOT_FIELDS = new Set([
+  'type', 'name', 'title', 'summary', 'id',
+  'status', 'featured', 'image', 'images', 'tags', 'body'
+]);
+
+const CODEX_LITE_METADATA_FIELDS: Record<string, string> = {
+  'author': 'author',
+  'updated': 'updated',
+  'last_updated': 'updated',
+  'created': 'created',
+  'description': 'description',
+  'license': 'license',
+};
+
+/**
+ * Extract YAML frontmatter and body from markdown text
+ */
+function extractFrontmatter(text: string): { frontmatter: Record<string, unknown> | null; body: string } {
+  const trimmed = text.trimStart();
+  
+  // Check for frontmatter delimiter
+  if (!trimmed.startsWith('---')) {
+    return { frontmatter: null, body: text };
+  }
+  
+  // Find the closing delimiter
+  const afterFirst = trimmed.slice(3);
+  const endIndex = afterFirst.indexOf('\n---');
+  
+  if (endIndex === -1) {
+    return { frontmatter: null, body: text };
+  }
+  
+  const frontmatterText = afterFirst.slice(0, endIndex);
+  const bodyStart = 3 + endIndex + 4; // "---" + content + "\n---"
+  const body = trimmed.slice(bodyStart).trim();
+  
+  try {
+    const frontmatter = YAML.parse(frontmatterText) as Record<string, unknown>;
+    return { frontmatter, body };
+  } catch {
+    return { frontmatter: null, body: text };
+  }
+}
+
+/**
+ * Extract the first H1 heading from markdown text
+ */
+function extractH1FromMarkdown(text: string): string | null {
+  const match = text.match(/^#\s+(.+)$/m);
+  return match ? match[1].trim() : null;
+}
+
+/**
+ * Generate a slug ID from text (for TOC entries)
+ */
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim();
+}
+
+/**
+ * Extract TOC entries from markdown headings (H2-H6)
+ */
+function extractTocEntries(body: string): Array<{ id: string; name: string; level: number }> {
+  const entries: Array<{ id: string; name: string; level: number }> = [];
+  const headingRegex = /^(#{2,6})\s+(.+)$/gm;
+  
+  let match;
+  while ((match = headingRegex.exec(body)) !== null) {
+    const level = match[1].length;
+    const name = match[2].trim();
+    const id = slugify(name);
+    entries.push({ id, name, level });
+  }
+  
+  return entries;
+}
+
+/**
+ * Parse a Markdown file as a Codex Lite document
+ * Creates a flat CodexDocument with a single root node
+ */
+export function parseMarkdownAsCodex(text: string, fileName?: string): CodexDocument | null {
+  try {
+    const { frontmatter, body } = extractFrontmatter(text);
+    
+    // Determine name: frontmatter > H1 > filename
+    let name = '';
+    if (frontmatter?.name) {
+      name = String(frontmatter.name);
+    } else if (frontmatter?.title) {
+      name = String(frontmatter.title);
+    } else {
+      const h1 = extractH1FromMarkdown(body);
+      if (h1) {
+        name = h1;
+      } else if (fileName) {
+        name = path.basename(fileName, '.md');
+      } else {
+        name = 'Untitled';
+      }
+    }
+    
+    // Build metadata from frontmatter
+    const metadata: CodexMetadata = {
+      formatVersion: 'lite',  // Special marker for Codex Lite
+    };
+    
+    if (frontmatter) {
+      for (const [fmKey, codexKey] of Object.entries(CODEX_LITE_METADATA_FIELDS)) {
+        if (frontmatter[fmKey]) {
+          // Map frontmatter fields to metadata
+          if (codexKey === 'author') metadata.author = String(frontmatter[fmKey]);
+          else if (codexKey === 'updated') metadata.updated = String(frontmatter[fmKey]);
+          else if (codexKey === 'created') metadata.created = String(frontmatter[fmKey]);
+          else if (codexKey === 'license') metadata.license = String(frontmatter[fmKey]);
+        }
+      }
+    }
+    
+    // Parse tags - support both array and comma-delimited string
+    let tags: string[] = [];
+    if (frontmatter?.tags) {
+      if (Array.isArray(frontmatter.tags)) {
+        tags = frontmatter.tags.filter((t): t is string => typeof t === 'string');
+      } else if (typeof frontmatter.tags === 'string') {
+        tags = frontmatter.tags.split(',').map((t: string) => t.trim()).filter(Boolean);
+      }
+    }
+    
+    // Extract TOC entries for navigation
+    const tocEntries = extractTocEntries(body);
+    
+    // Build the root node
+    const rootNode: CodexNode = {
+      id: (frontmatter?.id as string) ?? generateUuid(),
+      type: (frontmatter?.type as string) ?? 'document',
+      name,
+      proseField: 'body',
+      proseValue: body,
+      availableFields: ['body'],
+      path: [],
+      children: [],
+      hasAttributes: false,
+      hasContentSections: false,
+      tags: tags.length > 0 ? tags : undefined,
+      image: frontmatter?.image as string | undefined,
+    };
+    
+    // Add summary if present
+    if (frontmatter?.summary) {
+      rootNode.availableFields.push('summary');
+    }
+    
+    const types = new Set<string>();
+    if (rootNode.type && rootNode.type !== 'unknown') {
+      types.add(rootNode.type);
+    }
+    
+    return {
+      metadata,
+      rootNode,
+      allNodes: [rootNode],
+      types,
+      rawDoc: null,
+      isJson: false,
+      isMarkdown: true,
+      rawText: text,
+      frontmatter: frontmatter ?? undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Set prose value in a markdown file and return the new text
+ * Preserves frontmatter structure
+ */
+export function setMarkdownNodeProse(
+  originalText: string,
+  newBody: string,
+  updatedFrontmatter?: Record<string, unknown>
+): string {
+  const { frontmatter } = extractFrontmatter(originalText);
+  
+  // Use updated frontmatter if provided, otherwise keep original
+  const fm = updatedFrontmatter ?? frontmatter;
+  
+  if (fm && Object.keys(fm).length > 0) {
+    // Rebuild with frontmatter
+    const fmYaml = YAML.stringify(fm, { lineWidth: 0 }).trim();
+    return `---\n${fmYaml}\n---\n\n${newBody}`;
+  } else {
+    // No frontmatter - just return the body
+    return newBody;
+  }
+}
+
+/**
+ * Update a specific frontmatter field in a markdown file
+ */
+export function setMarkdownFrontmatterField(
+  originalText: string,
+  field: string,
+  value: unknown
+): string {
+  const { frontmatter, body } = extractFrontmatter(originalText);
+  
+  const fm = frontmatter ?? {};
+  fm[field] = value;
+  
+  const fmYaml = YAML.stringify(fm, { lineWidth: 0 }).trim();
+  return `---\n${fmYaml}\n---\n\n${body}`;
 }
 
 /**

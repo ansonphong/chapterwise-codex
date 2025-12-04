@@ -5,7 +5,7 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { CodexNode, CodexDocument, parseCodex, isCodexFile } from './codexModel';
+import { CodexNode, CodexDocument, parseCodex, parseMarkdownAsCodex, isCodexFile, isCodexLikeFile, isMarkdownFile } from './codexModel';
 
 /**
  * Tree item representing the file header at the top of the tree
@@ -230,10 +230,10 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       }
     });
     
-    // Watch for active editor changes - ALWAYS update when switching to a codex file
+    // Watch for active editor changes - ALWAYS update when switching to a codex-like file
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       console.log('[ChapterWise Codex] Active editor changed:', editor?.document?.fileName);
-      if (editor && isCodexFile(editor.document.fileName)) {
+      if (editor && isCodexLikeFile(editor.document.fileName)) {
         console.log('[ChapterWise Codex] Setting active document from editor change');
         this.setActiveDocument(editor.document);
       }
@@ -242,8 +242,8 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     // Watch for documents opening
     vscode.workspace.onDidOpenTextDocument((doc) => {
       console.log('[ChapterWise Codex] Document opened:', doc.fileName);
-      if (isCodexFile(doc.fileName)) {
-        console.log('[ChapterWise Codex] Codex file opened, setting as active');
+      if (isCodexLikeFile(doc.fileName)) {
+        console.log('[ChapterWise Codex] Codex-like file opened, setting as active');
         this.setActiveDocument(doc);
       }
     });
@@ -253,21 +253,21 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
   }
   
   /**
-   * Initialize by finding the first codex document
+   * Initialize by finding the first codex-like document
    */
   private initializeActiveDocument(): void {
     // Try active editor first
     const editor = vscode.window.activeTextEditor;
-    if (editor && isCodexFile(editor.document.fileName)) {
-      console.log('[ChapterWise Codex] Init: Found active codex file:', editor.document.fileName);
+    if (editor && isCodexLikeFile(editor.document.fileName)) {
+      console.log('[ChapterWise Codex] Init: Found active codex-like file:', editor.document.fileName);
       this.setActiveDocument(editor.document);
       return;
     }
     
     // Scan all visible editors
     for (const visibleEditor of vscode.window.visibleTextEditors) {
-      if (isCodexFile(visibleEditor.document.fileName)) {
-        console.log('[ChapterWise Codex] Init: Found visible codex file:', visibleEditor.document.fileName);
+      if (isCodexLikeFile(visibleEditor.document.fileName)) {
+        console.log('[ChapterWise Codex] Init: Found visible codex-like file:', visibleEditor.document.fileName);
         this.setActiveDocument(visibleEditor.document);
         return;
       }
@@ -275,21 +275,21 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     
     // Scan all open documents
     for (const doc of vscode.workspace.textDocuments) {
-      if (isCodexFile(doc.fileName)) {
-        console.log('[ChapterWise Codex] Init: Found open codex file:', doc.fileName);
+      if (isCodexLikeFile(doc.fileName)) {
+        console.log('[ChapterWise Codex] Init: Found open codex-like file:', doc.fileName);
         this.setActiveDocument(doc);
         return;
       }
     }
     
-    console.log('[ChapterWise Codex] Init: No codex files found');
+    console.log('[ChapterWise Codex] Init: No codex-like files found');
   }
   
   /**
    * Set the active document to display in the tree
    */
   setActiveDocument(document: vscode.TextDocument): void {
-    if (!isCodexFile(document.fileName)) {
+    if (!isCodexLikeFile(document.fileName)) {
       return;
     }
     
@@ -381,8 +381,15 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     }
     
     const text = this.activeDocument.getText();
-    const parsed = parseCodex(text);
-    this.codexDoc = parsed;
+    const fileName = this.activeDocument.fileName;
+    
+    // Use appropriate parser based on file type
+    if (isMarkdownFile(fileName)) {
+      this.codexDoc = parseMarkdownAsCodex(text, fileName);
+    } else {
+      this.codexDoc = parseCodex(text);
+    }
+    
     this.refresh();
   }
   

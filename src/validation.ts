@@ -4,7 +4,7 @@
  */
 
 import * as vscode from 'vscode';
-import { parseCodex, validateCodex, isCodexFile, generateUuid, createMinimalCodex, CodexValidationIssue } from './codexModel';
+import { parseCodex, parseMarkdownAsCodex, validateCodex, isCodexFile, isCodexLikeFile, isMarkdownFile, generateUuid, createMinimalCodex, CodexValidationIssue } from './codexModel';
 
 /**
  * Diagnostic collection for Codex validation
@@ -39,7 +39,7 @@ export function initializeValidation(context: vscode.ExtensionContext): void {
     })
   );
   
-  // Register code action provider
+  // Register code action provider for Codex files
   context.subscriptions.push(
     vscode.languages.registerCodeActionsProvider(
       [
@@ -54,6 +54,17 @@ export function initializeValidation(context: vscode.ExtensionContext): void {
     )
   );
   
+  // Register code action provider for Markdown (Codex Lite) files
+  context.subscriptions.push(
+    vscode.languages.registerCodeActionsProvider(
+      { language: 'markdown', pattern: '**/*.md' },
+      new MarkdownCodeActionProvider(),
+      {
+        providedCodeActionKinds: MarkdownCodeActionProvider.providedCodeActionKinds,
+      }
+    )
+  );
+  
   // Validate all open codex documents
   for (const doc of vscode.workspace.textDocuments) {
     validateDocument(doc);
@@ -64,7 +75,16 @@ export function initializeValidation(context: vscode.ExtensionContext): void {
  * Validate a document and update diagnostics
  */
 function validateDocument(document: vscode.TextDocument): void {
-  if (!isCodexFile(document.fileName)) {
+  const fileName = document.fileName;
+  
+  // Handle markdown files (Codex Lite) differently
+  if (isMarkdownFile(fileName)) {
+    validateMarkdownDocument(document);
+    return;
+  }
+  
+  // Handle standard Codex files
+  if (!isCodexFile(fileName)) {
     return;
   }
   
@@ -102,6 +122,43 @@ function validateDocument(document: vscode.TextDocument): void {
     return diagnostic;
   });
   
+  diagnosticCollection.set(document.uri, diagnostics);
+}
+
+/**
+ * Validate a Markdown (Codex Lite) document
+ * Lighter validation - no metadata requirements
+ */
+function validateMarkdownDocument(document: vscode.TextDocument): void {
+  const text = document.getText();
+  const diagnostics: vscode.Diagnostic[] = [];
+  
+  // Try to parse as Codex Lite
+  const codexDoc = parseMarkdownAsCodex(text, document.fileName);
+  
+  if (!codexDoc) {
+    // Parsing failed - likely malformed frontmatter
+    const trimmed = text.trimStart();
+    if (trimmed.startsWith('---')) {
+      // Has frontmatter delimiters but failed to parse
+      diagnostics.push(new vscode.Diagnostic(
+        new vscode.Range(0, 0, 0, 3),
+        'Invalid YAML frontmatter syntax',
+        vscode.DiagnosticSeverity.Error
+      ));
+    }
+  } else {
+    // Successfully parsed - check for best practices
+    if (!codexDoc.rootNode?.name || codexDoc.rootNode.name === 'Untitled') {
+      diagnostics.push(new vscode.Diagnostic(
+        new vscode.Range(0, 0, 0, 10),
+        'Consider adding a name or title in frontmatter, or an H1 heading',
+        vscode.DiagnosticSeverity.Information
+      ));
+    }
+  }
+  
+  diagnostics.forEach(d => d.source = 'ChapterWise Codex Lite');
   diagnosticCollection.set(document.uri, diagnostics);
 }
 
@@ -274,6 +331,64 @@ class CodexCodeActionProvider implements vscode.CodeActionProvider {
         ),
         createMinimalCodex()
       );
+    }
+    
+    return action;
+  }
+}
+
+/**
+ * Code action provider for Markdown (Codex Lite) quick-fixes
+ */
+class MarkdownCodeActionProvider implements vscode.CodeActionProvider {
+  static readonly providedCodeActionKinds = [
+    vscode.CodeActionKind.QuickFix,
+  ];
+  
+  provideCodeActions(
+    document: vscode.TextDocument,
+    range: vscode.Range | vscode.Selection,
+    context: vscode.CodeActionContext
+  ): vscode.CodeAction[] {
+    const actions: vscode.CodeAction[] = [];
+    
+    for (const diagnostic of context.diagnostics) {
+      if (diagnostic.source !== 'ChapterWise Codex Lite') {
+        continue;
+      }
+      
+      if (diagnostic.message.includes('name or title')) {
+        actions.push(this.createAddFrontmatterAction(document, diagnostic));
+      }
+    }
+    
+    return actions;
+  }
+  
+  private createAddFrontmatterAction(
+    document: vscode.TextDocument,
+    diagnostic: vscode.Diagnostic
+  ): vscode.CodeAction {
+    const action = new vscode.CodeAction(
+      'Add YAML frontmatter',
+      vscode.CodeActionKind.QuickFix
+    );
+    action.diagnostics = [diagnostic];
+    
+    const text = document.getText();
+    const hasFrontmatter = text.trimStart().startsWith('---');
+    
+    if (!hasFrontmatter) {
+      // Add new frontmatter at the beginning
+      const fileName = document.fileName.split('/').pop()?.replace('.md', '') ?? 'Untitled';
+      const frontmatterBlock = `---
+name: "${fileName}"
+type: document
+---
+
+`;
+      action.edit = new vscode.WorkspaceEdit();
+      action.edit.insert(document.uri, new vscode.Position(0, 0), frontmatterBlock);
     }
     
     return action;

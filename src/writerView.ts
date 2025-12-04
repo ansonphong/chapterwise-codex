@@ -9,14 +9,17 @@ import {
   CodexDocument, 
   CodexAttribute,
   CodexContentSection,
-  parseCodex, 
+  parseCodex,
+  parseMarkdownAsCodex,
   setNodeProse, 
+  setMarkdownNodeProse,
   getNodeProse,
   getNodeAttributes,
   setNodeAttributes,
   getNodeContentSections,
   setNodeContentSections,
-  generateUuid
+  generateUuid,
+  isMarkdownFile
 } from './codexModel';
 import { CodexTreeItem, CodexFieldTreeItem } from './treeProvider';
 
@@ -48,14 +51,23 @@ export class WriterViewManager {
     
     // Get the document
     const document = await vscode.workspace.openTextDocument(documentUri);
-    const codexDoc = parseCodex(document.getText());
+    const fileName = documentUri.fsPath;
+    
+    // Use appropriate parser based on file type
+    const codexDoc = isMarkdownFile(fileName) 
+      ? parseMarkdownAsCodex(document.getText(), fileName)
+      : parseCodex(document.getText());
+      
     if (!codexDoc) {
-      vscode.window.showErrorMessage('Unable to parse Codex document');
+      const fileType = isMarkdownFile(fileName) ? 'Markdown' : 'Codex';
+      vscode.window.showErrorMessage(`Unable to parse ${fileType} document`);
       return;
     }
     
-    // Get current prose value
-    const prose = getNodeProse(codexDoc, node);
+    // Get current prose value (for markdown, this is the body)
+    const prose = isMarkdownFile(fileName) 
+      ? (codexDoc.rootNode?.proseValue ?? '')
+      : getNodeProse(codexDoc, node);
     
     // Create new panel in the ACTIVE editor group (same frame, new tab)
     let panel = vscode.window.createWebviewPanel(
@@ -98,9 +110,13 @@ export class WriterViewManager {
             // Only fetch prose content for regular fields (not attributes/content)
             if (message.field !== '__attributes__' && message.field !== '__content__') {
               const doc = await vscode.workspace.openTextDocument(documentUri);
-              const parsed = parseCodex(doc.getText());
+              const parsed = isMarkdownFile(fileName)
+                ? parseMarkdownAsCodex(doc.getText(), fileName)
+                : parseCodex(doc.getText());
               if (parsed) {
-                const fieldContent = getNodeProse(parsed, node, message.field);
+                const fieldContent = isMarkdownFile(fileName)
+                  ? (parsed.rootNode?.proseValue ?? '')
+                  : getNodeProse(parsed, node, message.field);
                 panel.webview.postMessage({ type: 'fieldContent', text: fieldContent, field: message.field });
               }
             }
@@ -109,9 +125,13 @@ export class WriterViewManager {
           case 'requestContent':
             // Re-fetch content from document
             const docReq = await vscode.workspace.openTextDocument(documentUri);
-            const parsedReq = parseCodex(docReq.getText());
+            const parsedReq = isMarkdownFile(fileName)
+              ? parseMarkdownAsCodex(docReq.getText(), fileName)
+              : parseCodex(docReq.getText());
             if (parsedReq) {
-              const currentProse = getNodeProse(parsedReq, node, currentField);
+              const currentProse = isMarkdownFile(fileName)
+                ? (parsedReq.rootNode?.proseValue ?? '')
+                : getNodeProse(parsedReq, node, currentField);
               panel.webview.postMessage({ type: 'content', text: currentProse });
             }
             break;
@@ -164,14 +184,25 @@ export class WriterViewManager {
     
     // Get the document
     const document = await vscode.workspace.openTextDocument(documentUri);
-    const codexDoc = parseCodex(document.getText());
+    const fileName = documentUri.fsPath;
+    
+    // Use appropriate parser based on file type
+    const codexDoc = isMarkdownFile(fileName)
+      ? parseMarkdownAsCodex(document.getText(), fileName)
+      : parseCodex(document.getText());
+      
     if (!codexDoc) {
-      vscode.window.showErrorMessage('Unable to parse Codex document');
+      const fileType = isMarkdownFile(fileName) ? 'Markdown' : 'Codex';
+      vscode.window.showErrorMessage(`Unable to parse ${fileType} document`);
       return;
     }
     
     // Get prose value for the target field
-    const prose = targetField.startsWith('__') ? '' : getNodeProse(codexDoc, node, targetField);
+    const prose = targetField.startsWith('__') 
+      ? '' 
+      : isMarkdownFile(fileName)
+        ? (codexDoc.rootNode?.proseValue ?? '')
+        : getNodeProse(codexDoc, node, targetField);
     
     // Create new panel
     let panel = vscode.window.createWebviewPanel(
@@ -213,9 +244,13 @@ export class WriterViewManager {
             
             if (message.field !== '__attributes__' && message.field !== '__content__') {
               const doc = await vscode.workspace.openTextDocument(documentUri);
-              const parsed = parseCodex(doc.getText());
+              const parsed = isMarkdownFile(fileName)
+                ? parseMarkdownAsCodex(doc.getText(), fileName)
+                : parseCodex(doc.getText());
               if (parsed) {
-                const fieldContent = getNodeProse(parsed, node, message.field);
+                const fieldContent = isMarkdownFile(fileName)
+                  ? (parsed.rootNode?.proseValue ?? '')
+                  : getNodeProse(parsed, node, message.field);
                 panel.webview.postMessage({ type: 'fieldContent', text: fieldContent, field: message.field });
               }
             }
@@ -223,9 +258,13 @@ export class WriterViewManager {
             
           case 'requestContent':
             const docReq = await vscode.workspace.openTextDocument(documentUri);
-            const parsedReq = parseCodex(docReq.getText());
+            const parsedReq = isMarkdownFile(fileName)
+              ? parseMarkdownAsCodex(docReq.getText(), fileName)
+              : parseCodex(docReq.getText());
             if (parsedReq) {
-              const currentProse = getNodeProse(parsedReq, node, currentField);
+              const currentProse = isMarkdownFile(fileName)
+                ? (parsedReq.rootNode?.proseValue ?? '')
+                : getNodeProse(parsedReq, node, currentField);
               panel.webview.postMessage({ type: 'content', text: currentProse });
             }
             break;
@@ -264,28 +303,46 @@ export class WriterViewManager {
   ): Promise<void> {
     try {
       const document = await vscode.workspace.openTextDocument(documentUri);
-      const codexDoc = parseCodex(document.getText());
+      const fileName = documentUri.fsPath;
+      const originalText = document.getText();
       
-      if (!codexDoc) {
-        vscode.window.showErrorMessage('Unable to parse Codex document for saving');
-        return;
+      let newDocText: string;
+      
+      // Handle markdown files (Codex Lite) differently
+      if (isMarkdownFile(fileName)) {
+        const codexDoc = parseMarkdownAsCodex(originalText, fileName);
+        if (!codexDoc) {
+          vscode.window.showErrorMessage('Unable to parse Markdown document for saving');
+          return;
+        }
+        
+        // For markdown, we just update the body (preserving frontmatter)
+        newDocText = setMarkdownNodeProse(originalText, newText, codexDoc.frontmatter);
+      } else {
+        // Standard Codex file handling
+        const codexDoc = parseCodex(originalText);
+        if (!codexDoc) {
+          vscode.window.showErrorMessage('Unable to parse Codex document for saving');
+          return;
+        }
+        
+        // Generate new document text
+        newDocText = setNodeProse(codexDoc, node, newText, field);
       }
-      
-      // Generate new document text
-      const newDocText = setNodeProse(codexDoc, node, newText, field);
       
       // Apply the edit
       const edit = new vscode.WorkspaceEdit();
       const fullRange = new vscode.Range(
         document.positionAt(0),
-        document.positionAt(document.getText().length)
+        document.positionAt(originalText.length)
       );
       edit.replace(documentUri, fullRange, newDocText);
       
       const success = await vscode.workspace.applyEdit(edit);
       if (success) {
         await document.save();
-        vscode.window.setStatusBarMessage('✓ Codex saved', 2000);
+        const fileType = isMarkdownFile(fileName) ? 'Markdown' : 'Codex';
+        vscode.window.setStatusBarMessage(`✓ ${fileType} saved`, 2000);
       } else {
         vscode.window.showErrorMessage('Failed to save changes');
       }

@@ -95,6 +95,14 @@
         "command": "chapterwiseCodex.regenerateIndex",
         "title": "ChapterWise Codex: Regenerate Index",
         "icon": "$(sync)"
+      },
+      {
+        "command": "chapterwiseCodex.convertToMarkdown",
+        "title": "ChapterWise Codex: Convert to Markdown (Codex Lite)"
+      },
+      {
+        "command": "chapterwiseCodex.convertToCodex",
+        "title": "ChapterWise Codex: Convert Markdown to Codex"
       }
     ],
     "viewsContainers": {
