@@ -85,6 +85,16 @@
       {
         "command": "chapterwiseCodex.generateTags",
         "title": "ChapterWise Codex: Generate Tags"
+      },
+      {
+        "command": "chapterwiseCodex.generateIndex",
+        "title": "ChapterWise Codex: Generate Index",
+        "icon": "$(file-add)"
+      },
+      {
+        "command": "chapterwiseCodex.regenerateIndex",
+        "title": "ChapterWise Codex: Regenerate Index",
+        "icon": "$(sync)"
       }
     ],
     "viewsContainers": {
@@ -233,9 +243,11 @@
     "package": "vsce package"
   },
   "dependencies": {
+    "minimatch": "^9.0.0",
     "yaml": "^2.5.0"
   },
   "devDependencies": {
+    "@types/minimatch": "^5.1.0",
     "@types/node": "^20.10.0",
     "@types/vscode": "^1.80.0",
     "@vscode/vsce": "^2.22.0",
