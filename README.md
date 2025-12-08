@@ -2,7 +2,9 @@
 
 **A VS Code Extension (also works with Cursor)**
 
-Transform `.codex.yaml` and `.codex.json` editing into a **Scrivener-like writing experience** with tree navigation, distraction-free prose editing, powerful transformation commands, and format validation.
+ChapterWise turns your code editor into a writing app with tree navigation, distraction-free prose editing, transformation commands, and format validation. Supports `.codex.yaml`, `.codex.json`, and Markdown files as Codex Lite format.
+
+**ChapterWise is the IDE for Writers.** Debug your plot, version-control your drafts, and compile your book like code.
 
 ## Features
 
