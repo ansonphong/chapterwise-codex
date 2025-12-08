@@ -1,5 +1,7 @@
 # ChapterWise Codex Extension
 
+**A VS Code Extension (also works with Cursor)**
+
 Transform `.codex.yaml` and `.codex.json` editing into a **Scrivener-like writing experience** with tree navigation, distraction-free prose editing, powerful transformation commands, and format validation.
 
 ## Features
@@ -107,7 +109,7 @@ Quick templates for common node types:
 
 ## Getting Started
 
-1. **Install the extension** from VSIX or marketplace
+1. **Install the extension** in VS Code or Cursor (from VSIX or marketplace)
 2. **Open a `.codex.yaml` file** (or create one using snippets)
 3. **Click the Codex icon** in the activity bar to open the Navigator
 4. **Click any node** to navigate to it in the editor
@@ -195,16 +197,16 @@ tags:
 
 | Extension | Format |
 |-----------|--------|
-| `.codex.yaml` | YAML format (recommended) |
-| `.codex.json` | JSON format |
-| `.codex` | YAML format (alternative) |
+| `.codex.yaml` | YAML format (recommended) - [Full Codex Format](https://chapterwise.app/docs/codex/format/codex-format) |
+| `.codex.json` | JSON format - [Full Codex Format](https://chapterwise.app/docs/codex/format/codex-format) |
+| `.md` | Markdown (Codex Lite) - [Codex Lite Format](https://chapterwise.app/docs/codex/format/codex-lite) |
 
 ## Compatibility
 
-Works with both:
+This extension works with both:
 
 - **Visual Studio Code** — Version 1.85.0 or later
-- **Cursor** — All versions supported
+- **Cursor** — All versions (Cursor is built on VS Code, so all features work seamlessly)
 
 ## Development
 
