@@ -1,9 +1,10 @@
 {
   "name": "chapterwise-codex",
   "displayName": "ChapterWise Codex",
-  "description": "Transform .codex.yaml and .codex.json editing into a Scrivener-like writing experience with tree navigation, distraction-free prose editing, and format validation.",
-  "version": "0.1.0",
-  "publisher": "chapterwise",
+  "description": "Codex file format Manuscript editing with tree navigation, distraction-free prose editing, and format validation.",
+  "version": "0.1.1",
+  "publisher": "StudioPhong",
+  "icon": "media/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/chapterwise/chapterwise-codex"
