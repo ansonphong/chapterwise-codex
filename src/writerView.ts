@@ -727,21 +727,17 @@ export class WriterViewManager {
       font-weight: 600;
       color: var(--text-primary);
       background: transparent;
-      border: 1px solid var(--border-color);
-      border-radius: 4px;
-      padding: 0.2rem 0.4rem;
-      width: 100%;
+      border: none;
+      padding: 0;
+      margin: 0;
       outline: none;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      width: auto;
+      min-width: 1ch;
+      line-height: 1.2;
     }
     
     .node-name-input.editing-active {
-      display: block;
-    }
-    
-    .node-name-input:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+      display: inline;
     }
     
     /* Attributes Editor Styles */
