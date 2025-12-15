@@ -968,18 +968,6 @@ export class WriterViewManager {
       100% { border-color: var(--text-muted); color: var(--text-muted); }
     }
     
-    .save-indicator {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      opacity: 0;
-      transition: opacity 0.2s;
-    }
-    
-    .save-indicator.dirty {
-      opacity: 1;
-      color: #f0883e;
-    }
-    
     /* Editor container */
     .editor-container {
       flex: 1;
@@ -1182,12 +1170,10 @@ export class WriterViewManager {
     function updateDirtyIndicator() {
       const anyDirty = isDirty || attributesDirty || contentSectionsDirty;
       if (anyDirty) {
-        saveIndicator.classList.add('dirty');
         saveBtn.classList.add('dirty');
         saveBtn.classList.remove('saved-flash');
         saveBtn.title = 'Unsaved changes - Click to save or Ctrl+S';
       } else {
-        saveIndicator.classList.remove('dirty');
         saveBtn.classList.remove('dirty');
         saveBtn.title = 'All changes saved';
       }
