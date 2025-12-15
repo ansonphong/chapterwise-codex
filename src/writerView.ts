@@ -82,8 +82,12 @@ export class WriterViewManager {
       // For markdown files, extract field from frontmatter or body
       if (initialField === 'body') {
         prose = codexDoc.rootNode?.proseValue ?? '';
+      } else if (initialField === 'summary') {
+        // For summary field, get from frontmatter
+        const frontmatter = codexDoc.frontmatter as Record<string, unknown> | undefined;
+        prose = (frontmatter?.summary as string) ?? '';
       } else {
-        // For summary and other fields, get from frontmatter
+        // For any other fields, try frontmatter
         const frontmatter = codexDoc.frontmatter as Record<string, unknown> | undefined;
         prose = (frontmatter?.[initialField] as string) ?? '';
       }

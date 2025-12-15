@@ -597,10 +597,8 @@ export function parseMarkdownAsCodex(text: string, fileName?: string): CodexDocu
     }
     
     // Determine proseField: use summary if available, otherwise body
+    // But proseValue is ALWAYS the body text (semantic meaning)
     const proseField = availableFields.includes('summary') ? 'summary' : 'body';
-    const proseValue = proseField === 'summary' 
-      ? ((frontmatter?.summary as string) ?? '') 
-      : body;
     
     // Build the root node
     const rootNode: CodexNode = {
@@ -608,7 +606,7 @@ export function parseMarkdownAsCodex(text: string, fileName?: string): CodexDocu
       type: (frontmatter?.type as string) ?? 'document',
       name,
       proseField,
-      proseValue,
+      proseValue: body,  // Always body, regardless of proseField
       availableFields,
       path: [],
       children: [],
