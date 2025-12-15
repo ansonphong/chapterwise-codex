@@ -590,14 +590,26 @@ export function parseMarkdownAsCodex(text: string, fileName?: string): CodexDocu
     // Extract TOC entries for navigation
     const tocEntries = extractTocEntries(body);
     
+    // Build availableFields first
+    const availableFields: string[] = ['body'];
+    if (frontmatter?.summary) {
+      availableFields.push('summary');
+    }
+    
+    // Determine proseField: use summary if available, otherwise body
+    const proseField = availableFields.includes('summary') ? 'summary' : 'body';
+    const proseValue = proseField === 'summary' 
+      ? ((frontmatter?.summary as string) ?? '') 
+      : body;
+    
     // Build the root node
     const rootNode: CodexNode = {
       id: (frontmatter?.id as string) ?? generateUuid(),
       type: (frontmatter?.type as string) ?? 'document',
       name,
-      proseField: 'body',
-      proseValue: body,
-      availableFields: ['body'],
+      proseField,
+      proseValue,
+      availableFields,
       path: [],
       children: [],
       hasAttributes: false,
@@ -605,11 +617,6 @@ export function parseMarkdownAsCodex(text: string, fileName?: string): CodexDocu
       tags: tags.length > 0 ? tags : undefined,
       image: frontmatter?.image as string | undefined,
     };
-    
-    // Add summary if present
-    if (frontmatter?.summary) {
-      rootNode.availableFields.push('summary');
-    }
     
     const types = new Set<string>();
     if (rootNode.type && rootNode.type !== 'unknown') {
