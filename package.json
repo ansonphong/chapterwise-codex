@@ -103,10 +103,6 @@
         "icon": "$(new-file)"
       },
       {
-        "command": "chapterwiseCodex.openIndexFile",
-        "title": "Open File from Index"
-      },
-      {
         "command": "chapterwiseCodex.convertToMarkdown",
         "title": "ChapterWise Codex: Convert to Markdown (Codex Lite)"
       },
@@ -340,11 +336,6 @@
           "command": "chapterwiseCodex.deleteNodePermanently",
           "when": "view == chapterwiseCodexNavigator && viewItem == codexNode",
           "group": "5_delete@2"
-        },
-        {
-          "command": "chapterwiseCodex.openIndexFile",
-          "when": "view == chapterwiseCodexNavigator && viewItem == indexFile",
-          "group": "inline"
         },
         {
           "command": "chapterwiseCodex.autofixFolder",
