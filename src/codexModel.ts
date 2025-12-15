@@ -274,12 +274,23 @@ function parseNode(
     ? includePath!.split('/').pop()?.replace('.codex.yaml', '').replace('.codex.json', '') ?? '(include)'
     : ((nodeObj.name as string) ?? (nodeObj.title as string) ?? id ?? '(untitled)');
   
-  const availableFields = getAvailableProseFieldsForFormat(nodeObj, isMarkdown);
-  const proseField = availableFields.length > 0 ? availableFields[0] : 'body';
+  const baseAvailableFields = getAvailableProseFieldsForFormat(nodeObj, isMarkdown);
+  const proseField = baseAvailableFields.length > 0 ? baseAvailableFields[0] : 'body';
   const proseValue = (nodeObj[proseField] as string) ?? '';
   
   const hasAttributes = Array.isArray(nodeObj.attributes) && nodeObj.attributes.length > 0;
   const hasContentSections = Array.isArray(nodeObj.content) && nodeObj.content.length > 0;
+  
+  // For Codex files (not Markdown), add special fields to availableFields
+  const availableFields = [...baseAvailableFields];
+  if (!isMarkdown) {
+    if (hasAttributes || Array.isArray(nodeObj.attributes)) {
+      availableFields.push('__attributes__');
+    }
+    if (hasContentSections || Array.isArray(nodeObj.content)) {
+      availableFields.push('__content__');
+    }
+  }
   
   const node: CodexNode = {
     id,

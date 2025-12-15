@@ -1158,14 +1158,39 @@ export class WriterViewManager {
         <div class="node-type-row">
           <span class="node-type">${this.escapeHtml(node.type)}</span>
           <select class="field-selector" id="fieldSelector">
-            ${node.availableFields.map(f => 
-              `<option value="${f}" ${f === initialField ? 'selected' : ''}>${f}</option>`
-            ).join('')}
-            ${!node.availableFields.includes('body') ? `<option value="body" ${initialField === 'body' && !node.availableFields.includes('body') ? 'selected' : ''}>body (new)</option>` : ''}
-            ${!node.availableFields.includes('summary') ? `<option value="summary" ${initialField === 'summary' && !node.availableFields.includes('summary') ? 'selected' : ''}>summary (new)</option>` : ''}
-            <option disabled>───────────</option>
-            <option value="__attributes__" ${initialField === '__attributes__' ? 'selected' : ''} ${node.hasAttributes ? '' : 'data-new="true"'}>📊 attributes${node.attributes ? ` (${node.attributes.length})` : ' (new)'}</option>
-            <option value="__content__" ${initialField === '__content__' ? 'selected' : ''} ${node.hasContentSections ? '' : 'data-new="true"'}>📝 content sections${node.contentSections ? ` (${node.contentSections.length})` : ' (new)'}</option>
+            ${(() => {
+              const options: string[] = [];
+              
+              // Add prose fields
+              for (const f of node.availableFields) {
+                if (!f.startsWith('__')) {
+                  options.push(`<option value="${f}" ${f === initialField ? 'selected' : ''}>${f}</option>`);
+                }
+              }
+              
+              // Add "new" prose fields if not present
+              if (!node.availableFields.includes('body')) {
+                options.push(`<option value="body" ${initialField === 'body' ? 'selected' : ''}>body (new)</option>`);
+              }
+              if (!node.availableFields.includes('summary')) {
+                options.push(`<option value="summary" ${initialField === 'summary' ? 'selected' : ''}>summary (new)</option>`);
+              }
+              
+              // Add separator and special fields if present
+              const specialFields = node.availableFields.filter(f => f.startsWith('__'));
+              if (specialFields.length > 0) {
+                options.push('<option disabled>───────────</option>');
+                for (const f of specialFields) {
+                  const isAttributes = f === '__attributes__';
+                  const label = isAttributes ? '📊 attributes' : '📝 content sections';
+                  const count = isAttributes ? node.attributes?.length : node.contentSections?.length;
+                  const countStr = count ? ` (${count})` : ' (new)';
+                  options.push(`<option value="${f}" ${f === initialField ? 'selected' : ''}>${label}${countStr}</option>`);
+                }
+              }
+              
+              return options.join('');
+            })()}
           </select>
         </div>
         <div class="node-name-container">
