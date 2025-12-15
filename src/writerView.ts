@@ -66,10 +66,17 @@ export class WriterViewManager {
       return;
     }
     
-    // Get current prose value - use the initial field (body for markdown, or node's proseField)
-    const initialField = this.lastSelectedField || node.proseField || 'body';
+    // Get current prose value - use the initial field (remembered field takes precedence)
+    // Ensure lastSelectedField takes precedence when it's a valid non-empty string
+    const initialField = (this.lastSelectedField && this.lastSelectedField.trim()) 
+      ? this.lastSelectedField 
+      : (node.proseField || 'body');
+    
     let prose: string;
-    if (isMarkdownFile(fileName)) {
+    // Handle special fields (attributes, content sections) - they don't have prose content
+    if (initialField.startsWith('__')) {
+      prose = '';
+    } else if (isMarkdownFile(fileName)) {
       // For markdown files, extract field from frontmatter or body
       if (initialField === 'body') {
         prose = codexDoc.rootNode?.proseValue ?? '';
@@ -905,22 +912,29 @@ export class WriterViewManager {
     }
     
     .save-btn {
-      background: var(--accent);
-      color: #0d1117;
-      border: none;
-      padding: 0.5rem 1rem;
-      border-radius: 6px;
-      font-size: 0.875rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.15s ease;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 1.5px solid var(--text-muted); /* Grey - default (clean state) */
+      background: transparent;
+      color: var(--text-muted);
+      padding: 0;
       display: flex;
       align-items: center;
-      gap: 0.375rem;
+      justify-content: center;
+      cursor: pointer;
+      transition: border-color 0.2s ease, color 0.2s ease;
+    }
+    
+    .save-icon {
+      width: 16px;
+      height: 16px;
     }
     
     .save-btn:hover {
-      background: var(--accent-hover);
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(88, 166, 255, 0.1);
     }
     
     .save-btn:disabled {
@@ -928,8 +942,22 @@ export class WriterViewManager {
       cursor: not-allowed;
     }
     
-    .save-btn.saved {
-      background: var(--success);
+    /* Blue outline when dirty (has unsaved changes) */
+    .save-btn.dirty {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    
+    /* Green outline when just saved (brief flash) */
+    .save-btn.saved-flash {
+      border-color: var(--success);
+      color: var(--success);
+      animation: greenFlash 1s ease;
+    }
+    
+    @keyframes greenFlash {
+      0% { border-color: var(--success); color: var(--success); }
+      100% { border-color: var(--text-muted); color: var(--text-muted); }
     }
     
     .save-indicator {
@@ -1052,10 +1080,11 @@ export class WriterViewManager {
       </div>
     </div>
     <div class="header-right">
-      <span class="save-indicator" id="saveIndicator">unsaved</span>
       <span class="word-count" id="wordCount">${wordCount} words</span>
-      <button class="save-btn" id="saveBtn">
-        <span id="saveBtnText">Save</span>
+      <button class="save-btn" id="saveBtn" title="Save (Ctrl+S)">
+        <svg class="save-icon" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+          <path d="M9.5 1H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6.5L9.5 1zm0 1v2.5H12v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4.5zm-3 8.5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0z"/>
+        </svg>
       </button>
     </div>
   </div>
@@ -1105,8 +1134,6 @@ export class WriterViewManager {
     const vscode = acquireVsCodeApi();
     const editor = document.getElementById('editor');
     const saveBtn = document.getElementById('saveBtn');
-    const saveBtnText = document.getElementById('saveBtnText');
-    const saveIndicator = document.getElementById('saveIndicator');
     const wordCountEl = document.getElementById('wordCount');
     const charCountEl = document.getElementById('charCount');
     const fieldSelector = document.getElementById('fieldSelector');
@@ -1152,10 +1179,13 @@ export class WriterViewManager {
       const anyDirty = isDirty || attributesDirty || contentSectionsDirty;
       if (anyDirty) {
         saveIndicator.classList.add('dirty');
-        saveIndicator.textContent = 'unsaved';
+        saveBtn.classList.add('dirty');
+        saveBtn.classList.remove('saved-flash');
+        saveBtn.title = 'Unsaved changes - Click to save or Ctrl+S';
       } else {
         saveIndicator.classList.remove('dirty');
-        saveIndicator.textContent = 'saved';
+        saveBtn.classList.remove('dirty');
+        saveBtn.title = 'All changes saved';
       }
     }
     
@@ -1174,7 +1204,8 @@ export class WriterViewManager {
       if (!anyDirty) return;
       
       saveBtn.disabled = true;
-      saveBtnText.textContent = 'Saving...';
+      saveBtn.classList.remove('dirty');
+      saveBtn.title = 'Saving...';
       
       // Save prose if dirty
       if (isDirty) {
@@ -1487,12 +1518,12 @@ export class WriterViewManager {
           // All saves complete - mark everything clean
           markClean();
           saveBtn.disabled = false;
-          saveBtn.classList.add('saved');
-          saveBtnText.textContent = '✓ Saved';
+          saveBtn.classList.remove('dirty');
+          saveBtn.classList.add('saved-flash');
+          saveBtn.title = 'All changes saved';
           setTimeout(() => {
-            saveBtn.classList.remove('saved');
-            saveBtnText.textContent = 'Save';
-          }, 1500);
+            saveBtn.classList.remove('saved-flash');
+          }, 1000);
           break;
         case 'content':
           if (!isDirty) {
@@ -1523,12 +1554,12 @@ export class WriterViewManager {
     function checkAllClean() {
       if (!isDirty && !attributesDirty && !contentSectionsDirty) {
         saveBtn.disabled = false;
-        saveBtn.classList.add('saved');
-        saveBtnText.textContent = '✓ Saved';
+        saveBtn.classList.remove('dirty');
+        saveBtn.classList.add('saved-flash');
+        saveBtn.title = 'All changes saved';
         setTimeout(() => {
-          saveBtn.classList.remove('saved');
-          saveBtnText.textContent = 'Save';
-        }, 1500);
+          saveBtn.classList.remove('saved-flash');
+        }, 1000);
       }
     }
     

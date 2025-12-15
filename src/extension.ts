@@ -35,6 +35,51 @@ export function getOutputChannel(): vscode.OutputChannel | undefined {
 }
 
 /**
+ * Restore the last saved Codex context on startup
+ */
+async function restoreLastContext(context: vscode.ExtensionContext): Promise<void> {
+  try {
+    const savedContextPath = context.workspaceState.get<string>('chapterwiseCodex.lastContextPath');
+    const savedContextType = context.workspaceState.get<string>('chapterwiseCodex.lastContextType');
+    
+    if (!savedContextPath || !savedContextType) {
+      return; // No saved context
+    }
+    
+    outputChannel.appendLine(`[restoreLastContext] Attempting to restore context: ${savedContextPath}`);
+    
+    // Verify the path still exists
+    if (!fs.existsSync(savedContextPath)) {
+      outputChannel.appendLine(`[restoreLastContext] Saved context path no longer exists: ${savedContextPath}`);
+      // Clear the invalid context
+      await context.workspaceState.update('chapterwiseCodex.lastContextPath', undefined);
+      await context.workspaceState.update('chapterwiseCodex.lastContextType', undefined);
+      return;
+    }
+    
+    // Verify it's in a workspace
+    const uri = vscode.Uri.file(savedContextPath);
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+    if (!workspaceFolder) {
+      outputChannel.appendLine(`[restoreLastContext] Saved context is not in a workspace`);
+      return;
+    }
+    
+    // Restore the context by calling the appropriate command
+    if (savedContextType === 'folder') {
+      outputChannel.appendLine(`[restoreLastContext] Restoring folder context: ${savedContextPath}`);
+      await vscode.commands.executeCommand('chapterwiseCodex.setContextFolder', uri);
+    } else if (savedContextType === 'file') {
+      outputChannel.appendLine(`[restoreLastContext] Restoring file context: ${savedContextPath}`);
+      await vscode.commands.executeCommand('chapterwiseCodex.setContextFile', uri);
+    }
+  } catch (error) {
+    outputChannel.appendLine(`[restoreLastContext] Error restoring context: ${error}`);
+    // Silently fail - don't break the extension
+  }
+}
+
+/**
  * Extension activation
  */
 export function activate(context: vscode.ExtensionContext): void {
@@ -89,6 +134,9 @@ export function activate(context: vscode.ExtensionContext): void {
     
     // Auto-discover index.codex.yaml in top-level folders
     autoDiscoverIndexFiles();
+    
+    // Restore last context if it was saved
+    restoreLastContext(context);
     
     console.log('ChapterWise Codex extension activated successfully!');
   } catch (error) {
@@ -918,6 +966,11 @@ function registerCommands(context: vscode.ExtensionContext): void {
         
         // Update tree view title
         treeView.title = `📋 ${path.basename(uri.fsPath)}`;
+        
+        // Save context for next session
+        await context.workspaceState.update('chapterwiseCodex.lastContextPath', uri.fsPath);
+        await context.workspaceState.update('chapterwiseCodex.lastContextType', 'folder');
+        outputChannel.appendLine(`[setContextFolder] Context saved to workspace state`);
       });
       
       outputChannel.appendLine(`[setContextFolder] Complete - Viewing: ${path.basename(uri.fsPath)}`);
@@ -954,6 +1007,11 @@ function registerCommands(context: vscode.ExtensionContext): void {
         // Update tree view title
         treeView.title = `📄 ${path.basename(uri.fsPath, '.codex.yaml')}`;
         
+        // Save context for next session
+        await context.workspaceState.update('chapterwiseCodex.lastContextPath', uri.fsPath);
+        await context.workspaceState.update('chapterwiseCodex.lastContextType', 'file');
+        outputChannel.appendLine(`[setContextFile] Context saved to workspace state`);
+        
         outputChannel.appendLine(`[setContextFile] Complete - Viewing: ${path.basename(uri.fsPath)}`);
         vscode.window.showInformationMessage(`📄 Viewing: ${path.basename(uri.fsPath)}`);
       } catch (error) {
@@ -979,6 +1037,11 @@ function registerCommands(context: vscode.ExtensionContext): void {
       
       // Reset tree view title
       treeView.title = 'ChapterWise Codex';
+      
+      // Clear saved context state
+      await context.workspaceState.update('chapterwiseCodex.lastContextPath', undefined);
+      await context.workspaceState.update('chapterwiseCodex.lastContextType', undefined);
+      outputChannel.appendLine(`[resetContext] Context cleared from workspace state`);
       
       // Stay in INDEX mode but show workspace root
       treeProvider.refresh();
