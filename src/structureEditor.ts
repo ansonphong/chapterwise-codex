@@ -1,0 +1,1171 @@
+/**
+ * Structure Editor - Filesystem-first operations
+ * 
+ * CORE PRINCIPLE: Filesystem is source of truth, index is derived cache
+ * 
+ * All operations:
+ * 1. Perform filesystem operation (move, rename, delete)
+ * 2. Update any broken include paths
+ * 3. Regenerate .index.codex.yaml from filesystem
+ * 4. Refresh UI
+ */
+
+import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as YAML from 'yaml';
+import { CodexNode, PathSegment } from './codexModel';
+import { NavigatorSettings } from './settingsManager';
+import { generateIndex, generatePerFolderIndex, cascadeRegenerateIndexes } from './indexGenerator';
+
+/**
+ * Result of a structure operation
+ */
+export interface StructureOperationResult {
+  success: boolean;
+  message?: string;
+  newPath?: string;
+  affectedFiles?: string[];
+}
+
+/**
+ * Structure Editor - Handles all filesystem operations
+ */
+export class CodexStructureEditor {
+  /**
+   * Move a file on disk (INDEX mode)
+   * Then regenerates index to reflect new filesystem structure
+   * 
+   * @param workspaceRoot - Root of the workspace
+   * @param sourceFilePath - Current file path (relative to workspace)
+   * @param targetParentPath - Target directory path (relative to workspace)
+   * @param settings - Navigator settings
+   * @returns Result of the operation
+   */
+  async moveFileInIndex(
+    workspaceRoot: string,
+    sourceFilePath: string,
+    targetParentPath: string,
+    settings: NavigatorSettings
+  ): Promise<StructureOperationResult> {
+    try {
+      const sourceFull = path.join(workspaceRoot, sourceFilePath);
+      const fileName = path.basename(sourceFilePath);
+      const targetFull = path.join(workspaceRoot, targetParentPath, fileName);
+      
+      // Check if source exists
+      if (!fs.existsSync(sourceFull)) {
+        return {
+          success: false,
+          message: `Source file not found: ${sourceFilePath}`
+        };
+      }
+      
+      // Check if target directory exists
+      const targetDir = path.dirname(targetFull);
+      if (!fs.existsSync(targetDir)) {
+        // Create target directory
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+      
+      // Check if target already exists
+      if (fs.existsSync(targetFull)) {
+        return {
+          success: false,
+          message: `Target file already exists: ${path.join(targetParentPath, fileName)}`
+        };
+      }
+      
+      // Move the file
+      fs.renameSync(sourceFull, targetFull);
+      
+      // Update include paths
+      const affectedFiles = await this.updateIncludePaths(
+        workspaceRoot,
+        sourceFilePath,
+        path.join(targetParentPath, fileName)
+      );
+      
+      // HYBRID APPROACH: Try surgical update first, fall back to full rescan
+      const surgicalSuccess = await this.updateIndexEntrySurgically(
+        workspaceRoot,
+        sourceFilePath,
+        path.join(targetParentPath, fileName)
+      );
+      
+      if (!surgicalSuccess) {
+        // Surgical update failed - fall back to full regeneration
+        console.warn('Surgical index update failed, performing full regeneration');
+        await generateIndex({ workspaceRoot });
+      }
+      
+      return {
+        success: true,
+        message: `Moved ${fileName} to ${targetParentPath}`,
+        newPath: path.join(targetParentPath, fileName),
+        affectedFiles
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to move file: ${error}`
+      };
+    }
+  }
+  
+  /**
+   * Rename a file on disk (INDEX mode)
+   * Renames file, updates includes, regenerates index
+   * 
+   * @param workspaceRoot - Root of the workspace
+   * @param oldPath - Current file path (relative to workspace)
+   * @param newName - New file name (without extension)
+   * @param settings - Navigator settings
+   * @returns Result with new path
+   */
+  async renameFileInIndex(
+    workspaceRoot: string,
+    oldPath: string,
+    newName: string,
+    settings: NavigatorSettings
+  ): Promise<StructureOperationResult> {
+    try {
+      const oldFull = path.join(workspaceRoot, oldPath);
+      const dir = path.dirname(oldPath);
+      const ext = path.extname(oldPath);
+      
+      // Apply naming conventions from settings
+      let sanitizedName = newName;
+      if (settings.naming.slugify) {
+        sanitizedName = this.slugifyName(newName, settings.naming);
+      }
+      
+      const newFileName = `${sanitizedName}${ext}`;
+      const newPath = path.join(dir, newFileName);
+      const newFull = path.join(workspaceRoot, newPath);
+      
+      // Check if source exists
+      if (!fs.existsSync(oldFull)) {
+        return {
+          success: false,
+          message: `Source file not found: ${oldPath}`
+        };
+      }
+      
+      // Check if target already exists
+      if (fs.existsSync(newFull) && oldFull !== newFull) {
+        return {
+          success: false,
+          message: `File already exists: ${newFileName}`
+        };
+      }
+      
+      // Rename the file
+      if (oldFull !== newFull) {
+        fs.renameSync(oldFull, newFull);
+      }
+      
+      // Update include paths
+      const affectedFiles = await this.updateIncludePaths(
+        workspaceRoot,
+        oldPath,
+        newPath
+      );
+      
+      // HYBRID APPROACH: Try surgical update first, fall back to full rescan
+      const surgicalSuccess = await this.updateIndexEntrySurgically(
+        workspaceRoot,
+        oldPath,
+        newPath
+      );
+      
+      if (!surgicalSuccess) {
+        // Surgical update failed - fall back to full regeneration
+        console.warn('Surgical index update failed, performing full regeneration');
+        await generateIndex({ workspaceRoot });
+      }
+      
+      return {
+        success: true,
+        message: `Renamed to ${newFileName}`,
+        newPath,
+        affectedFiles
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to rename file: ${error}`
+      };
+    }
+  }
+  
+  /**
+   * Delete a file from filesystem (INDEX mode)
+   * Moves to trash or permanently deletes, then regenerates index
+   * 
+   * @param workspaceRoot - Root of the workspace
+   * @param filePath - File to delete (relative to workspace)
+   * @param permanent - If true, permanently delete; otherwise move to trash
+   * @param settings - Navigator settings
+   * @returns Result of the operation
+   */
+  async removeFileFromIndex(
+    workspaceRoot: string,
+    filePath: string,
+    permanent: boolean = false,
+    settings: NavigatorSettings
+  ): Promise<StructureOperationResult> {
+    try {
+      const fullPath = path.join(workspaceRoot, filePath);
+      
+      // Check if file exists
+      if (!fs.existsSync(fullPath)) {
+        return {
+          success: false,
+          message: `File not found: ${filePath}`
+        };
+      }
+      
+      // Confirm if configured
+      if (settings.safety.confirmDelete) {
+        const action = permanent ? 'permanently delete' : 'move to trash';
+        const confirmed = await vscode.window.showWarningMessage(
+          `Are you sure you want to ${action} ${path.basename(filePath)}?`,
+          { modal: true },
+          'Yes', 'No'
+        );
+        
+        if (confirmed !== 'Yes') {
+          return {
+            success: false,
+            message: 'Deletion cancelled by user'
+          };
+        }
+      }
+      
+      // Backup if configured
+      if (settings.safety.backupBeforeDestruct && permanent) {
+        const backupPath = `${fullPath}.backup`;
+        fs.copyFileSync(fullPath, backupPath);
+      }
+      
+      // Delete the file
+      const fileUri = vscode.Uri.file(fullPath);
+      await vscode.workspace.fs.delete(fileUri, {
+        recursive: false,
+        useTrash: !permanent
+      });
+      
+      // Find files that included this file
+      const affectedFiles = await this.findFilesIncluding(workspaceRoot, filePath);
+      
+      // Warn about broken includes
+      if (affectedFiles.length > 0) {
+        vscode.window.showWarningMessage(
+          `${affectedFiles.length} file(s) have broken include paths. Consider fixing them.`
+        );
+      }
+      
+      // HYBRID APPROACH: Try surgical removal first, fall back to full rescan
+      const surgicalSuccess = await this.removeIndexEntrySurgically(
+        workspaceRoot,
+        filePath
+      );
+      
+      if (!surgicalSuccess) {
+        // Surgical update failed - fall back to full regeneration
+        console.warn('Surgical index removal failed, performing full regeneration');
+        await generateIndex({ workspaceRoot });
+      }
+      
+      return {
+        success: true,
+        message: permanent 
+          ? `Permanently deleted ${path.basename(filePath)}`
+          : `Moved ${path.basename(filePath)} to trash`,
+        affectedFiles
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to delete file: ${error}`
+      };
+    }
+  }
+  
+  /**
+   * Move a node within a document (FILES mode)
+   * Updates the document's YAML structure only, no filesystem operations
+   * 
+   * @param document - The document to edit
+   * @param sourceNode - Node to move
+   * @param targetNode - Target node (null = root)
+   * @param position - Where to place relative to target
+   * @returns Success/failure
+   */
+  async moveNodeInDocument(
+    document: vscode.TextDocument,
+    sourceNode: CodexNode,
+    targetNode: CodexNode | null,
+    position: 'before' | 'after' | 'inside'
+  ): Promise<boolean> {
+    try {
+      // Parse YAML document
+      const text = document.getText();
+      const yamlDoc = YAML.parseDocument(text);
+      
+      // Validate move (prevent circular references)
+      if (targetNode && this.wouldCreateCircularReference(sourceNode, targetNode)) {
+        vscode.window.showErrorMessage('Cannot nest a parent into its own child');
+        return false;
+      }
+      
+      // Find source node in YAML
+      const sourcePath = this.buildYamlPath(sourceNode.path);
+      const sourceValue = yamlDoc.getIn(sourcePath);
+      
+      if (!sourceValue) {
+        vscode.window.showErrorMessage('Source node not found in document');
+        return false;
+      }
+      
+      // Remove from current location
+      const sourceParentPath = sourcePath.slice(0, -1);
+      const sourceParent = yamlDoc.getIn(sourceParentPath);
+      if (Array.isArray(sourceParent)) {
+        const index = sourcePath[sourcePath.length - 1] as number;
+        sourceParent.splice(index, 1);
+      }
+      
+      // Add to new location
+      if (position === 'inside') {
+        // Add as child of target
+        const targetPath = targetNode ? this.buildYamlPath(targetNode.path) : [];
+        const targetChildren = targetPath.length > 0
+          ? yamlDoc.getIn([...targetPath, 'children'])
+          : yamlDoc.get('children');
+        
+        if (Array.isArray(targetChildren)) {
+          targetChildren.push(sourceValue);
+        } else {
+          // Create children array if it doesn't exist
+          const childrenPath = targetPath.length > 0 
+            ? [...targetPath, 'children']
+            : ['children'];
+          yamlDoc.setIn(childrenPath, [sourceValue]);
+        }
+      } else {
+        // Add as sibling (before/after target)
+        const targetPath = targetNode ? this.buildYamlPath(targetNode.path) : [];
+        const targetParentPath = targetPath.slice(0, -1);
+        const targetParent = targetParentPath.length > 0
+          ? yamlDoc.getIn(targetParentPath)
+          : yamlDoc.get('children');
+        
+        if (Array.isArray(targetParent)) {
+          const targetIndex = targetPath[targetPath.length - 1] as number;
+          const insertIndex = position === 'before' ? targetIndex : targetIndex + 1;
+          targetParent.splice(insertIndex, 0, sourceValue);
+        }
+      }
+      
+      // Apply edit to document
+      const newText = yamlDoc.toString();
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(
+        document.uri,
+        new vscode.Range(0, 0, document.lineCount, 0),
+        newText
+      );
+      
+      await vscode.workspace.applyEdit(edit);
+      await document.save();
+      
+      return true;
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to move node: ${error}`);
+      return false;
+    }
+  }
+  
+  /**
+   * Add a new node within a document (FILES mode)
+   * Updates the document's YAML structure
+   */
+  async addNodeInDocument(
+    document: vscode.TextDocument,
+    parentNode: CodexNode | null,
+    position: 'child' | 'sibling-before' | 'sibling-after',
+    nodeData: Partial<CodexNode>,
+    settings: NavigatorSettings
+  ): Promise<CodexNode | null> {
+    try {
+      // Parse YAML document
+      const text = document.getText();
+      const yamlDoc = YAML.parseDocument(text);
+      
+      // Generate ID if configured
+      if (settings.automation.autoGenerateIds && !nodeData.id) {
+        nodeData.id = this.generateUuid();
+      }
+      
+      // Create new node object
+      const newNode: any = {
+        id: nodeData.id,
+        type: nodeData.type,
+        name: nodeData.name
+      };
+      
+      // Add prose field if specified
+      if (nodeData.proseField && nodeData.proseValue !== undefined) {
+        newNode[nodeData.proseField] = nodeData.proseValue;
+      }
+      
+      // Determine insertion path
+      let insertPath: PathSegment[];
+      if (position === 'child') {
+        // Add as child of parent
+        insertPath = parentNode 
+          ? [...this.buildYamlPath(parentNode.path), 'children']
+          : ['children'];
+      } else {
+        // Add as sibling
+        insertPath = parentNode
+          ? this.buildYamlPath(parentNode.path).slice(0, -1)
+          : ['children'];
+      }
+      
+      // Get target array
+      let targetArray = yamlDoc.getIn(insertPath);
+      
+      // Create array if it doesn't exist
+      if (!targetArray) {
+        yamlDoc.setIn(insertPath, []);
+        targetArray = yamlDoc.getIn(insertPath);
+      }
+      
+      if (!Array.isArray(targetArray)) {
+        vscode.window.showErrorMessage('Target is not an array');
+        return null;
+      }
+      
+      // Insert at correct position
+      if (position === 'sibling-before' && parentNode) {
+        const parentPath = this.buildYamlPath(parentNode.path);
+        const index = parentPath[parentPath.length - 1] as number;
+        targetArray.splice(index, 0, newNode);
+      } else if (position === 'sibling-after' && parentNode) {
+        const parentPath = this.buildYamlPath(parentNode.path);
+        const index = parentPath[parentPath.length - 1] as number;
+        targetArray.splice(index + 1, 0, newNode);
+      } else {
+        // Child or at end
+        targetArray.push(newNode);
+      }
+      
+      // Apply edit
+      const newText = yamlDoc.toString();
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(
+        document.uri,
+        new vscode.Range(0, 0, document.lineCount, 0),
+        newText
+      );
+      
+      await vscode.workspace.applyEdit(edit);
+      
+      if (settings.automation.autoSave) {
+        await document.save();
+      }
+      
+      // Return created node (simplified version)
+      return {
+        ...nodeData,
+        id: newNode.id,
+        type: newNode.type,
+        name: newNode.name,
+        proseField: nodeData.proseField || 'body',
+        proseValue: nodeData.proseValue || '',
+        availableFields: ['body', 'summary'],
+        path: [...insertPath, targetArray.length - 1],
+        children: [],
+        hasAttributes: false,
+        hasContentSections: false
+      } as CodexNode;
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to add node: ${error}`);
+      return null;
+    }
+  }
+  
+  /**
+   * Remove a node from a document (FILES mode)
+   * Updates the document's YAML structure
+   */
+  async removeNodeFromDocument(
+    document: vscode.TextDocument,
+    node: CodexNode,
+    permanent: boolean = false,
+    settings: NavigatorSettings
+  ): Promise<boolean> {
+    try {
+      // Confirm if configured
+      if (settings.safety.confirmDelete) {
+        const action = permanent ? 'permanently delete' : 'remove from tree';
+        const confirmed = await vscode.window.showWarningMessage(
+          `Are you sure you want to ${action} "${node.name}"?`,
+          { modal: true },
+          'Yes', 'No'
+        );
+        
+        if (confirmed !== 'Yes') {
+          return false;
+        }
+      }
+      
+      // Parse YAML document
+      const text = document.getText();
+      const yamlDoc = YAML.parseDocument(text);
+      
+      // Find and remove node
+      const nodePath = this.buildYamlPath(node.path);
+      const parentPath = nodePath.slice(0, -1);
+      const parentArray = yamlDoc.getIn(parentPath);
+      
+      if (!Array.isArray(parentArray)) {
+        vscode.window.showErrorMessage('Cannot remove node: parent is not an array');
+        return false;
+      }
+      
+      const index = nodePath[nodePath.length - 1] as number;
+      parentArray.splice(index, 1);
+      
+      // Apply edit
+      const newText = yamlDoc.toString();
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(
+        document.uri,
+        new vscode.Range(0, 0, document.lineCount, 0),
+        newText
+      );
+      
+      await vscode.workspace.applyEdit(edit);
+      
+      if (settings.automation.autoSave) {
+        await document.save();
+      }
+      
+      return true;
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to remove node: ${error}`);
+      return false;
+    }
+  }
+  
+  /**
+   * Update reorder children in a document (FILES mode)
+   */
+  async reorderChildrenInDocument(
+    document: vscode.TextDocument,
+    parentPath: PathSegment[],
+    newOrder: string[]  // Array of child IDs
+  ): Promise<boolean> {
+    try {
+      const text = document.getText();
+      const yamlDoc = YAML.parseDocument(text);
+      
+      // Get children array
+      const childrenPath = [...this.buildYamlPath(parentPath), 'children'];
+      const children = yamlDoc.getIn(childrenPath);
+      
+      if (!Array.isArray(children)) {
+        return false;
+      }
+      
+      // Reorder based on newOrder
+      const reordered = newOrder.map(id => {
+        return children.find((child: any) => child.id === id);
+      }).filter(Boolean);
+      
+      // Replace children array
+      yamlDoc.setIn(childrenPath, reordered);
+      
+      // Apply edit
+      const newText = yamlDoc.toString();
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(
+        document.uri,
+        new vscode.Range(0, 0, document.lineCount, 0),
+        newText
+      );
+      
+      await vscode.workspace.applyEdit(edit);
+      await document.save();
+      
+      return true;
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to reorder children: ${error}`);
+      return false;
+    }
+  }
+  
+  // ============ SURGICAL INDEX UPDATE METHODS (PERFORMANCE OPTIMIZATION) ============
+  
+  /**
+   * Surgically update index entry for a moved file
+   * 100x faster than full rescan - only edits the YAML entry
+   * 
+   * @param workspaceRoot - Root of the workspace
+   * @param oldPath - Old file path (relative to workspace)
+   * @param newPath - New file path (relative to workspace)
+   * @returns True if successful, false if fallback to full rescan needed
+   */
+  private async updateIndexEntrySurgically(
+    workspaceRoot: string,
+    oldPath: string,
+    newPath: string
+  ): Promise<boolean> {
+    try {
+      const indexPath = path.join(workspaceRoot, '.index.codex.yaml');
+      
+      // Check if index exists
+      if (!fs.existsSync(indexPath)) {
+        console.log('No index file found, skipping surgical update');
+        return false;
+      }
+      
+      // Parse index YAML
+      const indexContent = fs.readFileSync(indexPath, 'utf-8');
+      const indexDoc = YAML.parseDocument(indexContent);
+      
+      // Get children array
+      const children = indexDoc.get('children');
+      if (!Array.isArray(children)) {
+        console.warn('Index children is not an array');
+        return false;
+      }
+      
+      // Find and update the entry
+      const updated = this.findAndUpdateFileEntry(
+        children,
+        oldPath,
+        newPath
+      );
+      
+      if (!updated) {
+        console.log(`File entry not found in index: ${oldPath}`);
+        return false;
+      }
+      
+      // Write back to disk (preserves formatting)
+      fs.writeFileSync(indexPath, indexDoc.toString(), 'utf-8');
+      
+      console.log(`✓ Surgically updated index: ${oldPath} → ${newPath}`);
+      return true;
+    } catch (error) {
+      console.error('Surgical index update failed:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Surgically remove an entry from the index
+   * 
+   * @param workspaceRoot - Root of the workspace
+   * @param filePath - File path to remove (relative to workspace)
+   * @returns True if successful
+   */
+  private async removeIndexEntrySurgically(
+    workspaceRoot: string,
+    filePath: string
+  ): Promise<boolean> {
+    try {
+      const indexPath = path.join(workspaceRoot, '.index.codex.yaml');
+      
+      if (!fs.existsSync(indexPath)) {
+        return false;
+      }
+      
+      const indexContent = fs.readFileSync(indexPath, 'utf-8');
+      const indexDoc = YAML.parseDocument(indexContent);
+      
+      const children = indexDoc.get('children');
+      if (!Array.isArray(children)) {
+        return false;
+      }
+      
+      // Find and remove the entry
+      const removed = this.findAndRemoveFileEntry(children, filePath);
+      
+      if (!removed) {
+        console.log(`File entry not found in index for removal: ${filePath}`);
+        return false;
+      }
+      
+      // Write back
+      fs.writeFileSync(indexPath, indexDoc.toString(), 'utf-8');
+      
+      console.log(`✓ Surgically removed from index: ${filePath}`);
+      return true;
+    } catch (error) {
+      console.error('Surgical index removal failed:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Recursively find and update a file entry in the index
+   * Updates: _filename, _computed_path, and optionally name
+   * 
+   * @param children - Array of child nodes
+   * @param oldPath - Old file path
+   * @param newPath - New file path
+   * @returns True if entry was found and updated
+   */
+  private findAndUpdateFileEntry(
+    children: any[],
+    oldPath: string,
+    newPath: string
+  ): boolean {
+    if (!Array.isArray(children)) {
+      return false;
+    }
+    
+    for (const child of children) {
+      // Check if this is the file we moved
+      // Match by _computed_path or _filename
+      const childPath = child._computed_path || child._filename;
+      const oldFileName = path.basename(oldPath);
+      
+      if (childPath === oldPath || child._filename === oldFileName) {
+        // UPDATE the entry fields
+        const newFileName = path.basename(newPath);
+        
+        child._computed_path = newPath;
+        child._filename = newFileName;
+        
+        // Update name if it was derived from filename
+        const oldBaseName = path.basename(oldPath, path.extname(oldPath));
+        const newBaseName = path.basename(newPath, path.extname(newPath));
+        
+        // Only update name if it matches the old filename (auto-generated)
+        if (child.name === oldBaseName || child.name === oldFileName) {
+          child.name = newBaseName;
+        }
+        
+        console.log(`  Updated: ${child.name} (${oldPath} → ${newPath})`);
+        return true;
+      }
+      
+      // Recurse into children
+      if (child.children && Array.isArray(child.children)) {
+        const found = this.findAndUpdateFileEntry(
+          child.children,
+          oldPath,
+          newPath
+        );
+        if (found) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+  
+  /**
+   * Recursively find and remove a file entry from the index
+   * 
+   * @param children - Array of child nodes
+   * @param filePath - File path to remove
+   * @returns True if entry was found and removed
+   */
+  private findAndRemoveFileEntry(
+    children: any[],
+    filePath: string
+  ): boolean {
+    if (!Array.isArray(children)) {
+      return false;
+    }
+    
+    const fileName = path.basename(filePath);
+    
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      const childPath = child._computed_path || child._filename;
+      
+      // Check if this is the file to remove
+      if (childPath === filePath || child._filename === fileName) {
+        // Remove from array
+        children.splice(i, 1);
+        console.log(`  Removed: ${child.name} (${filePath})`);
+        return true;
+      }
+      
+      // Recurse into children
+      if (child.children && Array.isArray(child.children)) {
+        const found = this.findAndRemoveFileEntry(child.children, filePath);
+        if (found) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+  
+  // ============ PRIVATE HELPER METHODS ============
+  
+  /**
+   * Update include paths in all files that reference the moved file
+   */
+  private async updateIncludePaths(
+    workspaceRoot: string,
+    oldPath: string,
+    newPath: string
+  ): Promise<string[]> {
+    const affectedFiles: string[] = [];
+    
+    try {
+      // Find all .codex.yaml files
+      const files = await vscode.workspace.findFiles(
+        '**/*.codex.yaml',
+        '**/node_modules/**'
+      );
+      
+      for (const fileUri of files) {
+        const content = fs.readFileSync(fileUri.fsPath, 'utf-8');
+        
+        // Check if this file includes the moved file
+        if (content.includes(oldPath)) {
+          // Update include paths
+          const updated = content.replace(
+            new RegExp(oldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
+            newPath
+          );
+          
+          if (updated !== content) {
+            fs.writeFileSync(fileUri.fsPath, updated, 'utf-8');
+            affectedFiles.push(path.relative(workspaceRoot, fileUri.fsPath));
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error updating include paths:', error);
+    }
+    
+    return affectedFiles;
+  }
+  
+  /**
+   * Find all files that include the specified file
+   */
+  private async findFilesIncluding(
+    workspaceRoot: string,
+    filePath: string
+  ): Promise<string[]> {
+    const affectedFiles: string[] = [];
+    
+    try {
+      const files = await vscode.workspace.findFiles(
+        '**/*.codex.yaml',
+        '**/node_modules/**'
+      );
+      
+      for (const fileUri of files) {
+        const content = fs.readFileSync(fileUri.fsPath, 'utf-8');
+        if (content.includes(filePath)) {
+          affectedFiles.push(path.relative(workspaceRoot, fileUri.fsPath));
+        }
+      }
+    } catch (error) {
+      console.error('Error finding files with includes:', error);
+    }
+    
+    return affectedFiles;
+  }
+  
+  /**
+   * Check if moving sourceNode into targetNode would create a circular reference
+   */
+  private wouldCreateCircularReference(
+    sourceNode: CodexNode,
+    targetNode: CodexNode
+  ): boolean {
+    // Walk up from target to see if we hit source
+    let current: CodexNode | undefined = targetNode;
+    while (current) {
+      if (current.id === sourceNode.id) {
+        return true;
+      }
+      // Note: This requires parent references in CodexNode
+      current = (current as any).parent;
+    }
+    return false;
+  }
+  
+  /**
+   * Build YAML path from PathSegment array
+   */
+  private buildYamlPath(pathSegments: PathSegment[]): PathSegment[] {
+    // Convert path segments to YAML document path
+    // e.g., [0, 'children', 1] -> ['children', 0, 'children', 1]
+    const yamlPath: PathSegment[] = [];
+    for (const segment of pathSegments) {
+      if (typeof segment === 'number') {
+        yamlPath.push(segment);
+      } else {
+        yamlPath.push('children', segment);
+      }
+    }
+    return yamlPath;
+  }
+  
+  /**
+   * Slugify a name based on naming settings
+   */
+  private slugifyName(name: string, namingSettings: NavigatorSettings['naming']): string {
+    let slug = name;
+    
+    // Convert to lowercase unless preserving case
+    if (!namingSettings.preserveCase) {
+      slug = slug.toLowerCase();
+    }
+    
+    // Replace spaces and special chars with separator
+    slug = slug.replace(/[\s_]+/g, namingSettings.separator);
+    slug = slug.replace(/[^a-zA-Z0-9-]/g, '');
+    
+    // Remove leading/trailing separators
+    const separatorPattern = new RegExp(`^${namingSettings.separator}+|${namingSettings.separator}+$`, 'g');
+    slug = slug.replace(separatorPattern, '');
+    
+    // Collapse multiple separators
+    const multiSeparatorPattern = new RegExp(`${namingSettings.separator}+`, 'g');
+    slug = slug.replace(multiSeparatorPattern, namingSettings.separator);
+    
+    return slug || 'untitled';
+  }
+  
+  /**
+   * Generate a UUID (simplified version)
+   */
+  private generateUuid(): string {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+  
+  /**
+   * Reorder a file in INDEX mode by updating per-folder .index.codex.yaml
+   * Then cascades up to regenerate all parent indexes
+   * 
+   * @param workspaceRoot - Root of the workspace
+   * @param filePath - File path (relative to workspace)
+   * @param newOrder - New order value (fractional allowed)
+   * @returns Result of the operation
+   */
+  async reorderFileInIndex(
+    workspaceRoot: string,
+    filePath: string,
+    newOrder: number
+  ): Promise<StructureOperationResult> {
+    try {
+      const folderPath = path.dirname(filePath);
+      const fileName = path.basename(filePath);
+      const perFolderIndexPath = path.join(
+        workspaceRoot,
+        folderPath,
+        '.index.codex.yaml'
+      );
+      
+      // Check if per-folder index exists
+      if (!fs.existsSync(perFolderIndexPath)) {
+        // Generate per-folder index first
+        const { generatePerFolderIndex } = require('./indexGenerator');
+        await generatePerFolderIndex(workspaceRoot, folderPath);
+      }
+      
+      // Read per-folder index
+      const indexContent = fs.readFileSync(perFolderIndexPath, 'utf-8');
+      const doc = YAML.parseDocument(indexContent);
+      
+      // Find the file node in children
+      const children = doc.get('children');
+      if (!children || !children.items) {
+        return {
+          success: false,
+          message: 'Invalid index structure: no children found'
+        };
+      }
+      
+      // Find node by _filename
+      let found = false;
+      for (const child of children.items) {
+        const childFilename = child.get('_filename');
+        if (childFilename === fileName) {
+          child.set('order', newOrder);
+          found = true;
+          break;
+        }
+      }
+      
+      if (!found) {
+        return {
+          success: false,
+          message: `File not found in index: ${fileName}`
+        };
+      }
+      
+      // Write back per-folder index (preserves formatting)
+      fs.writeFileSync(perFolderIndexPath, doc.toString(), 'utf-8');
+      
+      // Cascade regenerate all parent indexes
+      const { cascadeRegenerateIndexes } = require('./indexGenerator');
+      await cascadeRegenerateIndexes(workspaceRoot, folderPath);
+      
+      return {
+        success: true,
+        message: `Reordered ${fileName} to order ${newOrder}`,
+        newPath: filePath,
+        affectedFiles: [perFolderIndexPath]
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to reorder file: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+  
+  /**
+   * Renormalize order values in a folder to sequential integers (0, 1, 2, ...)
+   * Preserves the current sort order
+   * 
+   * @param workspaceRoot - Root of the workspace
+   * @param folderPath - Folder path (relative to workspace)
+   * @returns Result of the operation
+   */
+  async autofixFolderOrder(
+    workspaceRoot: string,
+    folderPath: string
+  ): Promise<StructureOperationResult> {
+    try {
+      const perFolderIndexPath = path.join(
+        workspaceRoot,
+        folderPath,
+        '.index.codex.yaml'
+      );
+      
+      // Check if per-folder index exists
+      if (!fs.existsSync(perFolderIndexPath)) {
+        return {
+          success: false,
+          message: 'Per-folder index not found'
+        };
+      }
+      
+      // Read per-folder index
+      const indexContent = fs.readFileSync(perFolderIndexPath, 'utf-8');
+      const doc = YAML.parseDocument(indexContent);
+      
+      // Get children
+      const children = doc.get('children');
+      if (!children || !children.items) {
+        return {
+          success: false,
+          message: 'Invalid index structure: no children found'
+        };
+      }
+      
+      // Sort children by current order, then by name
+      const sortedChildren = [...children.items].sort((a: any, b: any) => {
+        const orderA = a.get('order') ?? Infinity;
+        const orderB = b.get('order') ?? Infinity;
+        if (orderA !== orderB) return orderA - orderB;
+        
+        const nameA = a.get('name') || '';
+        const nameB = b.get('name') || '';
+        return nameA.localeCompare(nameB);
+      });
+      
+      // Renormalize: assign 0, 1, 2, ...
+      sortedChildren.forEach((child: any, index: number) => {
+        child.set('order', index);
+      });
+      
+      // Update children in document (preserve order)
+      children.items = sortedChildren;
+      
+      // Write back
+      fs.writeFileSync(perFolderIndexPath, doc.toString(), 'utf-8');
+      
+      // Cascade regenerate parent indexes
+      const { cascadeRegenerateIndexes } = require('./indexGenerator');
+      await cascadeRegenerateIndexes(workspaceRoot, folderPath);
+      
+      return {
+        success: true,
+        message: `Renormalized order values in ${folderPath}`,
+        affectedFiles: [perFolderIndexPath]
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to autofix folder order: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+  
+  /**
+   * Helper: Find a node in .index.codex.yaml by _computed_path
+   * Used for surgical updates
+   */
+  private findIndexNodeByPath(doc: YAML.Document, targetPath: string): YAML.YAMLMap | null {
+    const children = doc.get('children');
+    if (!children || !children.items) return null;
+    
+    function search(nodes: any[]): YAML.YAMLMap | null {
+      for (const node of nodes) {
+        const computedPath = node.get('_computed_path');
+        if (computedPath === targetPath) {
+          return node;
+        }
+        
+        // Recursively search children
+        const nodeChildren = node.get('children');
+        if (nodeChildren && nodeChildren.items) {
+          const found = search(nodeChildren.items);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+    
+    return search(children.items);
+  }
+}
+
+/**
+ * Singleton instance
+ */
+let editorInstance: CodexStructureEditor | null = null;
+
+/**
+ * Get the structure editor instance
+ */
+export function getStructureEditor(): CodexStructureEditor {
+  if (!editorInstance) {
+    editorInstance = new CodexStructureEditor();
+  }
+  return editorInstance;
+}
+
+/**
+ * Dispose the structure editor
+ */
+export function disposeStructureEditor(): void {
+  editorInstance = null;
+}

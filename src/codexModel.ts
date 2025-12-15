@@ -27,6 +27,7 @@ export interface CodexNode {
   path: PathSegment[];          // Path to this node in the document
   lineNumber?: number;          // Line number in source file (for navigation)
   children: CodexNode[];        // Child nodes
+  parent?: CodexNode;           // Parent node reference (for navigation and circular ref detection)
   attributes?: CodexAttribute[];
   contentSections?: CodexContentSection[];  // Content array sections
   relations?: CodexRelation[];
@@ -328,6 +329,7 @@ function parseNode(
       if (child && typeof child === 'object') {
         const childPath = [...path, 'children', idx];
         const childNode = parseNode(child as Record<string, unknown>, childPath, doc);
+        childNode.parent = node;  // Set parent reference
         node.children.push(childNode);
       }
     });

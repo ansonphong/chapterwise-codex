@@ -5,22 +5,34 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { CodexNode, CodexDocument, parseCodex, parseMarkdownAsCodex, isCodexFile, isCodexLikeFile, isMarkdownFile } from './codexModel';
+import { parseIndexFile, isIndexFile, IndexDocument, IndexChildNode, getEffectiveEmoji, countFilesInIndex } from './indexParser';
 
 /**
  * Tree item representing the file header at the top of the tree
  */
 export class CodexFileHeaderItem extends vscode.TreeItem {
   constructor(
-    public readonly documentUri: vscode.Uri
+    public readonly documentUri: vscode.Uri,
+    private readonly isIndexMode: boolean = false,
+    private readonly projectName?: string
   ) {
     const fileName = path.basename(documentUri.fsPath);
-    super(fileName, vscode.TreeItemCollapsibleState.None);
+    const displayText = isIndexMode && projectName
+      ? `📋 ${projectName}`
+      : fileName;
     
-    this.description = '';
-    this.tooltip = `Open ${documentUri.fsPath}`;
-    this.iconPath = new vscode.ThemeIcon('file-code');
-    this.contextValue = 'codexFileHeader';
+    super(displayText, vscode.TreeItemCollapsibleState.None);
+    
+    this.description = isIndexMode ? 'Project Index' : '';
+    this.tooltip = isIndexMode
+      ? `Project Index: ${projectName || fileName}`
+      : `Open ${documentUri.fsPath}`;
+    this.iconPath = new vscode.ThemeIcon(
+      isIndexMode ? 'list-tree' : 'file-code'
+    );
+    this.contextValue = isIndexMode ? 'indexHeader' : 'codexFileHeader';
     
     // Click to open the file in editor
     this.command = {
@@ -104,8 +116,112 @@ export class CodexFieldTreeItem extends vscode.TreeItem {
   }
 }
 
+/**
+ * Tree item representing a node in the index hierarchy
+ */
+export class IndexNodeTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly indexNode: IndexChildNode,
+    public readonly workspaceRoot: string,
+    public readonly documentUri: vscode.Uri,
+    private readonly isFolder: boolean,
+    private readonly hasChildren: boolean
+  ) {
+    const displayName = indexNode.title || indexNode.name;
+    
+    super(
+      displayName,
+      isFolder
+        ? (indexNode.expanded !== false
+            ? vscode.TreeItemCollapsibleState.Expanded
+            : vscode.TreeItemCollapsibleState.Collapsed)
+        : vscode.TreeItemCollapsibleState.None
+    );
+    
+    // Set description (show type)
+    this.description = indexNode.type;
+    
+    // Set tooltip
+    this.tooltip = this.createTooltip();
+    
+    // Set icon
+    this.iconPath = this.getIcon();
+    
+    // Set context value for menu contributions
+    this.contextValue = isFolder ? 'indexFolder' : 'indexFile';
+    
+    // Command: Open file or expand folder
+    if (!isFolder) {
+      this.command = {
+        command: 'chapterwiseCodex.openIndexFile',
+        title: 'Open File',
+        arguments: [this],
+      };
+    }
+  }
+  
+  private createTooltip(): vscode.MarkdownString {
+    const md = new vscode.MarkdownString();
+    md.appendMarkdown(`**${this.indexNode.title || this.indexNode.name}**\n\n`);
+    md.appendMarkdown(`- Type: \`${this.indexNode.type}\`\n`);
+    md.appendMarkdown(`- ID: \`${this.indexNode.id}\`\n`);
+    
+    if (this.indexNode._computed_path) {
+      md.appendMarkdown(`- Path: \`${this.indexNode._computed_path}\`\n`);
+    }
+    
+    return md;
+  }
+  
+  private getIcon(): vscode.ThemeIcon {
+    if (this.isFolder) {
+      return new vscode.ThemeIcon('folder', new vscode.ThemeColor('symbolIcon.folderForeground'));
+    }
+    
+    // Map types to icons (reuse from CodexTreeItem)
+    const iconMap: Record<string, [string, string]> = {
+      book: ['book', 'symbolIcon.classForeground'],
+      script: ['book', 'symbolIcon.classForeground'],
+      chapter: ['file-text', 'symbolIcon.functionForeground'],
+      character: ['person', 'symbolIcon.variableForeground'],
+      location: ['globe', 'symbolIcon.namespaceForeground'],
+      scene: ['symbol-event', 'symbolIcon.eventForeground'],
+      codex: ['file-code', 'symbolIcon.classForeground'],
+      markdown: ['markdown', 'symbolIcon.stringForeground'],
+    };
+    
+    const config = iconMap[this.indexNode.type.toLowerCase()];
+    if (config) {
+      return new vscode.ThemeIcon(config[0], new vscode.ThemeColor(config[1]));
+    }
+    
+    return new vscode.ThemeIcon('file', new vscode.ThemeColor('symbolIcon.fileForeground'));
+  }
+  
+  /**
+   * Resolve the absolute file path for this node
+   */
+  getFilePath(): string {
+    if (this.indexNode._computed_path) {
+      return path.join(this.workspaceRoot, this.indexNode._computed_path);
+    }
+    
+    // Fallback: build from parent chain
+    const parts: string[] = [];
+    let current: IndexChildNode | undefined = this.indexNode;
+    
+    while (current) {
+      const fileName = current._filename || current.name;
+      parts.unshift(fileName);
+      current = current.parent;
+    }
+    
+    return path.join(this.workspaceRoot, ...parts);
+  }
+}
+
 /** Union type for all tree items */
-export type CodexTreeItemType = CodexTreeItem | CodexFileHeaderItem | CodexFieldTreeItem;
+export type CodexTreeItemType = CodexTreeItem | CodexFileHeaderItem | CodexFieldTreeItem | IndexNodeTreeItem;
 
 /**
  * Tree item representing a Codex node in the sidebar
@@ -210,6 +326,11 @@ export class CodexTreeItem extends vscode.TreeItem {
 }
 
 /**
+ * Navigation mode for the tree provider
+ */
+export type NavigationMode = 'auto' | 'index' | 'files';
+
+/**
  * Provides data for the Codex Navigator tree view
  */
 export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemType> {
@@ -218,7 +339,13 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
   
   private activeDocument: vscode.TextDocument | null = null;
   private codexDoc: CodexDocument | null = null;
+  private indexDoc: IndexDocument | null = null;  // Index document
+  private isIndexMode: boolean = false;            // Index mode flag
   private filterType: string | null = null;
+  private navigationMode: NavigationMode = 'auto'; // Navigation mode state
+  private openCodexFiles: vscode.TextDocument[] = []; // Track open files
+  private contextFolder: string | null = null;     // Current folder context for scoped view
+  private workspaceRoot: string | null = null;     // Workspace root path
   
   constructor() {
     console.log('[ChapterWise Codex] TreeProvider constructor called');
@@ -294,7 +421,15 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     }
     
     this.activeDocument = document;
-    this.updateCodexDoc();
+    
+    // Check if this is an index file
+    if (isIndexFile(document.fileName)) {
+      this.isIndexMode = true;
+      this.updateIndexDoc();
+    } else {
+      this.isIndexMode = false;
+      this.updateCodexDoc();
+    }
   }
   
   /**
@@ -303,6 +438,8 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
   clearActiveDocument(): void {
     this.activeDocument = null;
     this.codexDoc = null;
+    this.indexDoc = null;
+    this.isIndexMode = false;
     this.refresh();
   }
   
@@ -314,10 +451,86 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
   }
   
   /**
+   * Get the currently parsed Index document
+   */
+  getIndexDocument(): IndexDocument | null {
+    return this.indexDoc;
+  }
+  
+  /**
+   * Get whether we're in index mode
+   */
+  isInIndexMode(): boolean {
+    return this.isIndexMode;
+  }
+  
+  /**
    * Get the active text document
    */
   getActiveTextDocument(): vscode.TextDocument | null {
     return this.activeDocument;
+  }
+  
+  /**
+   * Set navigation mode
+   */
+  setNavigationMode(mode: NavigationMode): void {
+    this.navigationMode = mode;
+    this.refresh();
+  }
+  
+  /**
+   * Get current navigation mode
+   */
+  getNavigationMode(): NavigationMode {
+    return this.navigationMode;
+  }
+  
+  /**
+   * Set the context folder (scoped view)
+   * This will load and display the index for the specified folder
+   */
+  async setContextFolder(folderPath: string | null, workspaceRoot: string): Promise<void> {
+    console.log('[ChapterWise Codex] Setting context folder:', folderPath);
+    this.contextFolder = folderPath;
+    this.workspaceRoot = workspaceRoot;
+    
+    if (folderPath) {
+      const indexPath = path.join(workspaceRoot, folderPath, '.index.codex.yaml');
+      
+      // Check if index exists
+      if (!fs.existsSync(indexPath)) {
+        console.log('[ChapterWise Codex] Index not found, will be generated');
+        // Index generation happens in the command handler
+        // Just set the flag and refresh - empty state will be shown
+        this.indexDoc = null;
+        this.isIndexMode = true;
+        this.refresh();
+        return;
+      }
+      
+      // Load existing index
+      try {
+        this.indexDoc = parseIndexFile(indexPath);
+        this.isIndexMode = true;
+        this.refresh();
+        console.log('[ChapterWise Codex] Context folder index loaded');
+      } catch (error) {
+        console.error('[ChapterWise Codex] Error loading context index:', error);
+        vscode.window.showErrorMessage(`Failed to load index: ${error}`);
+      }
+    } else {
+      // Reset to workspace root or FILES mode
+      this.contextFolder = null;
+      this.refresh();
+    }
+  }
+  
+  /**
+   * Get the current context folder path (relative to workspace root)
+   */
+  getContextFolder(): string | null {
+    return this.contextFolder;
   }
   
   /**
@@ -390,6 +603,23 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       this.codexDoc = parseCodex(text);
     }
     
+    this.indexDoc = null;  // Clear index doc
+    this.refresh();
+  }
+  
+  /**
+   * Parse index document
+   */
+  private updateIndexDoc(): void {
+    if (!this.activeDocument) {
+      this.indexDoc = null;
+      this.refresh();
+      return;
+    }
+    
+    const text = this.activeDocument.getText();
+    this.indexDoc = parseIndexFile(text);
+    this.codexDoc = null;  // Clear regular codex doc
     this.refresh();
   }
   
@@ -400,6 +630,22 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
   }
   
   getChildren(element?: CodexTreeItemType): vscode.ProviderResult<CodexTreeItemType[]> {
+    // CONTEXT FOLDER MODE - prioritize if set
+    if (this.contextFolder && this.workspaceRoot) {
+      return this.getIndexChildren(element);
+    }
+    
+    // FILES MODE - show all open codex files
+    if (this.navigationMode === 'files') {
+      return this.getFilesChildren(element);
+    }
+    
+    // INDEX MODE (explicit or auto-detected)
+    if (this.navigationMode === 'index' || (this.navigationMode === 'auto' && this.isIndexMode && this.indexDoc)) {
+      return this.getIndexChildren(element);
+    }
+    
+    // AUTO MODE - SINGLE FILE MODE (existing code)
     if (!this.activeDocument) {
       // Return empty - the welcome view will show
       return [];
@@ -469,6 +715,12 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     
     // Return field items + children of the given CodexTreeItem
     const items: CodexTreeItemType[] = [];
+    
+    // Only CodexTreeItem has codexNode
+    if (!(element instanceof CodexTreeItem)) {
+      return [];
+    }
+    
     const node = element.codexNode;
     const showFields = this.getShowFields();
     
@@ -516,6 +768,209 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     return items;
   }
   
+  /**
+   * Get children for index mode
+   */
+  private getIndexChildren(element?: CodexTreeItemType): CodexTreeItemType[] {
+    if (!this.indexDoc || !this.activeDocument) {
+      return [];
+    }
+    
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) {
+      return [];
+    }
+    
+    const uri = this.activeDocument.uri;
+    
+    if (!element) {
+      // Root level - show index header + children
+      const items: CodexTreeItemType[] = [
+        new CodexFileHeaderItem(uri, true, this.indexDoc.name)
+      ];
+      
+      // Add top-level children from index
+      for (const child of this.indexDoc.children) {
+        items.push(this.createIndexTreeItem(child, workspaceRoot, uri));
+      }
+      
+      return items;
+    }
+    
+    // File header has no children
+    if (element instanceof CodexFileHeaderItem) {
+      return [];
+    }
+    
+    // Index folder node - return its children
+    if (element instanceof IndexNodeTreeItem) {
+      if (!element.indexNode.children) {
+        return [];
+      }
+      
+      return element.indexNode.children.map(child =>
+        this.createIndexTreeItem(child, workspaceRoot, uri)
+      );
+    }
+    
+    return [];
+  }
+  
+  /**
+   * Get children for FILES mode - show all open codex files
+   */
+  private getFilesChildren(element?: CodexTreeItemType): CodexTreeItemType[] {
+    // Scan for all open .codex.yaml/.codex.json/.md files
+    const openFiles = vscode.workspace.textDocuments.filter(doc => 
+      isCodexLikeFile(doc.fileName)
+    );
+    
+    if (!element) {
+      // Root level - show file headers for each open file
+      return openFiles.map(doc => new CodexFileHeaderItem(doc.uri, false));
+    }
+    
+    // If element is a file header, expand it to show its content
+    if (element instanceof CodexFileHeaderItem) {
+      const doc = openFiles.find(d => d.uri.toString() === element.documentUri.toString());
+      if (!doc) {
+        return [];
+      }
+      
+      // Parse the document
+      const text = doc.getText();
+      const fileName = doc.fileName;
+      let codexDoc: CodexDocument | null = null;
+      
+      if (isIndexFile(fileName)) {
+        // Index files don't expand in FILES mode
+        return [];
+      } else if (isMarkdownFile(fileName)) {
+        codexDoc = parseMarkdownAsCodex(text, fileName);
+      } else {
+        codexDoc = parseCodex(text);
+      }
+      
+      if (!codexDoc || !codexDoc.rootNode) {
+        return [];
+      }
+      
+      const root = codexDoc.rootNode;
+      const showFields = this.getShowFields();
+      const items: CodexTreeItemType[] = [];
+      
+      // Helper to check if node has fields to show
+      const nodeHasFields = (node: CodexNode) => 
+        showFields && (node.availableFields.length > 0 || node.hasAttributes || node.hasContentSections);
+      
+      // If root has meaningful content, show it; otherwise show its children
+      if (root.id || root.type !== 'unknown') {
+        items.push(new CodexTreeItem(root, doc.uri, root.children.length > 0, true, nodeHasFields(root)));
+      } else {
+        // Root is just a container, show children directly
+        items.push(...root.children.map(
+          (child) => new CodexTreeItem(child, doc.uri, child.children.length > 0, true, nodeHasFields(child))
+        ));
+      }
+      
+      return items;
+    }
+    
+    // For CodexTreeItem nodes, delegate to existing logic (child nodes, fields, etc.)
+    if (element instanceof CodexTreeItem) {
+      const node = element.codexNode;
+      const showFields = this.getShowFields();
+      const items: CodexTreeItemType[] = [];
+      
+      // Add field items first (if enabled)
+      if (showFields) {
+        // Add prose fields (body, summary, etc.)
+        for (const fieldName of node.availableFields) {
+          const preview = fieldName === node.proseField ? node.proseValue : undefined;
+          items.push(new CodexFieldTreeItem(fieldName, 'prose', node, element.documentUri, preview));
+        }
+        
+        // Add attributes section if present
+        if (node.hasAttributes && node.attributes && node.attributes.length > 0) {
+          items.push(new CodexFieldTreeItem(
+            `attributes (${node.attributes.length})`,
+            'attributes',
+            node,
+            element.documentUri
+          ));
+        }
+        
+        // Add content sections if present
+        if (node.hasContentSections && node.contentSections && node.contentSections.length > 0) {
+          items.push(new CodexFieldTreeItem(
+            `content (${node.contentSections.length})`,
+            'content',
+            node,
+            element.documentUri
+          ));
+        }
+      }
+      
+      // Add child nodes
+      const childHasFields = showFields;
+      items.push(...node.children.map(
+        (child) => new CodexTreeItem(
+          child, 
+          element.documentUri, 
+          child.children.length > 0,
+          false,
+          childHasFields && (child.availableFields.length > 0 || child.hasAttributes || child.hasContentSections)
+        )
+      ));
+      
+      return items;
+    }
+    
+    return [];
+  }
+  
+  /**
+   * Create tree item from index node
+   */
+  private createIndexTreeItem(
+    node: IndexChildNode,
+    workspaceRoot: string,
+    documentUri: vscode.Uri
+  ): IndexNodeTreeItem {
+    const isFolder = node.type === 'folder';
+    const hasChildren = node.children && node.children.length > 0;
+    
+    return new IndexNodeTreeItem(
+      node,
+      workspaceRoot,
+      documentUri,
+      isFolder,
+      !!hasChildren
+    );
+  }
+  
+  /**
+   * Get workspace root directory
+   */
+  private getWorkspaceRoot(): string | null {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      return null;
+    }
+    
+    // If active document is in workspace, use its folder
+    if (this.activeDocument) {
+      for (const folder of workspaceFolders) {
+        if (this.activeDocument.uri.fsPath.startsWith(folder.uri.fsPath)) {
+          return folder.uri.fsPath;
+        }
+      }
+    }
+    
+    // Fallback to first workspace folder
+    return workspaceFolders[0].uri.fsPath;
+  }
+  
   getParent(element: CodexTreeItemType): vscode.ProviderResult<CodexTreeItemType> {
     // Could implement for reveal functionality
     return null;
@@ -534,6 +989,7 @@ export function createCodexTreeView(context: vscode.ExtensionContext): {
   const treeView = vscode.window.createTreeView('chapterwiseCodexNavigator', {
     treeDataProvider: treeProvider,
     showCollapseAll: true,
+    canSelectMany: true, // Enable multi-selection (Cmd+Click, Shift+Click)
   });
   
   context.subscriptions.push(treeView);

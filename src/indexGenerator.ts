@@ -1,986 +1,724 @@
 /**
- * Index Generator - Auto-generate index.codex.yaml files
+ * Index Generator - Fractal Cascade Architecture
  * 
- * Scans workspace folders and generates V2.1 format index files
- * with gitignore-like pattern matching, typeStyles, and status support.
+ * Scans workspace and generates .index.codex.yaml with full project hierarchy
+ * 
+ * NEW: Per-folder indexes
+ * - Each folder can have its own .index.codex.yaml
+ * - Per-folder indexes define order for immediate children
+ * - Parent indexes merge child indexes (cascade up)
+ * - Top-level index is complete workspace tree
  */
 
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as YAML from 'yaml';
+import YAML from 'yaml';
 import { minimatch } from 'minimatch';
-import { generateUuid } from './codexModel';
 
-/**
- * Default include patterns for index generation
- */
-const DEFAULT_INCLUDE_PATTERNS = [
-  '*.codex.yaml',
-  '*.codex.json',
-  '*.md',
-];
-
-/**
- * Default exclude patterns for index generation
- */
-const DEFAULT_EXCLUDE_PATTERNS = [
-  '**/node_modules/**',
-  '**/.git/**',
-  '**/__pycache__/**',
-  '**/venv/**',
-  '**/.venv/**',
-  '**/dist/**',
-  '**/build/**',
-  '**/.DS_Store',
-  '**/._*',
-  '**/.*',           // Hidden files
-  '**/*.jpg',        // Images excluded by default
-  '**/*.jpeg',
-  '**/*.png',
-  '**/*.gif',
-  '**/*.webp',
-  '**/*.svg',
-  '**/*.ico',
-  '**/index.codex.yaml',      // Don't include the index itself
-  '**/.index.codex.yaml',
-];
-
-/**
- * Default type styles for common entity types
- */
-const DEFAULT_TYPE_STYLES: TypeStyle[] = [
-  { type: 'character', emoji: '👤', color: '#8B5CF6' },
-  { type: 'location', emoji: '🌍', color: '#10B981' },
-  { type: 'chapter', emoji: '📖', color: '#3B82F6' },
-  { type: 'scene', emoji: '🎬', color: '#F59E0B' },
-  { type: 'act', emoji: '🎭', color: '#EC4899' },
-  { type: 'folder', emoji: '📁', color: '#6B7280' },
-  { type: 'codex', emoji: '📚', color: '#10B981' },
-  { type: 'markdown', emoji: '📝', color: '#6B7280' },
-  { type: 'index', emoji: '📋', color: '#4F46E5' },
-];
-
-/**
- * File type detection mapping
- */
-const FILE_TYPE_MAP: Record<string, string> = {
-  '.codex.yaml': 'codex',
-  '.codex.json': 'codex',
-  '.codex': 'codex',
-  '.md': 'markdown',
-  '.txt': 'text',
-  '.json': 'json',
-  '.yaml': 'yaml',
-  '.yml': 'yaml',
-};
-
-/**
- * Type style definition
- */
-interface TypeStyle {
-  type: string;
-  emoji: string;
-  color?: string;
+export interface GenerateIndexOptions {
+  workspaceRoot: string;
+  indexFilePath?: string;
+  progressReporter?: vscode.Progress<{ message?: string; increment?: number }>;
 }
 
-/**
- * Gallery image definition
- */
-interface GalleryImage {
-  path?: string;
-  url?: string;
-  caption?: string;
-}
-
-/**
- * Index patterns configuration
- */
-interface IndexPatterns {
+export interface IndexPatterns {
   include: string[];
   exclude: string[];
 }
 
 /**
- * Gallery configuration
+ * Generate complete index from workspace scan
  */
-interface IndexGallery {
-  coverImage?: string;
-  images?: GalleryImage[];
-}
+export async function generateIndex(
+  options: GenerateIndexOptions
+): Promise<string> {
+  const { workspaceRoot, indexFilePath, progressReporter } = options;
 
-/**
- * Index child node
- */
-interface IndexChild {
-  id: string;
-  type: string;
-  name: string;
-  title?: string;
-  order: number;
-  expanded?: boolean;
-  emoji?: string;
-  thumbnail?: string;
-  status?: 'published' | 'private' | 'draft';
-  featured?: boolean;
-  featuredOrder?: number;
-  children?: IndexChild[];
-  // Internal tracking
-  _isManual?: boolean;
-}
-
-/**
- * Complete index structure
- */
-interface IndexData {
-  metadata: {
-    formatVersion: string;
-    documentVersion: string;
-    created: string;
-    updated?: string;
-    author?: string;
-    generated?: boolean;
-  };
-  id: string;
-  type: string;
-  name: string;
-  title?: string;
-  summary?: string;
-  attributes: Array<{ key: string; value: unknown }>;
-  patterns: IndexPatterns;
-  typeStyles: TypeStyle[];
-  gallery?: IndexGallery;
-  status: 'published' | 'private' | 'draft';
-  children: IndexChild[];
-}
-
-/**
- * Options for index generation
- */
-export interface GenerateIndexOptions {
-  projectName?: string;
-  patterns?: Partial<IndexPatterns>;
-  typeStyles?: TypeStyle[];
-  status?: 'published' | 'private' | 'draft';
-  preserveManualEdits?: boolean;
-}
-
-/**
- * Index Generator class
- */
-export class IndexGenerator {
-  private typeCache: Map<string, string> = new Map();
-
-  /**
-   * Generate a new index.codex.yaml file
-   */
-  async generateIndex(
-    basePath: string,
-    options: GenerateIndexOptions = {}
-  ): Promise<IndexData> {
-    const projectName = options.projectName || path.basename(basePath);
-    
-    // Merge patterns with defaults
-    const patterns: IndexPatterns = {
-      include: options.patterns?.include || DEFAULT_INCLUDE_PATTERNS,
-      exclude: options.patterns?.exclude || DEFAULT_EXCLUDE_PATTERNS,
-    };
-
-    // Merge type styles with defaults
-    const typeStyles = options.typeStyles || DEFAULT_TYPE_STYLES;
-
-    // Scan directory for files
-    const files = await this.scanDirectory(basePath, patterns);
-
-    // Build children tree
-    const children = this.buildChildrenTree(files, basePath, typeStyles);
-
-    // Detect emoji and color for project
-    const projectEmoji = this.detectEmoji(projectName);
-    const projectColor = '#10B981'; // Default emerald
-
-    // Detect main file
-    const mainFile = this.detectMainFile(basePath, files);
-
-    // Build index structure
-    const indexData: IndexData = {
-      metadata: {
-        formatVersion: '2.1',
-        documentVersion: '1.0.0',
-        created: new Date().toISOString(),
-        generated: true,
-      },
-      id: 'index-root',
-      type: 'index',
-      name: projectName,
-      summary: `Index for ${projectName}`,
-      attributes: [
-        { key: 'emoji', value: projectEmoji },
-        { key: 'color', value: projectColor },
-      ],
-      patterns,
-      typeStyles,
-      status: options.status || 'private',
-      children,
-    };
-
-    // Add mainFile attribute if found
-    if (mainFile) {
-      indexData.attributes.push({ key: 'mainFile', value: mainFile });
-    }
-
-    return indexData;
+  // Step 1: Load index.codex.yaml if exists
+  let indexDef: any = null;
+  if (indexFilePath && fs.existsSync(indexFilePath)) {
+    const content = fs.readFileSync(indexFilePath, 'utf-8');
+    indexDef = YAML.parse(content);
   }
 
-  /**
-   * Regenerate index while preserving manual edits
-   */
-  async regenerateIndex(
-    basePath: string,
-    existingIndex: IndexData
-  ): Promise<IndexData> {
-    // Extract patterns from existing index
-    const patterns = existingIndex.patterns || {
-      include: DEFAULT_INCLUDE_PATTERNS,
-      exclude: DEFAULT_EXCLUDE_PATTERNS,
-    };
+  progressReporter?.report({ message: 'Loading patterns...', increment: 10 });
 
-    // Scan for current files
-    const files = await this.scanDirectory(basePath, patterns);
-    const typeStyles = existingIndex.typeStyles || DEFAULT_TYPE_STYLES;
+  // Step 2: Get patterns
+  const patterns = indexDef?.patterns || getDefaultPatterns();
 
-    // Build new children tree
-    const newChildren = this.buildChildrenTree(files, basePath, typeStyles);
+  // Step 3: Scan workspace
+  progressReporter?.report({ message: 'Scanning workspace...', increment: 20 });
+  const files = await scanWorkspace(workspaceRoot, patterns);
 
-    // Merge with existing, preserving manual edits
-    const mergedChildren = this.mergeChildren(
-      existingIndex.children || [],
-      newChildren
-    );
-
-    // Update the index
-    const updatedIndex: IndexData = {
-      ...existingIndex,
-      metadata: {
-        ...existingIndex.metadata,
-        updated: new Date().toISOString(),
-      },
-      children: mergedChildren,
-    };
-
-    return updatedIndex;
-  }
-
-  /**
-   * Scan directory for files matching patterns
-   */
-  private async scanDirectory(
-    basePath: string,
-    patterns: IndexPatterns
-  ): Promise<string[]> {
-    const files: string[] = [];
-    
-    const scanRecursive = (dirPath: string) => {
-      try {
-        const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-
-        for (const entry of entries) {
-          const fullPath = path.join(dirPath, entry.name);
-          const relativePath = path.relative(basePath, fullPath);
-
-          // Check exclusions first
-          if (this.matchesAnyPattern(relativePath, patterns.exclude)) {
-            continue;
-          }
-
-          if (entry.isDirectory()) {
-            scanRecursive(fullPath);
-          } else if (entry.isFile()) {
-            // Check if file matches include patterns
-            if (this.matchesAnyPattern(relativePath, patterns.include)) {
-              files.push(fullPath);
-            }
-          }
-        }
-      } catch (error) {
-        console.error(`Error scanning ${dirPath}:`, error);
-      }
-    };
-
-    scanRecursive(basePath);
-    return files.sort();
-  }
-
-  /**
-   * Check if path matches any of the patterns
-   */
-  private matchesAnyPattern(filePath: string, patterns: string[]): boolean {
-    // Normalize path separators for cross-platform
-    const normalizedPath = filePath.replace(/\\/g, '/');
-    
-    for (const pattern of patterns) {
-      // Handle simple extension patterns like "*.md"
-      if (pattern.startsWith('*.')) {
-        const ext = pattern.slice(1); // Get ".md" from "*.md"
-        if (normalizedPath.endsWith(ext)) {
-          return true;
-        }
-        // Also check compound extensions like ".codex.yaml"
-        if (ext.includes('.') && normalizedPath.endsWith(ext)) {
-          return true;
-        }
-      }
-      
-      // Handle glob patterns
-      if (minimatch(normalizedPath, pattern, { dot: true, matchBase: true })) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /**
-   * Build hierarchical children tree from flat file list
-   */
-  private buildChildrenTree(
-    files: string[],
-    basePath: string,
-    typeStyles: TypeStyle[]
-  ): IndexChild[] {
-    // Organize files by directory
-    const tree: Record<string, unknown> = {};
-
-    for (const filePath of files) {
-      const relativePath = path.relative(basePath, filePath);
-      const parts = relativePath.split(path.sep);
-
-      let current = tree;
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-        
-        if (i === parts.length - 1) {
-          // It's a file
-          if (!current._files) {
-            current._files = [];
-          }
-          (current._files as Array<{ name: string; fullPath: string }>).push({
-            name: part,
-            fullPath: filePath,
-          });
-        } else {
-          // It's a folder
-          if (!current[part]) {
-            current[part] = {};
-          }
-          current = current[part] as Record<string, unknown>;
-        }
-      }
-    }
-
-    return this.treeToChildren(tree, typeStyles);
-  }
-
-  /**
-   * Convert tree structure to children array
-   */
-  private treeToChildren(
-    tree: Record<string, unknown>,
-    typeStyles: TypeStyle[],
-    orderStart: number = 1
-  ): IndexChild[] {
-    const children: IndexChild[] = [];
-    let order = orderStart;
-
-    // Get type style helper
-    const getTypeStyle = (type: string): TypeStyle | undefined => {
-      return typeStyles.find(ts => ts.type === type);
-    };
-
-    // Process folders first (alphabetically)
-    const folders = Object.keys(tree)
-      .filter(k => k !== '_files')
-      .sort();
-
-    for (const folderName of folders) {
-      const folderId = generateUuid();
-      const folderStyle = getTypeStyle('folder');
-      const folderChildren = this.treeToChildren(
-        tree[folderName] as Record<string, unknown>,
-        typeStyles,
-        1
-      );
-
-      const folderNode: IndexChild = {
-        id: folderId,
-        type: 'folder',
-        name: folderName,
-        order: order,
-        expanded: order <= 3, // Expand first 3 folders
-        children: folderChildren,
-      };
-
-      // Apply type style emoji if defined
-      if (folderStyle?.emoji) {
-        folderNode.emoji = folderStyle.emoji;
-      }
-
-      children.push(folderNode);
-      order++;
-    }
-
-    // Process files (alphabetically)
-    const filesArray = (tree._files as Array<{ name: string; fullPath: string }>) || [];
-    const sortedFiles = filesArray.sort((a, b) => a.name.localeCompare(b.name));
-
-    for (const fileInfo of sortedFiles) {
-      const fileId = generateUuid();
-      const fileType = this.detectFileType(fileInfo.fullPath);
-      const typeStyle = getTypeStyle(fileType);
-
-      const fileNode: IndexChild = {
-        id: fileId,
-        type: fileType,
-        name: fileInfo.name,
-        order: order,
-      };
-
-      // Generate display title from filename
-      const titleFromName = this.generateTitle(fileInfo.name);
-      if (titleFromName !== fileInfo.name) {
-        fileNode.title = titleFromName;
-      }
-
-      // Apply type style emoji if defined
-      if (typeStyle?.emoji) {
-        fileNode.emoji = typeStyle.emoji;
-      }
-
-      children.push(fileNode);
-      order++;
-    }
-
-    return children;
-  }
-
-  /**
-   * Merge new children with existing, preserving manual edits
-   */
-  private mergeChildren(
-    existing: IndexChild[],
-    newChildren: IndexChild[]
-  ): IndexChild[] {
-    const result: IndexChild[] = [];
-    const existingByName = new Map<string, IndexChild>();
-
-    // Index existing children by name
-    for (const child of existing) {
-      existingByName.set(child.name, child);
-    }
-
-    // Track which existing items were matched
-    const matched = new Set<string>();
-
-    // Process new children
-    for (const newChild of newChildren) {
-      const existingChild = existingByName.get(newChild.name);
-
-      if (existingChild) {
-        matched.add(newChild.name);
-
-        // Merge: keep manual overrides from existing
-        const merged: IndexChild = {
-          ...newChild,
-          id: existingChild.id, // Preserve ID
-          // Preserve manual overrides if they exist
-          ...(existingChild.title && { title: existingChild.title }),
-          ...(existingChild.emoji && { emoji: existingChild.emoji }),
-          ...(existingChild.thumbnail && { thumbnail: existingChild.thumbnail }),
-          ...(existingChild.status && { status: existingChild.status }),
-          ...(existingChild.featured !== undefined && { featured: existingChild.featured }),
-          ...(existingChild.featuredOrder !== undefined && { featuredOrder: existingChild.featuredOrder }),
-        };
-
-        // Recursively merge children for folders
-        if (newChild.children && existingChild.children) {
-          merged.children = this.mergeChildren(existingChild.children, newChild.children);
-        } else if (existingChild.children) {
-          merged.children = existingChild.children;
-        }
-
-        result.push(merged);
-      } else {
-        // New file/folder - add it
-        result.push(newChild);
-      }
-    }
-
-    // Add manually added items that weren't matched (preserve them)
-    for (const child of existing) {
-      if (!matched.has(child.name) && child._isManual) {
-        result.push(child);
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Detect file type from path
-   */
-  private detectFileType(filePath: string): string {
-    const fileName = path.basename(filePath).toLowerCase();
-
-    // Check compound extensions first
-    for (const [ext, type] of Object.entries(FILE_TYPE_MAP)) {
-      if (fileName.endsWith(ext)) {
-        // For codex files, try to read actual type from content
-        if (type === 'codex') {
-          const actualType = this.readActualType(filePath);
-          if (actualType) {
-            return actualType;
-          }
-        }
-        return type;
-      }
-    }
-
-    return 'unknown';
-  }
-
-  /**
-   * Read actual type field from codex file
-   */
-  private readActualType(filePath: string): string | null {
-    // Check cache
-    if (this.typeCache.has(filePath)) {
-      return this.typeCache.get(filePath) || null;
-    }
-
-    try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      // Only parse first part for performance
-      const lines = content.split('\n').slice(0, 50).join('\n');
-      const data = YAML.parse(lines);
-
-      if (data && typeof data === 'object' && typeof data.type === 'string') {
-        this.typeCache.set(filePath, data.type);
-        return data.type;
-      }
-    } catch {
-      // Ignore parsing errors
-    }
-
-    this.typeCache.set(filePath, '');
-    return null;
-  }
-
-  /**
-   * Generate display title from filename
-   */
-  private generateTitle(filename: string): string {
-    // Remove extensions
-    let title = filename
-      .replace(/\.codex\.(yaml|json)$/i, '')
-      .replace(/\.codex$/i, '')
-      .replace(/\.(md|txt|yaml|yml|json)$/i, '');
-
-    // Replace hyphens/underscores with spaces
-    title = title.replace(/[-_]/g, ' ');
-
-    // Title case
-    title = title
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
-
-    return title;
-  }
-
-  /**
-   * Detect emoji based on project name
-   */
-  private detectEmoji(projectName: string): string {
-    const nameLower = projectName.toLowerCase();
-
-    const emojiPatterns: Record<string, string> = {
-      codex: '📚',
-      book: '📖',
-      story: '📝',
-      novel: '✍️',
-      character: '👤',
-      world: '🌍',
-      universe: '🌌',
-      magic: '✨',
-      fantasy: '🐉',
-      'sci-fi': '🚀',
-      science: '🔬',
-      tech: '💻',
-      code: '💻',
-      api: '⚙️',
-      doc: '📄',
-      guide: '📋',
-      wiki: '📚',
-      note: '📝',
-      journal: '📔',
-      chakra: '🧘',
-      game: '🎮',
-      music: '🎵',
-      art: '🎨',
-      film: '🎬',
-      movie: '🎬',
-    };
-
-    for (const [pattern, emoji] of Object.entries(emojiPatterns)) {
-      if (nameLower.includes(pattern)) {
-        return emoji;
-      }
-    }
-
-    return '📚';
-  }
-
-  /**
-   * Detect main file (README, index, etc.)
-   */
-  private detectMainFile(basePath: string, files: string[]): string | null {
-    const mainFileNames = [
-      'README.md',
-      'readme.md',
-      'INDEX.md',
-      'index.md',
-      'INTRO.md',
-      'intro.md',
-    ];
-
-    for (const file of files) {
-      const fileName = path.basename(file);
-      const dirPath = path.dirname(file);
-
-      // Only consider root-level files
-      if (dirPath === basePath && mainFileNames.includes(fileName)) {
-        return fileName;
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Save index to file
-   */
-  saveIndex(indexData: IndexData, outputPath: string): string {
-    const filePath = path.join(outputPath, 'index.codex.yaml');
-
-    // Convert to YAML with nice formatting
-    const doc = new YAML.Document(indexData);
-
-    // Set block style for long strings
-    const setBlockStyle = (node: unknown): void => {
-      if (YAML.isMap(node)) {
-        for (const pair of node.items) {
-          if (YAML.isScalar(pair.value) && typeof pair.value.value === 'string') {
-            const str = pair.value.value;
-            if (str.includes('\n') || str.length > 80) {
-              pair.value.type = YAML.Scalar.BLOCK_LITERAL;
-            }
-          } else {
-            setBlockStyle(pair.value);
-          }
-        }
-      } else if (YAML.isSeq(node)) {
-        for (const item of node.items) {
-          setBlockStyle(item);
-        }
-      }
-    };
-
-    setBlockStyle(doc.contents);
-
-    const yamlString = doc.toString({ lineWidth: 120 });
-    fs.writeFileSync(filePath, yamlString, 'utf-8');
-
-    return filePath;
-  }
-
-  /**
-   * Load existing index file
-   */
-  loadIndex(indexPath: string): IndexData | null {
-    try {
-      const content = fs.readFileSync(indexPath, 'utf-8');
-      return YAML.parse(content) as IndexData;
-    } catch {
-      return null;
-    }
-  }
-}
-
-// ============================================================================
-// VS Code Command Handlers
-// ============================================================================
-
-let outputChannel: vscode.OutputChannel | undefined;
-
-function getOutputChannel(): vscode.OutputChannel {
-  if (!outputChannel) {
-    outputChannel = vscode.window.createOutputChannel('ChapterWise Index Generator');
-  }
-  return outputChannel;
-}
-
-/**
- * Run the Generate Index command
- */
-export async function runGenerateIndex(): Promise<void> {
-  // Get workspace folder
-  const workspaceFolders = vscode.workspace.workspaceFolders;
-
-  if (!workspaceFolders || workspaceFolders.length === 0) {
-    vscode.window.showErrorMessage('No workspace folder open. Open a folder first.');
-    return;
-  }
-
-  // If multiple folders, let user pick
-  let targetFolder: vscode.WorkspaceFolder;
-
-  if (workspaceFolders.length === 1) {
-    targetFolder = workspaceFolders[0];
-  } else {
-    const picked = await vscode.window.showQuickPick(
-      workspaceFolders.map(f => ({
-        label: f.name,
-        description: f.uri.fsPath,
-        folder: f,
-      })),
-      {
-        title: 'Select Workspace Folder',
-        placeHolder: 'Which folder should the index be generated for?',
-      }
-    );
-
-    if (!picked) {
-      return;
-    }
-    targetFolder = picked.folder;
-  }
-
-  const basePath = targetFolder.uri.fsPath;
-  const indexPath = path.join(basePath, 'index.codex.yaml');
-
-  // Check if index already exists
-  if (fs.existsSync(indexPath)) {
-    const action = await vscode.window.showWarningMessage(
-      'index.codex.yaml already exists. What would you like to do?',
-      { modal: true },
-      'Regenerate (Preserve Edits)',
-      'Overwrite (Fresh Start)',
-      'Cancel'
-    );
-
-    if (!action || action === 'Cancel') {
-      return;
-    }
-
-    if (action === 'Regenerate (Preserve Edits)') {
-      await runRegenerateIndex(basePath);
-      return;
-    }
-    // Otherwise continue with fresh generation
-  }
-
-  // Get project name
-  const projectName = await vscode.window.showInputBox({
-    title: 'Project Name',
-    prompt: 'Enter the project name (used in index title)',
-    value: targetFolder.name,
-    validateInput: (value) => {
-      if (!value.trim()) {
-        return 'Project name cannot be empty';
-      }
-      return null;
-    },
+  progressReporter?.report({
+    message: `Found ${files.length} files...`,
+    increment: 30,
   });
 
-  if (!projectName) {
-    return;
+  // Step 4: Build hierarchy
+  progressReporter?.report({ message: 'Building hierarchy...', increment: 20 });
+  const children = await buildHierarchy(files, workspaceRoot);
+
+  // Step 5: Apply type styles
+  if (indexDef?.typeStyles) {
+    applyTypeStyles(children, indexDef.typeStyles);
   }
 
-  // Default status (private by default - must explicitly publish)
-  const statusChoice = await vscode.window.showQuickPick(
-    [
-      { label: '$(lock) Private', description: 'Only visible to owner (default)', value: 'private' as const },
-      { label: '$(edit) Draft', description: 'Work in progress, owner only', value: 'draft' as const },
-      { label: '$(globe) Published', description: 'Visible to everyone', value: 'published' as const },
-    ],
-    {
-      title: 'Default Status',
-      placeHolder: 'Set default status for all items (recommended: Private)',
-    }
-  );
+  progressReporter?.report({ message: 'Writing index file...', increment: 15 });
 
-  const status = statusChoice?.value || 'private';
-
-  // Generate index
-  await vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Notification,
-      title: 'Generating Index...',
-      cancellable: false,
+  // Step 6: Build complete index
+  const indexData = {
+    metadata: {
+      formatVersion: '2.1',
+      documentVersion: '1.0.0',
+      created: new Date().toISOString(),
+      generated: true,
     },
-    async (progress) => {
-      progress.report({ message: 'Scanning files...' });
+    id: indexDef?.id || 'index-root',
+    type: 'index',
+    name: indexDef?.name || path.basename(workspaceRoot),
+    title: indexDef?.title,
+    summary: indexDef?.summary,
+    attributes: indexDef?.attributes,
+    patterns,
+    typeStyles: indexDef?.typeStyles,
+    status: indexDef?.status || 'private',
+    children,
+  };
 
-      const generator = new IndexGenerator();
-      const indexData = await generator.generateIndex(basePath, {
-        projectName,
-        status,
-      });
+  // Step 7: Write .index.codex.yaml
+  const outputPath = path.join(workspaceRoot, '.index.codex.yaml');
+  fs.writeFileSync(outputPath, YAML.stringify(indexData), 'utf-8');
 
-      progress.report({ message: 'Writing index file...' });
+  progressReporter?.report({ message: 'Complete!', increment: 5 });
 
-      const outputFile = generator.saveIndex(indexData, basePath);
-
-      // Log results
-      const channel = getOutputChannel();
-      channel.appendLine(`\n${'='.repeat(60)}`);
-      channel.appendLine(`Index Generated - ${new Date().toLocaleString()}`);
-      channel.appendLine(`Project: ${projectName}`);
-      channel.appendLine(`Output: ${outputFile}`);
-      channel.appendLine(`Files indexed: ${countChildren(indexData.children)}`);
-      channel.appendLine(`${'='.repeat(60)}\n`);
-
-      // Show success
-      const action = await vscode.window.showInformationMessage(
-        `✅ Generated index.codex.yaml with ${countChildren(indexData.children)} items`,
-        'Open Index',
-        'Show Details'
-      );
-
-      if (action === 'Open Index') {
-        const doc = await vscode.workspace.openTextDocument(outputFile);
-        await vscode.window.showTextDocument(doc);
-      } else if (action === 'Show Details') {
-        channel.show();
-      }
-    }
-  );
+  return outputPath;
 }
 
 /**
- * Run the Regenerate Index command
+ * Scan workspace for files matching patterns
  */
-export async function runRegenerateIndex(basePath?: string): Promise<void> {
-  // Get base path if not provided
-  if (!basePath) {
-    const workspaceFolders = vscode.workspace.workspaceFolders;
+async function scanWorkspace(
+  root: string,
+  patterns: IndexPatterns
+): Promise<string[]> {
+  const files: string[] = [];
 
-    if (!workspaceFolders || workspaceFolders.length === 0) {
-      vscode.window.showErrorMessage('No workspace folder open.');
-      return;
-    }
+  function walkDir(dir: string): void {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
 
-    if (workspaceFolders.length === 1) {
-      basePath = workspaceFolders[0].uri.fsPath;
-    } else {
-      const picked = await vscode.window.showQuickPick(
-        workspaceFolders.map(f => ({
-          label: f.name,
-          description: f.uri.fsPath,
-          folder: f,
-        })),
-        {
-          title: 'Select Workspace Folder',
-          placeHolder: 'Which folder should be regenerated?',
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      const relativePath = path.relative(root, fullPath);
+
+      // Check exclude patterns first
+      if (shouldExclude(relativePath, patterns.exclude)) {
+        continue;
+      }
+
+      if (entry.isDirectory()) {
+        walkDir(fullPath);
+      } else if (entry.isFile()) {
+        // Check include patterns
+        if (shouldInclude(entry.name, patterns.include)) {
+          files.push(fullPath);
         }
-      );
-
-      if (!picked) {
-        return;
       }
-      basePath = picked.folder.uri.fsPath;
     }
   }
 
-  const indexPath = path.join(basePath, 'index.codex.yaml');
-
-  // Check if index exists
-  if (!fs.existsSync(indexPath)) {
-    vscode.window.showErrorMessage(
-      'No index.codex.yaml found. Use "Generate Index" to create one first.'
-    );
-    return;
+  try {
+    walkDir(root);
+  } catch (error) {
+    console.error('Error scanning workspace:', error);
   }
 
-  // Regenerate
-  await vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Notification,
-      title: 'Regenerating Index...',
-      cancellable: false,
-    },
-    async (progress) => {
-      progress.report({ message: 'Loading existing index...' });
-
-      const generator = new IndexGenerator();
-      const existingIndex = generator.loadIndex(indexPath);
-
-      if (!existingIndex) {
-        vscode.window.showErrorMessage('Failed to parse existing index file.');
-        return;
-      }
-
-      progress.report({ message: 'Scanning for changes...' });
-
-      const updatedIndex = await generator.regenerateIndex(basePath!, existingIndex);
-
-      progress.report({ message: 'Saving updated index...' });
-
-      generator.saveIndex(updatedIndex, basePath!);
-
-      // Log results
-      const channel = getOutputChannel();
-      channel.appendLine(`\n${'='.repeat(60)}`);
-      channel.appendLine(`Index Regenerated - ${new Date().toLocaleString()}`);
-      channel.appendLine(`Path: ${indexPath}`);
-      channel.appendLine(`Items: ${countChildren(updatedIndex.children)}`);
-      channel.appendLine(`Manual edits preserved: Yes`);
-      channel.appendLine(`${'='.repeat(60)}\n`);
-
-      // Show success
-      const action = await vscode.window.showInformationMessage(
-        `✅ Regenerated index with ${countChildren(updatedIndex.children)} items (manual edits preserved)`,
-        'Open Index',
-        'Show Details'
-      );
-
-      if (action === 'Open Index') {
-        const doc = await vscode.workspace.openTextDocument(indexPath);
-        await vscode.window.showTextDocument(doc);
-      } else if (action === 'Show Details') {
-        channel.show();
-      }
-    }
-  );
+  return files;
 }
 
 /**
- * Count total children recursively
+ * Check if file should be excluded
  */
-function countChildren(children: IndexChild[]): number {
+function shouldExclude(relativePath: string, excludePatterns: string[]): boolean {
+  return excludePatterns.some((pattern) => minimatch(relativePath, pattern));
+}
+
+/**
+ * Check if file should be included
+ */
+function shouldInclude(fileName: string, includePatterns: string[]): boolean {
+  return includePatterns.some((pattern) => minimatch(fileName, pattern));
+}
+
+/**
+ * Build hierarchical children structure from file list
+ * NEW: Supports per-folder .index.codex.yaml merging
+ */
+async function buildHierarchy(
+  files: string[],
+  root: string
+): Promise<any[]> {
+  const tree = new Map<string, any>();
+
+  for (const file of files) {
+    const relative = path.relative(root, file);
+    const parts = relative.split(path.sep);
+
+    // Build folder structure
+    let currentPath = '';
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
+      const folderPath = currentPath ? `${currentPath}/${part}` : part;
+
+      if (!tree.has(folderPath)) {
+        tree.set(folderPath, {
+          id: `folder-${folderPath.replace(/\//g, '-')}`,
+          type: 'folder',
+          name: part,
+          _computed_path: folderPath,
+          children: [],
+        });
+      }
+
+      currentPath = folderPath;
+    }
+
+    // Add file
+    const fileName = parts[parts.length - 1];
+    const fileNode = await createFileNode(file, fileName, root);
+
+    if (currentPath) {
+      const folder = tree.get(currentPath);
+      if (folder) {
+        folder.children.push(fileNode);
+      }
+    } else {
+      // Root level file
+      if (!tree.has('__root__')) {
+        tree.set('__root__', []);
+      }
+      (tree.get('__root__') as any[]).push(fileNode);
+    }
+  }
+
+  // Build hierarchical structure
+  const result: any[] = [];
+  const rootFiles = tree.get('__root__') || [];
+  result.push(...rootFiles);
+
+  // Add folders
+  const sortedFolders = Array.from(tree.entries())
+    .filter(([key]) => key !== '__root__')
+    .sort((a, b) => a[0].localeCompare(b[0]));
+
+  for (const [folderPath, folder] of sortedFolders) {
+    if (folderPath.includes('/')) {
+      // Nested folder - add to parent
+      const parentPath = path.dirname(folderPath).replace(/\\/g, '/');
+      const parent = tree.get(parentPath);
+      if (parent) {
+        parent.children.push(folder);
+      }
+    } else {
+      // Root level folder
+      result.push(folder);
+    }
+  }
+
+  // NEW: Merge per-folder indexes (cascade up)
+  await mergePerFolderIndexes(result, root, tree);
+
+  // Sort children by order then name (after merging)
+  sortChildrenRecursive(result);
+
+  return result;
+}
+
+/**
+ * Merge per-folder .index.codex.yaml files into the hierarchy
+ * Processes from deepest folders UP to preserve order values
+ */
+async function mergePerFolderIndexes(
+  rootChildren: any[],
+  workspaceRoot: string,
+  tree: Map<string, any>
+): Promise<void> {
+  // Get all folder paths, sorted by depth (deepest first)
+  const folderPaths = Array.from(tree.keys())
+    .filter(key => key !== '__root__')
+    .sort((a, b) => {
+      const depthA = a.split('/').length;
+      const depthB = b.split('/').length;
+      return depthB - depthA; // Deepest first
+    });
+
+  // Process each folder from deepest to shallowest
+  for (const folderPath of folderPaths) {
+    const folder = tree.get(folderPath);
+    if (!folder) continue;
+
+    // Check if this folder has a per-folder .index.codex.yaml
+    const perFolderIndexPath = path.join(workspaceRoot, folderPath, '.index.codex.yaml');
+    
+    if (fs.existsSync(perFolderIndexPath)) {
+      try {
+        const indexContent = fs.readFileSync(perFolderIndexPath, 'utf-8');
+        const indexData = YAML.parse(indexContent);
+        
+        if (indexData.children && Array.isArray(indexData.children)) {
+          // Merge order values from per-folder index
+          applyPerFolderOrders(folder.children, indexData.children);
+        }
+      } catch (error) {
+        console.warn(`Failed to read per-folder index at ${folderPath}:`, error);
+      }
+    }
+  }
+
+  // Also check for root-level .index.codex.yaml (not hidden)
+  const rootIndexPath = path.join(workspaceRoot, 'index.codex.yaml');
+  if (fs.existsSync(rootIndexPath)) {
+    try {
+      const indexContent = fs.readFileSync(rootIndexPath, 'utf-8');
+      const indexData = YAML.parse(indexContent);
+      
+      if (indexData.children && Array.isArray(indexData.children)) {
+        applyPerFolderOrders(rootChildren, indexData.children);
+      }
+    } catch (error) {
+      console.warn('Failed to read root index.codex.yaml:', error);
+    }
+  }
+}
+
+/**
+ * Apply order values from per-folder index to generated children
+ */
+function applyPerFolderOrders(
+  generatedChildren: any[],
+  indexChildren: any[]
+): void {
+  // Build lookup map by _filename or name
+  const indexMap = new Map<string, any>();
+  
+  for (const child of indexChildren) {
+    const key = child._filename || child.name;
+    if (key) {
+      indexMap.set(key, child);
+    }
+  }
+
+  // Apply order values to matching children
+  for (const child of generatedChildren) {
+    const key = child._filename || child.name;
+    const indexEntry = indexMap.get(key);
+    
+    if (indexEntry && indexEntry.order !== undefined) {
+      child.order = indexEntry.order;
+    } else if (child.order === undefined) {
+      // Assign default order if not set
+      child.order = indexChildren.length || 999;
+    }
+  }
+}
+
+/**
+ * Create file node with type detection
+ */
+async function createFileNode(
+  filePath: string,
+  fileName: string,
+  root: string
+): Promise<any> {
+  const relative = path.relative(root, filePath);
+  const ext = path.extname(fileName).toLowerCase();
+
+  let type = 'document';
+  let name = fileName;
+  let format = 'unknown';
+
+  // Detect format
+  if (fileName.endsWith('.codex.yaml')) {
+    format = 'yaml';
+    type = 'codex';
+    name = fileName.replace('.codex.yaml', '');
+  } else if (fileName.endsWith('.codex.json')) {
+    format = 'json';
+    type = 'codex';
+    name = fileName.replace('.codex.json', '');
+  } else if (ext === '.md') {
+    format = 'markdown';
+    type = 'markdown';
+    name = fileName.replace('.md', '');
+  }
+
+  // Read actual type and name from file
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+
+    if (format === 'yaml' || format === 'json') {
+      const data = YAML.parse(content);
+      if (data.type) {type = data.type;}
+      if (data.name) {name = data.name;}
+    } else if (format === 'markdown') {
+      // Parse frontmatter
+      const { type: fmType, name: fmName } = parseFrontmatter(content);
+      if (fmType) {type = fmType;}
+      if (fmName) {
+        name = fmName;
+      } else {
+        // Extract from first H1
+        const h1Match = content.match(/^#\s+(.+)$/m);
+        if (h1Match) {name = h1Match[1].trim();}
+      }
+    }
+  } catch (error) {
+    // Use defaults if parsing fails
+  }
+
+  return {
+    id: `file-${relative.replace(/[\\/\.]/g, '-')}`,
+    type,
+    name, // Display name (extension stripped)
+    _filename: fileName, // Actual filename (with extension)
+    _computed_path: relative, // Will be recomputed by parser
+    _format: format,
+    _default_status: 'private',
+    order: 1, // Will be adjusted during sorting
+  };
+}
+
+/**
+ * Parse YAML frontmatter from markdown
+ */
+function parseFrontmatter(content: string): { type?: string; name?: string } {
+  const match = content.match(/^---\n([\s\S]+?)\n---/);
+  if (!match) {return {};}
+
+  try {
+    const fm = YAML.parse(match[1]);
+    return {
+      type: fm.type,
+      name: fm.name || fm.title,
+    };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Apply type styles to children recursively
+ */
+function applyTypeStyles(children: any[], typeStyles: any[]): void {
+  const styleMap = new Map(typeStyles.map((s) => [s.type, s]));
+
+  function apply(nodes: any[]): void {
+    for (const node of nodes) {
+      const style = styleMap.get(node.type);
+      if (style) {
+        if (!node.emoji && style.emoji) {node._type_emoji = style.emoji;}
+        if (!node.color && style.color) {node._type_color = style.color;}
+      }
+      if (node.children) {apply(node.children);}
+    }
+  }
+
+  apply(children);
+}
+
+/**
+ * Sort children recursively by order then name
+ */
+function sortChildrenRecursive(children: any[]): void {
+  children.sort((a, b) => {
+    if (a.order !== undefined && b.order !== undefined) {
+      return a.order - b.order;
+    }
+    return a.name.localeCompare(b.name);
+  });
+
+  for (const child of children) {
+    if (child.children) {
+      sortChildrenRecursive(child.children);
+    }
+  }
+}
+
+/**
+ * Get default patterns
+ */
+function getDefaultPatterns(): IndexPatterns {
+  return {
+    include: ['*.codex.yaml', '*.codex.json', '*.md'],
+    exclude: [
+      '**/node_modules/**',
+      '**/.git/**',
+      '**/__pycache__/**',
+      '**/venv/**',
+      '**/dist/**',
+      '**/.DS_Store',
+      '**/.*',
+      '**/*.jpg',
+      '**/*.png',
+    ],
+  };
+}
+
+/**
+ * Count files in children tree
+ */
+function countFiles(children: any[]): number {
   let count = 0;
   for (const child of children) {
-    count++;
-    if (child.children) {
-      count += countChildren(child.children);
-    }
+    if (child.type !== 'folder') {count++;}
+    if (child.children) {count += countFiles(child.children);}
   }
   return count;
 }
 
 /**
- * Dispose resources
+ * Command handler: Generate Index
  */
-export function disposeIndexGenerator(): void {
-  outputChannel?.dispose();
+export async function runGenerateIndex(): Promise<void> {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    vscode.window.showErrorMessage('No workspace folder open');
+    return;
+  }
+
+  const workspaceRoot = workspaceFolders[0].uri.fsPath;
+  const indexPath = path.join(workspaceRoot, 'index.codex.yaml');
+
+  // Generate with progress
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: 'Generating Index',
+      cancellable: false,
+    },
+    async (progress) => {
+      try {
+        const outputPath = await generateIndex({
+          workspaceRoot,
+          indexFilePath: fs.existsSync(indexPath) ? indexPath : undefined,
+          progressReporter: progress,
+        });
+
+        // Count files
+        const content = fs.readFileSync(outputPath, 'utf-8');
+        const data = YAML.parse(content);
+        const fileCount = countFiles(data.children);
+
+        const action = await vscode.window.showInformationMessage(
+          `✅ Generated .index.codex.yaml\nFound ${fileCount} files`,
+          'Open Index',
+          'Show in Explorer'
+        );
+
+        if (action === 'Open Index') {
+          const doc = await vscode.workspace.openTextDocument(outputPath);
+          await vscode.window.showTextDocument(doc);
+        } else if (action === 'Show in Explorer') {
+          vscode.commands.executeCommand(
+            'revealFileInOS',
+            vscode.Uri.file(outputPath)
+          );
+        }
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          `Failed to generate index: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+  );
 }
 
+/**
+ * Command handler: Regenerate Index
+ */
+export async function runRegenerateIndex(basePath?: string): Promise<void> {
+  return runGenerateIndex();
+}
+
+/**
+ * Generate per-folder .index.codex.yaml for a specific folder
+ * This creates a complete index for just the immediate children
+ */
+export async function generatePerFolderIndex(
+  workspaceRoot: string,
+  folderPath: string
+): Promise<string> {
+  const fullFolderPath = path.join(workspaceRoot, folderPath);
+  
+  if (!fs.existsSync(fullFolderPath)) {
+    throw new Error(`Folder not found: ${folderPath}`);
+  }
+
+  // Scan immediate children only (no recursion)
+  const entries = fs.readdirSync(fullFolderPath, { withFileTypes: true });
+  const children: any[] = [];
+
+  for (const entry of entries) {
+    if (entry.name === '.index.codex.yaml' || entry.name.startsWith('.')) {
+      continue; // Skip hidden files and the index itself
+    }
+
+    const childPath = path.join(fullFolderPath, entry.name);
+
+    if (entry.isFile()) {
+      // Check if it's a codex file
+      if (entry.name.endsWith('.codex.yaml') || 
+          entry.name.endsWith('.codex.json') || 
+          entry.name.endsWith('.md')) {
+        const fileNode = await createFileNode(childPath, entry.name, fullFolderPath);
+        children.push(fileNode);
+      }
+    } else if (entry.isDirectory()) {
+      // Add folder entry
+      children.push({
+        id: `folder-${entry.name}`,
+        type: 'folder',
+        name: entry.name,
+        _computed_path: path.join(folderPath, entry.name),
+        order: 999, // Default order for folders
+      });
+    }
+  }
+
+  // Sort by order then name
+  children.sort((a, b) => {
+    const orderA = a.order ?? 999;
+    const orderB = b.order ?? 999;
+    if (orderA !== orderB) return orderA - orderB;
+    return a.name.localeCompare(b.name);
+  });
+
+  // Assign sequential orders if not set
+  children.forEach((child, index) => {
+    if (child.order === undefined || child.order === 999) {
+      child.order = index;
+    }
+  });
+
+  // Build index data
+  const indexData = {
+    metadata: {
+      formatVersion: '2.1',
+      documentVersion: '1.0.0',
+      created: new Date().toISOString(),
+      generated: true,
+      type: 'index', // Complete index (not fragment)
+    },
+    id: `index-${folderPath.replace(/[\\/]/g, '-')}`,
+    type: 'index',
+    name: path.basename(folderPath),
+    children,
+  };
+
+  // Write per-folder .index.codex.yaml
+  const outputPath = path.join(fullFolderPath, '.index.codex.yaml');
+  fs.writeFileSync(outputPath, YAML.stringify(indexData), 'utf-8');
+
+  return outputPath;
+}
+
+/**
+ * Cascade regenerate: update folder index and all parent indexes up to root
+ * This is called after reordering files in a folder
+ */
+export async function cascadeRegenerateIndexes(
+  workspaceRoot: string,
+  changedFolderPath: string
+): Promise<void> {
+  // 1. Regenerate the immediate folder index
+  await generatePerFolderIndex(workspaceRoot, changedFolderPath);
+
+  // 2. Regenerate all parent folder indexes up to root
+  let currentPath = changedFolderPath;
+  
+  while (currentPath) {
+    const parentPath = path.dirname(currentPath);
+    
+    if (parentPath === '.' || parentPath === currentPath) {
+      // Reached root
+      break;
+    }
+
+    // Regenerate parent folder index
+    await generatePerFolderIndex(workspaceRoot, parentPath);
+    currentPath = parentPath;
+  }
+
+  // 3. Finally, regenerate top-level .index.codex.yaml
+  await generateIndex({ workspaceRoot });
+}
+
+/**
+ * Recursively generate per-folder indexes for a folder and all its subfolders
+ * This implements the fractal cascade architecture by processing from deepest to shallowest
+ * 
+ * @param workspaceRoot - Workspace root path
+ * @param startFolder - Starting folder path (relative to workspace root)
+ */
+export async function generateFolderHierarchy(
+  workspaceRoot: string,
+  startFolder: string
+): Promise<void> {
+  console.log(`[IndexGenerator] Generating folder hierarchy for: ${startFolder}`);
+  
+  const fullStartPath = path.join(workspaceRoot, startFolder);
+  
+  if (!fs.existsSync(fullStartPath)) {
+    throw new Error(`Folder not found: ${startFolder}`);
+  }
+  
+  // 1. Recursively collect all subfolders (depth-first)
+  const allFolders: string[] = [];
+  
+  function collectSubfolders(folderPath: string) {
+    const relativePath = path.relative(workspaceRoot, folderPath);
+    allFolders.push(relativePath || '.');
+    
+    try {
+      const entries = fs.readdirSync(folderPath, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        if (entry.isDirectory() && !entry.name.startsWith('.')) {
+          const subfolder = path.join(folderPath, entry.name);
+          collectSubfolders(subfolder);
+        }
+      }
+    } catch (error) {
+      console.error(`[IndexGenerator] Error reading folder ${folderPath}:`, error);
+    }
+  }
+  
+  collectSubfolders(fullStartPath);
+  
+  console.log(`[IndexGenerator] Found ${allFolders.length} folders to process`);
+  
+  // 2. Sort by depth (deepest first)
+  allFolders.sort((a, b) => {
+    const depthA = a === '.' ? 0 : a.split(path.sep).length;
+    const depthB = b === '.' ? 0 : b.split(path.sep).length;
+    return depthB - depthA; // Deepest first
+  });
+  
+  // 3. Generate per-folder index for each (deepest first)
+  for (const folderPath of allFolders) {
+    try {
+      console.log(`[IndexGenerator] Generating index for: ${folderPath}`);
+      await generatePerFolderIndex(workspaceRoot, folderPath === '.' ? '' : folderPath);
+    } catch (error) {
+      console.error(`[IndexGenerator] Error generating index for ${folderPath}:`, error);
+      // Continue with other folders even if one fails
+    }
+  }
+  
+  // 4. Finally, regenerate top-level .index.codex.yaml to merge everything
+  console.log(`[IndexGenerator] Regenerating top-level index`);
+  await generateIndex({ workspaceRoot });
+  
+  console.log(`[IndexGenerator] Folder hierarchy generation complete`);
+}

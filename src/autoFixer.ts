@@ -38,13 +38,13 @@ export class CodexAutoFixer {
 
     try {
       const isJson = text.trim().startsWith('{') || text.trim().startsWith('[');
-      let content: Record<string, unknown>;
+      let content: any;
 
       // Parse the document
       if (isJson) {
         content = JSON.parse(text);
       } else {
-        content = YAML.parse(text) as Record<string, unknown>;
+        content = YAML.parse(text);
       }
 
       if (!content || typeof content !== 'object') {
@@ -213,7 +213,7 @@ export class CodexAutoFixer {
   /**
    * Fix missing required entity fields
    */
-  private fixMissingEntityFields(data: unknown, path: string): unknown {
+  private fixMissingEntityFields(data: unknown, path: string): any {
     if (typeof data !== 'object' || data === null) return data;
 
     if (Array.isArray(data)) {
@@ -255,7 +255,7 @@ export class CodexAutoFixer {
   /**
    * Fix invalid UUID formats
    */
-  private fixInvalidUuids(data: unknown, path: string): unknown {
+  private fixInvalidUuids(data: unknown, path: string): any {
     if (typeof data !== 'object' || data === null) return data;
 
     if (Array.isArray(data)) {
@@ -355,7 +355,7 @@ export class CodexAutoFixer {
   /**
    * Regenerate ALL IDs in the document
    */
-  private regenerateAllIdsInDocument(data: unknown, path: string): unknown {
+  private regenerateAllIdsInDocument(data: unknown, path: string): any {
     if (typeof data !== 'object' || data === null) return data;
 
     if (Array.isArray(data)) {
@@ -401,7 +401,7 @@ export class CodexAutoFixer {
   /**
    * Fix invalid attribute structures
    */
-  private fixInvalidAttributeStructure(data: unknown, path: string): unknown {
+  private fixInvalidAttributeStructure(data: unknown, path: string): any {
     if (typeof data !== 'object' || data === null) return data;
 
     if (Array.isArray(data)) {
@@ -460,7 +460,7 @@ export class CodexAutoFixer {
   /**
    * Fix invalid relation structures
    */
-  private fixInvalidRelationStructure(data: unknown, path: string): unknown {
+  private fixInvalidRelationStructure(data: unknown, path: string): any {
     if (typeof data !== 'object' || data === null) return data;
 
     if (Array.isArray(data)) {
@@ -510,7 +510,7 @@ export class CodexAutoFixer {
   /**
    * Fix empty or whitespace-only names
    */
-  private cleanEmptyNames(data: unknown, path: string): unknown {
+  private cleanEmptyNames(data: unknown, path: string): any {
     if (typeof data !== 'object' || data === null) return data;
 
     if (Array.isArray(data)) {

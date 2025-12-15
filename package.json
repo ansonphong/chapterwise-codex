@@ -98,12 +98,82 @@
         "icon": "$(sync)"
       },
       {
+        "command": "chapterwiseCodex.createIndexFile",
+        "title": "ChapterWise Codex: Create Index File",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "chapterwiseCodex.openIndexFile",
+        "title": "Open File from Index"
+      },
+      {
         "command": "chapterwiseCodex.convertToMarkdown",
         "title": "ChapterWise Codex: Convert to Markdown (Codex Lite)"
       },
       {
         "command": "chapterwiseCodex.convertToCodex",
         "title": "ChapterWise Codex: Convert Markdown to Codex"
+      },
+      {
+        "command": "chapterwiseCodex.addChildNode",
+        "title": "Add Child Node",
+        "icon": "$(add)"
+      },
+      {
+        "command": "chapterwiseCodex.addSiblingNode",
+        "title": "Add Sibling Node"
+      },
+      {
+        "command": "chapterwiseCodex.removeNode",
+        "title": "Remove from Tree",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "chapterwiseCodex.deleteNodePermanently",
+        "title": "Delete Node Permanently"
+      },
+      {
+        "command": "chapterwiseCodex.renameNode",
+        "title": "Rename Node",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "chapterwiseCodex.moveNodeUp",
+        "title": "Move Node Up"
+      },
+      {
+        "command": "chapterwiseCodex.moveNodeDown",
+        "title": "Move Node Down"
+      },
+      {
+        "command": "chapterwiseCodex.changeColor",
+        "title": "Change Color",
+        "icon": "$(symbol-color)"
+      },
+      {
+        "command": "chapterwiseCodex.switchToIndexMode",
+        "title": "Show Index View",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "chapterwiseCodex.switchToFilesMode",
+        "title": "Show Open Files",
+        "icon": "$(files)"
+      },
+      {
+        "command": "chapterwiseCodex.autofixFolder",
+        "title": "Autofix Folder (Renormalize Order)",
+        "icon": "$(sync-ignored)"
+      },
+      {
+        "command": "chapterwiseCodex.setContextFolder",
+        "title": "Set as Codex Context Folder",
+        "icon": "$(folder-active)"
+      },
+      {
+        "command": "chapterwiseCodex.resetContext",
+        "title": "Reset to Workspace Root",
+        "icon": "$(home)"
       }
     ],
     "viewsContainers": {
@@ -130,6 +200,13 @@
       }
     ],
     "menus": {
+      "explorer/context": [
+        {
+          "command": "chapterwiseCodex.setContextFolder",
+          "when": "explorerResourceIsFolder",
+          "group": "2_workspace@1"
+        }
+      ],
       "editor/title": [
         {
           "command": "chapterwiseCodex.autoFix",
@@ -158,24 +235,44 @@
       ],
       "view/title": [
         {
+          "command": "chapterwiseCodex.switchToIndexMode",
+          "when": "view == chapterwiseCodexNavigator && codexNavigatorMode != 'index'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "chapterwiseCodex.switchToFilesMode",
+          "when": "view == chapterwiseCodexNavigator && codexNavigatorMode != 'files'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "chapterwiseCodex.generateIndex",
+          "when": "view == chapterwiseCodexNavigator",
+          "group": "navigation@3"
+        },
+        {
+          "command": "chapterwiseCodex.resetContext",
+          "when": "view == chapterwiseCodexNavigator",
+          "group": "navigation@4"
+        },
+        {
           "command": "chapterwiseCodex.autoFix",
           "when": "view == chapterwiseCodexNavigator",
-          "group": "navigation"
+          "group": "navigation@4"
         },
         {
           "command": "chapterwiseCodex.toggleFields",
           "when": "view == chapterwiseCodexNavigator",
-          "group": "navigation"
+          "group": "navigation@5"
         },
         {
           "command": "chapterwiseCodex.filterByType",
           "when": "view == chapterwiseCodexNavigator",
-          "group": "navigation"
+          "group": "navigation@6"
         },
         {
           "command": "chapterwiseCodex.refresh",
           "when": "view == chapterwiseCodexNavigator",
-          "group": "navigation"
+          "group": "navigation@7"
         }
       ],
       "view/item/context": [
@@ -185,14 +282,78 @@
           "group": "inline"
         },
         {
+          "command": "chapterwiseCodex.addChildNode",
+          "when": "view == chapterwiseCodexNavigator && viewItem == codexNode",
+          "group": "1_add@1"
+        },
+        {
+          "command": "chapterwiseCodex.addSiblingNode",
+          "when": "view == chapterwiseCodexNavigator && viewItem == codexNode",
+          "group": "1_add@2"
+        },
+        {
+          "command": "chapterwiseCodex.renameNode",
+          "when": "view == chapterwiseCodexNavigator && viewItem == codexNode",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "chapterwiseCodex.changeColor",
+          "when": "view == chapterwiseCodexNavigator && viewItem == codexNode",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "chapterwiseCodex.moveNodeUp",
+          "when": "view == chapterwiseCodexNavigator && viewItem == codexNode",
+          "group": "3_move@1"
+        },
+        {
+          "command": "chapterwiseCodex.moveNodeDown",
+          "when": "view == chapterwiseCodexNavigator && viewItem == codexNode",
+          "group": "3_move@2"
+        },
+        {
           "command": "chapterwiseCodex.goToYaml",
           "when": "view == chapterwiseCodexNavigator && viewItem == codexNode",
-          "group": "navigation"
+          "group": "4_navigate@1"
         },
         {
           "command": "chapterwiseCodex.copyId",
           "when": "view == chapterwiseCodexNavigator && viewItem == codexNode",
-          "group": "navigation"
+          "group": "4_navigate@2"
+        },
+        {
+          "command": "chapterwiseCodex.removeNode",
+          "when": "view == chapterwiseCodexNavigator && viewItem == codexNode",
+          "group": "5_delete@1"
+        },
+        {
+          "command": "chapterwiseCodex.deleteNodePermanently",
+          "when": "view == chapterwiseCodexNavigator && viewItem == codexNode",
+          "group": "5_delete@2"
+        },
+        {
+          "command": "chapterwiseCodex.openIndexFile",
+          "when": "view == chapterwiseCodexNavigator && viewItem == indexFile",
+          "group": "inline"
+        },
+        {
+          "command": "chapterwiseCodex.autofixFolder",
+          "when": "view == chapterwiseCodexNavigator && viewItem == indexFolder",
+          "group": "2_edit@3"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "chapterwiseCodex.createIndexFile",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "chapterwiseCodex.generateIndex",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "chapterwiseCodex.regenerateIndex",
+          "when": "workspaceFolderCount > 0"
         }
       ]
     },
@@ -208,6 +369,42 @@
         "key": "ctrl+shift+e",
         "mac": "cmd+shift+e",
         "when": "resourceFilename =~ /\\.codex\\.(yaml|json)$/"
+      },
+      {
+        "command": "chapterwiseCodex.addChildNode",
+        "key": "ctrl+shift+n",
+        "mac": "cmd+shift+n",
+        "when": "focusedView == chapterwiseCodexNavigator"
+      },
+      {
+        "command": "chapterwiseCodex.changeColor",
+        "key": "ctrl+shift+c",
+        "mac": "cmd+shift+c",
+        "when": "focusedView == chapterwiseCodexNavigator"
+      },
+      {
+        "command": "chapterwiseCodex.removeNode",
+        "key": "delete",
+        "mac": "delete",
+        "when": "focusedView == chapterwiseCodexNavigator"
+      },
+      {
+        "command": "chapterwiseCodex.deleteNodePermanently",
+        "key": "shift+delete",
+        "mac": "shift+delete",
+        "when": "focusedView == chapterwiseCodexNavigator"
+      },
+      {
+        "command": "chapterwiseCodex.moveNodeUp",
+        "key": "ctrl+up",
+        "mac": "cmd+up",
+        "when": "focusedView == chapterwiseCodexNavigator"
+      },
+      {
+        "command": "chapterwiseCodex.moveNodeDown",
+        "key": "ctrl+down",
+        "mac": "cmd+down",
+        "when": "focusedView == chapterwiseCodexNavigator"
       }
     ],
     "snippets": [
@@ -238,6 +435,78 @@
           "type": "boolean",
           "default": true,
           "description": "Show field entries (body, summary, attributes, content) as expandable children under nodes in the Codex Navigator tree"
+        },
+        "chapterwiseCodex.navigator.defaultChildMode": {
+          "type": "string",
+          "enum": ["inline", "separate-file", "ask"],
+          "default": "ask",
+          "description": "How to create new child nodes: inline (in same file), separate-file (new file), or ask (prompt each time)"
+        },
+        "chapterwiseCodex.navigator.fileOrganization.strategy": {
+          "type": "string",
+          "enum": ["organized", "data-folder", "flat"],
+          "default": "organized",
+          "description": "File organization strategy: organized (hierarchical folders), data-folder (Scrivener-style UUID storage), or flat (same directory)"
+        },
+        "chapterwiseCodex.navigator.fileOrganization.dataFolderPath": {
+          "type": "string",
+          "default": "Files/Data",
+          "description": "Path for data-folder strategy (relative to workspace root)"
+        },
+        "chapterwiseCodex.navigator.fileOrganization.useUuidFilenames": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use UUID filenames instead of name-based filenames"
+        },
+        "chapterwiseCodex.navigator.naming.slugify": {
+          "type": "boolean",
+          "default": true,
+          "description": "Convert node names to URL-friendly slugs (e.g., 'Chapter 1' → 'chapter-01')"
+        },
+        "chapterwiseCodex.navigator.naming.separator": {
+          "type": "string",
+          "default": "-",
+          "description": "Separator character for slugified names"
+        },
+        "chapterwiseCodex.navigator.naming.includeType": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include type prefix in filename (e.g., 'character-aya.yaml')"
+        },
+        "chapterwiseCodex.navigator.automation.autoSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically save files after structural changes"
+        },
+        "chapterwiseCodex.navigator.automation.autoGenerateIds": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically generate UUIDs for new nodes"
+        },
+        "chapterwiseCodex.navigator.automation.autoGenerateIndex": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically regenerate index after file operations"
+        },
+        "chapterwiseCodex.navigator.safety.confirmDelete": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show confirmation dialog before deleting nodes"
+        },
+        "chapterwiseCodex.navigator.safety.backupBeforeDestruct": {
+          "type": "boolean",
+          "default": true,
+          "description": "Create backup before permanent deletion"
+        },
+        "chapterwiseCodex.navigator.colors.inheritFromParent": {
+          "type": "boolean",
+          "default": false,
+          "description": "Children inherit parent node colors if not explicitly set"
+        },
+        "chapterwiseCodex.navigator.colors.showInheritedDimmed": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show inherited colors with reduced opacity"
         }
       }
     }
