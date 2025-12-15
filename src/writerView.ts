@@ -721,7 +721,7 @@ export class WriterViewManager {
       display: none;
     }
     
-    .node-name-input {
+    .node-name-edit {
       display: none;
       font-size: 1rem;
       font-weight: 600;
@@ -731,12 +731,15 @@ export class WriterViewManager {
       padding: 0;
       margin: 0;
       outline: none;
-      width: auto;
-      min-width: 1ch;
-      line-height: 1.2;
+      word-break: break-word;
+      white-space: pre-wrap;
     }
     
-    .node-name-input.editing-active {
+    .node-name-edit:focus {
+      outline: none;
+    }
+    
+    .node-name-edit.editing-active {
       display: inline;
     }
     
@@ -1167,7 +1170,7 @@ export class WriterViewManager {
         </div>
         <div class="node-name-container">
           <span class="node-name editable" id="nodeName" tabindex="0" title="Click to edit title">${this.escapeHtml(node.name)}</span>
-          <input class="node-name-input" id="nodeNameInput" type="text" aria-label="Edit title" />
+          <div class="node-name-edit" id="nodeNameEdit" contenteditable="false" aria-label="Edit title"></div>
         </div>
       </div>
     </div>
@@ -1226,7 +1229,7 @@ export class WriterViewManager {
     const charCountEl = document.getElementById('charCount');
     const fieldSelector = document.getElementById('fieldSelector');
     const nodeNameDisplay = document.getElementById('nodeName');
-    const nodeNameInput = document.getElementById('nodeNameInput');
+    const nodeNameEdit = document.getElementById('nodeNameEdit');
     
     let isDirty = false;
     let originalContent = editor.innerText;
@@ -1270,34 +1273,41 @@ export class WriterViewManager {
     let isSubmittingName = false;
     
     function enterNameEdit() {
-      if (!nodeNameDisplay || !nodeNameInput || isSubmittingName) return;
+      if (!nodeNameDisplay || !nodeNameEdit || isSubmittingName) return;
       if (isEditingName) return;
       isEditingName = true;
-      nodeNameInput.value = nodeNameDisplay.textContent.trim();
+      nodeNameEdit.textContent = nodeNameDisplay.textContent.trim();
       nodeNameDisplay.classList.add('editing-hidden');
-      nodeNameInput.classList.add('editing-active');
-      nodeNameInput.focus();
-      nodeNameInput.select();
+      nodeNameEdit.classList.add('editing-active');
+      nodeNameEdit.contentEditable = 'true';
+      nodeNameEdit.focus();
+      // Select all text
+      const range = document.createRange();
+      range.selectNodeContents(nodeNameEdit);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
     }
     
     function exitNameEdit() {
-      if (!nodeNameDisplay || !nodeNameInput) return;
+      if (!nodeNameDisplay || !nodeNameEdit) return;
       isEditingName = false;
-      nodeNameInput.classList.remove('editing-active');
+      nodeNameEdit.contentEditable = 'false';
+      nodeNameEdit.classList.remove('editing-active');
       nodeNameDisplay.classList.remove('editing-hidden');
     }
     
     function submitNameEdit() {
-      if (!nodeNameDisplay || !nodeNameInput) return;
+      if (!nodeNameDisplay || !nodeNameEdit) return;
       if (isSubmittingName) return;
       
-      const newName = nodeNameInput.value.trim();
+      const newName = nodeNameEdit.textContent.trim();
       const currentName = nodeNameDisplay.textContent.trim();
       
       exitNameEdit();
       
       if (!newName || newName === currentName) {
-        nodeNameInput.value = currentName;
+        nodeNameEdit.textContent = currentName;
         return;
       }
       
@@ -1313,7 +1323,7 @@ export class WriterViewManager {
       }, 0);
     }
     
-    if (nodeNameDisplay && nodeNameInput) {
+    if (nodeNameDisplay && nodeNameEdit) {
       nodeNameDisplay.addEventListener('click', enterNameEdit);
       nodeNameDisplay.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -1322,18 +1332,18 @@ export class WriterViewManager {
         }
       });
       
-      nodeNameInput.addEventListener('keydown', (e) => {
+      nodeNameEdit.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
           submitNameEdit();
         } else if (e.key === 'Escape') {
           e.preventDefault();
-          nodeNameInput.value = nodeNameDisplay.textContent.trim();
+          nodeNameEdit.textContent = nodeNameDisplay.textContent.trim();
           exitNameEdit();
         }
       });
       
-      nodeNameInput.addEventListener('blur', () => {
+      nodeNameEdit.addEventListener('blur', () => {
         if (isEditingName) {
           submitNameEdit();
         }
@@ -1682,9 +1692,9 @@ export class WriterViewManager {
           checkAllClean();
           break;
         case 'nameUpdated':
-          if (nodeNameDisplay && nodeNameInput) {
+          if (nodeNameDisplay && nodeNameEdit) {
             nodeNameDisplay.textContent = message.name;
-            nodeNameInput.value = message.name;
+            nodeNameEdit.textContent = message.name;
             exitNameEdit();
           }
           break;
