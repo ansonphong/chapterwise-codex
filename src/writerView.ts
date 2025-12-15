@@ -4,6 +4,8 @@
  */
 
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as YAML from 'yaml';
 import { 
   CodexNode, 
   CodexDocument, 
@@ -49,14 +51,14 @@ export class WriterViewManager {
       return;
     }
     
-    // Get the document
-    const document = await vscode.workspace.openTextDocument(documentUri);
+    // Read file directly - DON'T open in VS Code text editor
     const fileName = documentUri.fsPath;
+    const text = fs.readFileSync(fileName, 'utf-8');
     
     // Use appropriate parser based on file type
     const codexDoc = isMarkdownFile(fileName) 
-      ? parseMarkdownAsCodex(document.getText(), fileName)
-      : parseCodex(document.getText());
+      ? parseMarkdownAsCodex(text, fileName)
+      : parseCodex(text);
       
     if (!codexDoc) {
       const fileType = isMarkdownFile(fileName) ? 'Markdown' : 'Codex';
@@ -64,10 +66,21 @@ export class WriterViewManager {
       return;
     }
     
-    // Get current prose value (for markdown, this is the body)
-    const prose = isMarkdownFile(fileName) 
-      ? (codexDoc.rootNode?.proseValue ?? '')
-      : getNodeProse(codexDoc, node);
+    // Get current prose value - use the initial field (body for markdown, or node's proseField)
+    const initialField = this.lastSelectedField || node.proseField || 'body';
+    let prose: string;
+    if (isMarkdownFile(fileName)) {
+      // For markdown files, extract field from frontmatter or body
+      if (initialField === 'body') {
+        prose = codexDoc.rootNode?.proseValue ?? '';
+      } else {
+        // For summary and other fields, get from frontmatter
+        const frontmatter = codexDoc.frontmatter as Record<string, unknown> | undefined;
+        prose = (frontmatter?.[initialField] as string) ?? '';
+      }
+    } else {
+      prose = getNodeProse(codexDoc, node, initialField);
+    }
     
     // Create new panel in the ACTIVE editor group (same frame, new tab)
     let panel = vscode.window.createWebviewPanel(
@@ -86,10 +99,10 @@ export class WriterViewManager {
     this.panels.set(panelKey, panel);
     
     // Set initial HTML with remembered field
-    panel.webview.html = this.getWebviewHtml(panel.webview, node, prose, this.lastSelectedField);
+    panel.webview.html = this.getWebviewHtml(panel.webview, node, prose, initialField);
     
     // Track current field for this panel
-    let currentField = node.proseField;
+    let currentField = initialField;
     let currentAttributes: CodexAttribute[] = node.attributes || [];
     let currentContentSections: CodexContentSection[] = node.contentSections || [];
     
@@ -109,29 +122,58 @@ export class WriterViewManager {
             
             // Only fetch prose content for regular fields (not attributes/content)
             if (message.field !== '__attributes__' && message.field !== '__content__') {
-              const doc = await vscode.workspace.openTextDocument(documentUri);
+              // Read file directly - DON'T open in VS Code text editor
+              const filePath = documentUri.fsPath;
+              const text = fs.readFileSync(filePath, 'utf-8');
+              
               const parsed = isMarkdownFile(fileName)
-                ? parseMarkdownAsCodex(doc.getText(), fileName)
-                : parseCodex(doc.getText());
+                ? parseMarkdownAsCodex(text, fileName)
+                : parseCodex(text);
+              
               if (parsed) {
-                const fieldContent = isMarkdownFile(fileName)
-                  ? (parsed.rootNode?.proseValue ?? '')
-                  : getNodeProse(parsed, node, message.field);
+                let fieldContent: string;
+                
+                if (isMarkdownFile(fileName)) {
+                  // For markdown files, extract field from frontmatter or body
+                  if (message.field === 'body') {
+                    fieldContent = parsed.rootNode?.proseValue ?? '';
+                  } else {
+                    // For summary and other fields, get from frontmatter
+                    const frontmatter = parsed.frontmatter as Record<string, unknown> | undefined;
+                    fieldContent = (frontmatter?.[message.field] as string) ?? '';
+                  }
+                } else {
+                  // For codex files, use getNodeProse
+                  fieldContent = getNodeProse(parsed, node, message.field);
+                }
+                
                 panel.webview.postMessage({ type: 'fieldContent', text: fieldContent, field: message.field });
               }
             }
             break;
             
           case 'requestContent':
-            // Re-fetch content from document
-            const docReq = await vscode.workspace.openTextDocument(documentUri);
+            // Read file directly - DON'T open in VS Code text editor
+            const filePathReq = documentUri.fsPath;
+            const textReq = fs.readFileSync(filePathReq, 'utf-8');
             const parsedReq = isMarkdownFile(fileName)
-              ? parseMarkdownAsCodex(docReq.getText(), fileName)
-              : parseCodex(docReq.getText());
+              ? parseMarkdownAsCodex(textReq, fileName)
+              : parseCodex(textReq);
             if (parsedReq) {
-              const currentProse = isMarkdownFile(fileName)
-                ? (parsedReq.rootNode?.proseValue ?? '')
-                : getNodeProse(parsedReq, node, currentField);
+              let currentProse: string;
+              if (isMarkdownFile(fileName)) {
+                // For markdown files, extract field from frontmatter or body
+                if (currentField === 'body') {
+                  currentProse = parsedReq.rootNode?.proseValue ?? '';
+                } else {
+                  // For summary and other fields, get from frontmatter
+                  const frontmatter = parsedReq.frontmatter as Record<string, unknown> | undefined;
+                  currentProse = (frontmatter?.[currentField] as string) ?? '';
+                }
+              } else {
+                // For codex files, use getNodeProse
+                currentProse = getNodeProse(parsedReq, node, currentField);
+              }
               panel.webview.postMessage({ type: 'content', text: currentProse });
             }
             break;
@@ -182,14 +224,14 @@ export class WriterViewManager {
       return;
     }
     
-    // Get the document
-    const document = await vscode.workspace.openTextDocument(documentUri);
+    // Read file directly - DON'T open in VS Code text editor
     const fileName = documentUri.fsPath;
+    const text = fs.readFileSync(fileName, 'utf-8');
     
     // Use appropriate parser based on file type
     const codexDoc = isMarkdownFile(fileName)
-      ? parseMarkdownAsCodex(document.getText(), fileName)
-      : parseCodex(document.getText());
+      ? parseMarkdownAsCodex(text, fileName)
+      : parseCodex(text);
       
     if (!codexDoc) {
       const fileType = isMarkdownFile(fileName) ? 'Markdown' : 'Codex';
@@ -198,11 +240,21 @@ export class WriterViewManager {
     }
     
     // Get prose value for the target field
-    const prose = targetField.startsWith('__') 
-      ? '' 
-      : isMarkdownFile(fileName)
-        ? (codexDoc.rootNode?.proseValue ?? '')
-        : getNodeProse(codexDoc, node, targetField);
+    let prose: string;
+    if (targetField.startsWith('__')) {
+      prose = '';
+    } else if (isMarkdownFile(fileName)) {
+      // For markdown files, extract field from frontmatter or body
+      if (targetField === 'body') {
+        prose = codexDoc.rootNode?.proseValue ?? '';
+      } else {
+        // For summary and other fields, get from frontmatter
+        const frontmatter = codexDoc.frontmatter as Record<string, unknown> | undefined;
+        prose = (frontmatter?.[targetField] as string) ?? '';
+      }
+    } else {
+      prose = getNodeProse(codexDoc, node, targetField);
+    }
     
     // Create new panel
     let panel = vscode.window.createWebviewPanel(
@@ -243,28 +295,58 @@ export class WriterViewManager {
             this.lastSelectedField = message.field;
             
             if (message.field !== '__attributes__' && message.field !== '__content__') {
-              const doc = await vscode.workspace.openTextDocument(documentUri);
+              // Read file directly - DON'T open in VS Code text editor
+              const filePath = documentUri.fsPath;
+              const text = fs.readFileSync(filePath, 'utf-8');
+              
               const parsed = isMarkdownFile(fileName)
-                ? parseMarkdownAsCodex(doc.getText(), fileName)
-                : parseCodex(doc.getText());
+                ? parseMarkdownAsCodex(text, fileName)
+                : parseCodex(text);
+              
               if (parsed) {
-                const fieldContent = isMarkdownFile(fileName)
-                  ? (parsed.rootNode?.proseValue ?? '')
-                  : getNodeProse(parsed, node, message.field);
+                let fieldContent: string;
+                
+                if (isMarkdownFile(fileName)) {
+                  // For markdown files, extract field from frontmatter or body
+                  if (message.field === 'body') {
+                    fieldContent = parsed.rootNode?.proseValue ?? '';
+                  } else {
+                    // For summary and other fields, get from frontmatter
+                    const frontmatter = parsed.frontmatter as Record<string, unknown> | undefined;
+                    fieldContent = (frontmatter?.[message.field] as string) ?? '';
+                  }
+                } else {
+                  // For codex files, use getNodeProse
+                  fieldContent = getNodeProse(parsed, node, message.field);
+                }
+                
                 panel.webview.postMessage({ type: 'fieldContent', text: fieldContent, field: message.field });
               }
             }
             break;
             
           case 'requestContent':
-            const docReq = await vscode.workspace.openTextDocument(documentUri);
+            // Read file directly - DON'T open in VS Code text editor
+            const filePathReq = documentUri.fsPath;
+            const textReq = fs.readFileSync(filePathReq, 'utf-8');
             const parsedReq = isMarkdownFile(fileName)
-              ? parseMarkdownAsCodex(docReq.getText(), fileName)
-              : parseCodex(docReq.getText());
+              ? parseMarkdownAsCodex(textReq, fileName)
+              : parseCodex(textReq);
             if (parsedReq) {
-              const currentProse = isMarkdownFile(fileName)
-                ? (parsedReq.rootNode?.proseValue ?? '')
-                : getNodeProse(parsedReq, node, currentField);
+              let currentProse: string;
+              if (isMarkdownFile(fileName)) {
+                // For markdown files, extract field from frontmatter or body
+                if (currentField === 'body') {
+                  currentProse = parsedReq.rootNode?.proseValue ?? '';
+                } else {
+                  // For summary and other fields, get from frontmatter
+                  const frontmatter = parsedReq.frontmatter as Record<string, unknown> | undefined;
+                  currentProse = (frontmatter?.[currentField] as string) ?? '';
+                }
+              } else {
+                // For codex files, use getNodeProse
+                currentProse = getNodeProse(parsedReq, node, currentField);
+              }
               panel.webview.postMessage({ type: 'content', text: currentProse });
             }
             break;

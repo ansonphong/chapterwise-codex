@@ -509,8 +509,8 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       log(`[setActiveDocument] BLOCKED automatic context switch - user has not explicitly set context yet`);
       log(`[setActiveDocument] File: ${document.fileName}`);
       log(`[setActiveDocument] Stack: ${new Error().stack?.split('\n').slice(1, 5).join('\n')}`);
-      return;
-    }
+        return;
+      }
     
     // UPDATE CENTRALIZED CONTEXT from the document
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
@@ -528,8 +528,8 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     // Mark context as explicitly set if this is an explicit action
     if (explicit) {
       this.contextExplicitlySet = true;
-    }
-    
+  }
+  
     // Log context change
     this._logContextChange('setActiveDocument', {
       'New file': document.fileName,
@@ -553,7 +553,7 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       this.updateIndexDoc();
     } else {
       this.isIndexMode = false;
-      this.updateCodexDoc();
+    this.updateCodexDoc();
     }
   }
   
