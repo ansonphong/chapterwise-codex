@@ -2,7 +2,7 @@
   "name": "chapterwise-codex",
   "displayName": "ChapterWise Codex",
   "description": "Codex file format Manuscript editing with tree navigation, distraction-free prose editing, and format validation.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "StudioPhong",
   "icon": "media/icon.png",
   "repository": {
