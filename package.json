@@ -152,11 +152,6 @@
         "icon": "$(list-tree)"
       },
       {
-        "command": "chapterwiseCodex.switchToFilesMode",
-        "title": "Show Open Files",
-        "icon": "$(files)"
-      },
-      {
         "command": "chapterwiseCodex.autofixFolder",
         "title": "Autofix Folder (Renormalize Order)",
         "icon": "$(sync-ignored)"
@@ -241,44 +236,19 @@
       ],
       "view/title": [
         {
-          "command": "chapterwiseCodex.switchToIndexMode",
-          "when": "view == chapterwiseCodexNavigator && codexNavigatorMode != 'index'",
-          "group": "navigation@1"
-        },
-        {
-          "command": "chapterwiseCodex.switchToFilesMode",
-          "when": "view == chapterwiseCodexNavigator && codexNavigatorMode != 'files'",
-          "group": "navigation@2"
-        },
-        {
-          "command": "chapterwiseCodex.generateIndex",
-          "when": "view == chapterwiseCodexNavigator",
-          "group": "navigation@3"
-        },
-        {
-          "command": "chapterwiseCodex.resetContext",
-          "when": "view == chapterwiseCodexNavigator",
-          "group": "navigation@4"
-        },
-        {
           "command": "chapterwiseCodex.autoFix",
           "when": "view == chapterwiseCodexNavigator",
-          "group": "navigation@4"
-        },
-        {
-          "command": "chapterwiseCodex.toggleFields",
-          "when": "view == chapterwiseCodexNavigator",
-          "group": "navigation@5"
+          "group": "navigation@1"
         },
         {
           "command": "chapterwiseCodex.filterByType",
           "when": "view == chapterwiseCodexNavigator",
-          "group": "navigation@6"
+          "group": "navigation@2"
         },
         {
           "command": "chapterwiseCodex.refresh",
           "when": "view == chapterwiseCodexNavigator",
-          "group": "navigation@7"
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [

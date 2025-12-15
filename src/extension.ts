@@ -829,15 +829,6 @@ function registerCommands(context: vscode.ExtensionContext): void {
     })
   );
   
-  // Switch to FILES mode command
-  context.subscriptions.push(
-    vscode.commands.registerCommand('chapterwiseCodex.switchToFilesMode', async () => {
-      treeProvider.setNavigationMode('files');
-      
-      // Set context for button highlighting
-      await vscode.commands.executeCommand('setContext', 'codexNavigatorMode', 'files');
-    })
-  );
   
   // Autofix Folder command (renormalize order values)
   context.subscriptions.push(
