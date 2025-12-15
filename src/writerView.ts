@@ -16,6 +16,7 @@ import {
   setNodeProse, 
   setMarkdownNodeProse,
   setMarkdownFrontmatterField,
+  setNodeName,
   getNodeProse,
   getNodeAttributes,
   setNodeAttributes,
@@ -122,6 +123,10 @@ export class WriterViewManager {
             const fieldToSave = message.field || currentField;
             await this.handleSave(documentUri, node, message.text, fieldToSave);
             panel.webview.postMessage({ type: 'saved' });
+            break;
+          
+          case 'renameName':
+            await this.handleRenameName(documentUri, node, message.name, panel);
             break;
             
           case 'switchField':
@@ -413,7 +418,7 @@ export class WriterViewManager {
           newDocText = setMarkdownFrontmatterField(originalText, 'summary', newText);
         } else {
           // Update the body (preserving frontmatter)
-          newDocText = setMarkdownNodeProse(originalText, newText, codexDoc.frontmatter);
+        newDocText = setMarkdownNodeProse(originalText, newText, codexDoc.frontmatter);
         }
       } else {
         // Standard Codex file handling
@@ -445,6 +450,57 @@ export class WriterViewManager {
       }
     } catch (error) {
       vscode.window.showErrorMessage(`Save failed: ${error}`);
+    }
+  }
+  
+  /**
+   * Handle inline rename of the node name/title
+   */
+  private async handleRenameName(
+    documentUri: vscode.Uri,
+    node: CodexNode,
+    newName: string,
+    panel: vscode.WebviewPanel
+  ): Promise<void> {
+    const trimmed = (newName || '').trim();
+    if (!trimmed) {
+      panel.webview.postMessage({ type: 'nameUpdateError', error: 'Name cannot be empty.' });
+      return;
+    }
+    
+    try {
+      const filePath = documentUri.fsPath;
+      const fileName = filePath.toLowerCase();
+      const originalText = fs.readFileSync(filePath, 'utf-8');
+      let newDocText: string | null = null;
+      
+      if (isMarkdownFile(fileName)) {
+        // Codex Lite: store name in frontmatter
+        newDocText = setMarkdownFrontmatterField(originalText, 'name', trimmed);
+      } else {
+        const codexDoc = parseCodex(originalText);
+        if (!codexDoc) {
+          panel.webview.postMessage({ type: 'nameUpdateError', error: 'Unable to parse document for renaming.' });
+          return;
+        }
+        newDocText = setNodeName(codexDoc, node, trimmed);
+      }
+      
+      if (!newDocText) {
+        panel.webview.postMessage({ type: 'nameUpdateError', error: 'Rename failed: could not update text.' });
+        return;
+      }
+      
+      fs.writeFileSync(filePath, newDocText, 'utf-8');
+      
+      // Update in-memory node and panel title for consistency
+      node.name = trimmed;
+      panel.title = `✍️ ${trimmed || 'Writer'}`;
+      
+      panel.webview.postMessage({ type: 'nameUpdated', name: trimmed });
+    } catch (error) {
+      console.error('Rename failed:', error);
+      panel.webview.postMessage({ type: 'nameUpdateError', error: 'Failed to rename. See console for details.' });
     }
   }
   
@@ -645,6 +701,47 @@ export class WriterViewManager {
       font-size: 1rem;
       font-weight: 600;
       color: var(--text-primary);
+    }
+    
+    .node-name.editable {
+      cursor: text;
+      user-select: none;
+      transition: opacity 0.15s ease;
+    }
+    
+    .node-name.editable:hover {
+      opacity: 0.9;
+    }
+    
+    .node-name-container {
+      position: relative;
+    }
+    
+    .node-name.editing-hidden {
+      display: none;
+    }
+    
+    .node-name-input {
+      display: none;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      background: transparent;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 0.2rem 0.4rem;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    
+    .node-name-input.editing-active {
+      display: block;
+    }
+    
+    .node-name-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
     }
     
     /* Attributes Editor Styles */
@@ -1072,7 +1169,10 @@ export class WriterViewManager {
             <option value="__content__" ${initialField === '__content__' ? 'selected' : ''} ${node.hasContentSections ? '' : 'data-new="true"'}>📝 content sections${node.contentSections ? ` (${node.contentSections.length})` : ' (new)'}</option>
           </select>
         </div>
-        <span class="node-name">${this.escapeHtml(node.name)}</span>
+        <div class="node-name-container">
+          <span class="node-name editable" id="nodeName" tabindex="0" title="Click to edit title">${this.escapeHtml(node.name)}</span>
+          <input class="node-name-input" id="nodeNameInput" type="text" aria-label="Edit title" />
+        </div>
       </div>
     </div>
     <div class="header-right">
@@ -1129,6 +1229,8 @@ export class WriterViewManager {
     const wordCountEl = document.getElementById('wordCount');
     const charCountEl = document.getElementById('charCount');
     const fieldSelector = document.getElementById('fieldSelector');
+    const nodeNameDisplay = document.getElementById('nodeName');
+    const nodeNameInput = document.getElementById('nodeNameInput');
     
     let isDirty = false;
     let originalContent = editor.innerText;
@@ -1166,6 +1268,82 @@ export class WriterViewManager {
       contentSectionsDirty = true;
       updateDirtyIndicator();
     }
+    
+    // ----- Inline title editing -----
+    let isEditingName = false;
+    let isSubmittingName = false;
+    
+    function enterNameEdit() {
+      if (!nodeNameDisplay || !nodeNameInput || isSubmittingName) return;
+      if (isEditingName) return;
+      isEditingName = true;
+      nodeNameInput.value = nodeNameDisplay.textContent.trim();
+      nodeNameDisplay.classList.add('editing-hidden');
+      nodeNameInput.classList.add('editing-active');
+      nodeNameInput.focus();
+      nodeNameInput.select();
+    }
+    
+    function exitNameEdit() {
+      if (!nodeNameDisplay || !nodeNameInput) return;
+      isEditingName = false;
+      nodeNameInput.classList.remove('editing-active');
+      nodeNameDisplay.classList.remove('editing-hidden');
+    }
+    
+    function submitNameEdit() {
+      if (!nodeNameDisplay || !nodeNameInput) return;
+      if (isSubmittingName) return;
+      
+      const newName = nodeNameInput.value.trim();
+      const currentName = nodeNameDisplay.textContent.trim();
+      
+      exitNameEdit();
+      
+      if (!newName || newName === currentName) {
+        nodeNameInput.value = currentName;
+        return;
+      }
+      
+      isSubmittingName = true;
+      vscode.postMessage({
+        type: 'renameName',
+        name: newName
+      });
+      
+      // Slight delay to avoid double submits from blur + enter
+      setTimeout(() => {
+        isSubmittingName = false;
+      }, 0);
+    }
+    
+    if (nodeNameDisplay && nodeNameInput) {
+      nodeNameDisplay.addEventListener('click', enterNameEdit);
+      nodeNameDisplay.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          enterNameEdit();
+        }
+      });
+      
+      nodeNameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          submitNameEdit();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          nodeNameInput.value = nodeNameDisplay.textContent.trim();
+          exitNameEdit();
+        }
+      });
+      
+      nodeNameInput.addEventListener('blur', () => {
+        if (isEditingName) {
+          submitNameEdit();
+        }
+      });
+    }
+    // ----- End inline title editing -----
     
     function updateDirtyIndicator() {
       const anyDirty = isDirty || attributesDirty || contentSectionsDirty;
@@ -1506,6 +1684,18 @@ export class WriterViewManager {
           // Only mark prose as clean; attributes/content have their own tracking
           isDirty = false;
           checkAllClean();
+          break;
+        case 'nameUpdated':
+          if (nodeNameDisplay && nodeNameInput) {
+            nodeNameDisplay.textContent = message.name;
+            nodeNameInput.value = message.name;
+            exitNameEdit();
+          }
+          break;
+        case 'nameUpdateError':
+          if (message.error) {
+            alert(message.error);
+          }
           break;
         case 'saveComplete':
           // All saves complete - mark everything clean

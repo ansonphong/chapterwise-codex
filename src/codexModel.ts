@@ -748,6 +748,44 @@ export function setNodeProse(
 }
 
 /**
+ * Update the name for a specific node and return the new document text
+ */
+export function setNodeName(
+  codexDoc: CodexDocument,
+  node: CodexNode,
+  newName: string
+): string {
+  const trimmedName = newName.trim();
+  if (!trimmedName) {
+    return codexDoc.rawText;
+  }
+  
+  try {
+    if (codexDoc.isJson) {
+      const obj = JSON.parse(codexDoc.rawText);
+      let current = obj;
+      
+      for (const segment of node.path) {
+        current = current[segment];
+      }
+      
+      if (current && typeof current === 'object') {
+        current['name'] = trimmedName;
+      }
+      
+      return JSON.stringify(obj, null, 2);
+    } else {
+      const doc = YAML.parseDocument(codexDoc.rawText);
+      const pathKeys = [...node.path.map(p => typeof p === 'number' ? p : String(p)), 'name'];
+      doc.setIn(pathKeys, trimmedName);
+      return doc.toString();
+    }
+  } catch {
+    return codexDoc.rawText;
+  }
+}
+
+/**
  * Get the attributes array for a specific node
  */
 export function getNodeAttributes(codexDoc: CodexDocument, node: CodexNode): CodexAttribute[] {
