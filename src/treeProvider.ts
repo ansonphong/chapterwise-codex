@@ -466,22 +466,18 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       }
     });
     
-    // Watch for active editor changes - ALWAYS update when switching to a codex-like file
+    // Watch for active editor changes - DON'T auto-switch context
+    // Context should ONLY change when user explicitly sets it (right-click → Set as Codex Context)
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       console.log('[ChapterWise Codex] Active editor changed:', editor?.document?.fileName);
-      if (editor && isCodexLikeFile(editor.document.fileName)) {
-        console.log('[ChapterWise Codex] Setting active document from editor change');
-        this.setActiveDocument(editor.document);
-      }
+      // Removed automatic setActiveDocument - user must explicitly set context
     });
     
-    // Watch for documents opening
+    // Watch for documents opening - DON'T auto-switch context
+    // Context should ONLY change when user explicitly sets it
     vscode.workspace.onDidOpenTextDocument((doc) => {
       console.log('[ChapterWise Codex] Document opened:', doc.fileName);
-      if (isCodexLikeFile(doc.fileName)) {
-        console.log('[ChapterWise Codex] Codex-like file opened, setting as active');
-        this.setActiveDocument(doc);
-      }
+      // Removed automatic setActiveDocument - user must explicitly set context
     });
     
     // Initialize with current editor if it's a codex file
@@ -489,36 +485,38 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
   }
   
   /**
-   * Initialize by finding the first codex-like document
+   * Initialize by finding an INDEX file (not regular codex files)
+   * Only INDEX files should auto-initialize context on startup
+   * Regular codex files require explicit context setting
    */
   private initializeActiveDocument(): void {
-    // Try active editor first
+    // Try active editor first - but ONLY if it's an INDEX file
     const editor = vscode.window.activeTextEditor;
-    if (editor && isCodexLikeFile(editor.document.fileName)) {
-      console.log('[ChapterWise Codex] Init: Found active codex-like file:', editor.document.fileName);
+    if (editor && isIndexFile(editor.document.fileName)) {
+      console.log('[ChapterWise Codex] Init: Found active index file:', editor.document.fileName);
       this.setActiveDocument(editor.document);
       return;
     }
     
-    // Scan all visible editors
+    // Scan all visible editors - but ONLY for INDEX files
     for (const visibleEditor of vscode.window.visibleTextEditors) {
-      if (isCodexLikeFile(visibleEditor.document.fileName)) {
-        console.log('[ChapterWise Codex] Init: Found visible codex-like file:', visibleEditor.document.fileName);
+      if (isIndexFile(visibleEditor.document.fileName)) {
+        console.log('[ChapterWise Codex] Init: Found visible index file:', visibleEditor.document.fileName);
         this.setActiveDocument(visibleEditor.document);
         return;
       }
     }
     
-    // Scan all open documents
+    // Scan all open documents - but ONLY for INDEX files
     for (const doc of vscode.workspace.textDocuments) {
-      if (isCodexLikeFile(doc.fileName)) {
-        console.log('[ChapterWise Codex] Init: Found open codex-like file:', doc.fileName);
+      if (isIndexFile(doc.fileName)) {
+        console.log('[ChapterWise Codex] Init: Found open index file:', doc.fileName);
         this.setActiveDocument(doc);
         return;
       }
     }
     
-    console.log('[ChapterWise Codex] Init: No codex-like files found');
+    console.log('[ChapterWise Codex] Init: No index files found - context will remain empty until explicitly set');
   }
   
   /**

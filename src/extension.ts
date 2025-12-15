@@ -442,23 +442,24 @@ function registerCommands(context: vscode.ExtensionContext): void {
             return;
           }
           
-          outputChannel.appendLine(`File exists, opening document...`);
-          // Open the document first
+          outputChannel.appendLine(`File exists, reading file...`);
+          // Read file directly - DON'T open in VS Code text editor
+          // We only want to open it in the writer view
           const uri = vscode.Uri.file(filePath);
-          const doc = await vscode.workspace.openTextDocument(uri);
-          outputChannel.appendLine(`Document opened successfully`);
+          const text = fs.readFileSync(filePath, 'utf-8');
+          outputChannel.appendLine(`File read successfully, length: ${text.length}`);
           
           // Parse as codex
-          const fileName = doc.fileName;
-          const text = doc.getText();
+          const fileName = path.basename(filePath);
           outputChannel.appendLine(`Parsing as Codex Lite, text length: ${text.length}`);
-          const codexDoc = parseMarkdownAsCodex(text, fileName);
+          const codexDoc = parseMarkdownAsCodex(text, filePath);
           
           if (!codexDoc || !codexDoc.rootNode) {
             outputChannel.appendLine(`Failed to parse as Codex, falling back to text editor`);
             // Fallback to regular text editor if parsing fails
+            const doc = await vscode.workspace.openTextDocument(uri);
             await vscode.window.showTextDocument(doc);
-            treeProvider.setActiveDocument(doc);
+            // Don't change context - user must explicitly set it
             return;
           }
           
