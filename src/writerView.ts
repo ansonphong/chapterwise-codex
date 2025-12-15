@@ -98,7 +98,7 @@ export class WriterViewManager {
     // Create new panel in the ACTIVE editor group (same frame, new tab)
     let panel = vscode.window.createWebviewPanel(
       'chapterwiseCodexWriter',
-      `✍️ ${node.name || 'Writer'}`,
+      `🖋️ ${node.name || 'Writer'}`,
       vscode.ViewColumn.Active,  // Opens in current editor group as new tab
       {
         enableScripts: true,
@@ -276,7 +276,7 @@ export class WriterViewManager {
     // Create new panel
     let panel = vscode.window.createWebviewPanel(
       'chapterwiseCodexWriter',
-      `✍️ ${node.name || 'Writer'}`,
+      `🖋️ ${node.name || 'Writer'}`,
       vscode.ViewColumn.Active,
       {
         enableScripts: true,
