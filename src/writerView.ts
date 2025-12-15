@@ -1475,7 +1475,7 @@ export class WriterViewManager {
     });
     
     // Handle content changes
-    editor.addEventListener('input', () => {
+    function handleEditorChange() {
       markDirty();
       updateCounts();
       
@@ -1488,7 +1488,10 @@ export class WriterViewManager {
           save();
         }
       }, 2000);
-    });
+    }
+    
+    editor.addEventListener('input', handleEditorChange);
+    editor.addEventListener('beforeinput', handleEditorChange);
     
     // Handle keyboard shortcuts
     editor.addEventListener('keydown', (e) => {
