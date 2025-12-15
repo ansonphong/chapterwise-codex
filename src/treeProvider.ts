@@ -10,6 +10,20 @@ import { CodexNode, CodexDocument, parseCodex, parseMarkdownAsCodex, isCodexFile
 import { parseIndexFile, isIndexFile, IndexDocument, IndexChildNode, getEffectiveEmoji, countFilesInIndex } from './indexParser';
 
 /**
+ * Helper to log to the output channel
+ */
+function log(message: string): void {
+  // Use dynamic import to avoid circular dependency
+  const ext = require('./extension');
+  const channel = ext.getOutputChannel();
+  if (channel) {
+    channel.appendLine(message);
+  } else {
+    console.log(message);
+  }
+}
+
+/**
  * Tree item representing the file header at the top of the tree
  */
 export class CodexFileHeaderItem extends vscode.TreeItem {
@@ -125,7 +139,8 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
     public readonly workspaceRoot: string,
     public readonly documentUri: vscode.Uri,
     private readonly isFolder: boolean,
-    private readonly hasChildren: boolean
+    private readonly hasChildren: boolean,
+    private readonly pathResolver?: (computedPath: string) => string
   ) {
     const displayName = indexNode.title || indexNode.name;
     
@@ -223,9 +238,17 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
     console.log(`[getFilePath] workspaceRoot: ${this.workspaceRoot}`);
     
     if (this.indexNode._computed_path) {
-      const resolvedPath = path.join(this.workspaceRoot, this.indexNode._computed_path);
-      console.log(`[getFilePath] Using _computed_path, resolved to: ${resolvedPath}`);
-      return resolvedPath;
+      // USE PATH RESOLVER if provided, otherwise fallback to old behavior
+      if (this.pathResolver) {
+        const resolvedPath = this.pathResolver(this.indexNode._computed_path);
+        console.log(`[getFilePath] Using pathResolver, resolved to: ${resolvedPath}`);
+        return resolvedPath;
+      } else {
+        // Fallback: old behavior
+        const resolvedPath = path.join(this.workspaceRoot, this.indexNode._computed_path);
+        console.log(`[getFilePath] Using fallback (no resolver), resolved to: ${resolvedPath}`);
+        return resolvedPath;
+      }
     }
     
     // Fallback: build from parent chain
@@ -373,22 +396,64 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
   private loadingMessage: string | null = null;    // Loading message to display
   
   /**
+   * CENTRALIZED CONTEXT STATE
+   * This is the single source of truth for the current context
+   */
+  private currentContext: {
+    workspaceRoot: string | null;
+    contextFolder: string | null; // Relative path from workspace root (e.g., "E02")
+  } = {
+    workspaceRoot: null,
+    contextFolder: null
+  };
+  
+  /**
    * CENTRALIZED CONTEXT CHANGE METHOD
    * ALL context changes MUST go through this method
    */
   private _logContextChange(reason: string, details: Record<string, any>): void {
-    console.log('╔════════════════════════════════════════════════════════════════');
-    console.log('║ CONTEXT SWITCH:', reason);
-    console.log('╠════════════════════════════════════════════════════════════════');
+    log('╔════════════════════════════════════════════════════════════════');
+    log('║ CONTEXT SWITCH: ' + reason);
+    log('╠════════════════════════════════════════════════════════════════');
     for (const [key, value] of Object.entries(details)) {
-      console.log(`║ ${key}:`, value);
+      log(`║ ${key}: ${value}`);
     }
-    console.log('║ Stack trace:');
+    log('║ Stack trace:');
     const stack = new Error().stack?.split('\n').slice(3, 8) || [];
     for (const line of stack) {
-      console.log('║   ' + line.trim());
+      log('║   ' + line.trim());
     }
-    console.log('╚════════════════════════════════════════════════════════════════');
+    log('╚════════════════════════════════════════════════════════════════');
+  }
+  
+  /**
+   * CENTRALIZED PATH RESOLUTION
+   * ALL file path resolution MUST go through this method
+   * This resolves _computed_path against the current workspace root
+   */
+  private resolveFilePath(computedPath: string): string {
+    if (!this.currentContext.workspaceRoot) {
+      log('[ChapterWise] resolveFilePath: No workspace root in context!');
+      return computedPath;
+    }
+    
+    const resolved = path.join(this.currentContext.workspaceRoot, computedPath);
+    
+    log('[ChapterWise] resolveFilePath: ' + JSON.stringify({
+      input: computedPath,
+      workspaceRoot: this.currentContext.workspaceRoot,
+      contextFolder: this.currentContext.contextFolder,
+      resolved: resolved
+    }));
+    
+    return resolved;
+  }
+  
+  /**
+   * Get the current workspace root (single source of truth)
+   */
+  getWorkspaceRoot(): string | null {
+    return this.currentContext.workspaceRoot;
   }
   
   constructor() {
@@ -464,12 +529,27 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       return;
     }
     
+    // UPDATE CENTRALIZED CONTEXT from the document
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+    if (workspaceFolder) {
+      this.currentContext.workspaceRoot = workspaceFolder.uri.fsPath;
+      
+      // If opening an index file, extract the context folder from its path
+      if (isIndexFile(document.fileName)) {
+        const relativePath = path.relative(workspaceFolder.uri.fsPath, document.fileName);
+        const indexFolder = path.dirname(relativePath);
+        this.currentContext.contextFolder = indexFolder === '.' ? null : indexFolder;
+      }
+    }
+    
     // Log context change
     this._logContextChange('setActiveDocument', {
       'New file': document.fileName,
       'Previous file': this.activeDocument?.fileName || 'none',
       'Is index': isIndexFile(document.fileName),
-      'Is codex-like': isCodexLikeFile(document.fileName)
+      'Is codex-like': isCodexLikeFile(document.fileName),
+      'Context workspace root': this.currentContext.workspaceRoot,
+      'Context folder': this.currentContext.contextFolder || 'none'
     });
     
     this.activeDocument = document;
@@ -557,6 +637,10 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       'Previous folder': this.contextFolder || 'none',
       'Previous workspace root': this.workspaceRoot || 'none'
     });
+    
+    // UPDATE CENTRALIZED CONTEXT
+    this.currentContext.workspaceRoot = workspaceRoot;
+    this.currentContext.contextFolder = folderPath;
     
     this.contextFolder = folderPath;
     this.workspaceRoot = workspaceRoot;
@@ -1046,12 +1130,14 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     const isFolder = node.type === 'folder';
     const hasChildren = node.children && node.children.length > 0;
     
+    // Pass the centralized path resolver
     return new IndexNodeTreeItem(
       node,
       workspaceRoot,
       documentUri,
       isFolder,
-      !!hasChildren
+      !!hasChildren,
+      (computedPath: string) => this.resolveFilePath(computedPath)
     );
   }
   
@@ -1117,28 +1203,6 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       console.error('[ChapterWise Codex] Failed to load codex file structure:', error);
       return [];
     }
-  }
-  
-  /**
-   * Get workspace root directory
-   */
-  private getWorkspaceRoot(): string | null {
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (!workspaceFolders || workspaceFolders.length === 0) {
-      return null;
-    }
-    
-    // If active document is in workspace, use its folder
-    if (this.activeDocument) {
-      for (const folder of workspaceFolders) {
-        if (this.activeDocument.uri.fsPath.startsWith(folder.uri.fsPath)) {
-          return folder.uri.fsPath;
-        }
-      }
-    }
-    
-    // Fallback to first workspace folder
-    return workspaceFolders[0].uri.fsPath;
   }
   
   getParent(element: CodexTreeItemType): vscode.ProviderResult<CodexTreeItemType> {

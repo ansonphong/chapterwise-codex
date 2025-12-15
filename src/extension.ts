@@ -28,6 +28,13 @@ let statusBarItem: vscode.StatusBarItem;
 let outputChannel: vscode.OutputChannel;
 
 /**
+ * Get the output channel for logging
+ */
+export function getOutputChannel(): vscode.OutputChannel | undefined {
+  return outputChannel;
+}
+
+/**
  * Extension activation
  */
 export function activate(context: vscode.ExtensionContext): void {

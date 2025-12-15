@@ -90,10 +90,8 @@ export function parseIndexFile(content: string): IndexDocument | null {
       applyTypeStyles(data.children, data.typeStyles);
     }
 
-    // Compute paths for all children
-    if (data.children) {
-      computePaths(data.children);
-    }
+    // Trust that generator already set correct _computed_path values
+    // No need to compute paths - generator does this correctly
 
     // Apply default status
     if (data.children) {
@@ -136,27 +134,6 @@ function applyTypeStyles(children: IndexChildNode[], typeStyles: TypeStyle[]): v
   }
 
   apply(children);
-}
-
-/**
- * Compute full paths for all children recursively
- */
-function computePaths(children: IndexChildNode[], parentPath: string = ''): void {
-  for (const child of children) {
-    // Use _filename for path (actual file on disk)
-    // Fall back to name if _filename doesn't exist
-    const fileName = child._filename || child.name;
-
-    // Compute path for this child
-    const childPath = parentPath ? path.join(parentPath, fileName) : fileName;
-
-    child._computed_path = childPath;
-
-    // Recurse for folders
-    if (child.type === 'folder' && child.children) {
-      computePaths(child.children, childPath);
-    }
-  }
 }
 
 /**
