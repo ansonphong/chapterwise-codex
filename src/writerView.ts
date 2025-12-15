@@ -933,10 +933,10 @@ export class WriterViewManager {
       cursor: pointer;
       transition: border-color 0.2s ease, color 0.2s ease;
     }
-    
-    .save-icon {
-      width: 16px;
-      height: 16px;
+
+    .save-btn .codicon {
+      font-size: 16px;
+      line-height: 0;
     }
     
     .save-btn:hover {
@@ -1090,9 +1090,7 @@ export class WriterViewManager {
     <div class="header-right">
       <span class="word-count" id="wordCount">${wordCount} words</span>
       <button class="save-btn" id="saveBtn" title="Save (Ctrl+S)">
-        <svg class="save-icon" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-          <path d="M9.5 1H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6.5L9.5 1zm0 1v2.5H12v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4.5zm-3 8.5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0z"/>
-        </svg>
+        <span class="codicon codicon-disk"></span>
       </button>
     </div>
   </div>
