@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import { CodexTreeProvider, CodexTreeItem, CodexFieldTreeItem, IndexNodeTreeItem, CodexTreeItemType, createCodexTreeView } from './treeProvider';
 import { WriterViewManager } from './writerView';
 import { initializeValidation } from './validation';
-import { isCodexFile, parseMarkdownAsCodex } from './codexModel';
+import { isCodexFile, parseMarkdownAsCodex, parseCodex } from './codexModel';
 import { runAutoFixer, disposeAutoFixer } from './autoFixer';
 import { runExplodeCodex, disposeExplodeCodex } from './explodeCodex';
 import { runImplodeCodex, disposeImplodeCodex } from './implodeCodex';
@@ -449,10 +449,23 @@ function registerCommands(context: vscode.ExtensionContext): void {
           const text = fs.readFileSync(filePath, 'utf-8');
           outputChannel.appendLine(`File read successfully, length: ${text.length}`);
           
-          // Parse as codex
+          // Determine file type and parse accordingly
           const fileName = path.basename(filePath);
-          outputChannel.appendLine(`Parsing as Codex Lite, text length: ${text.length}`);
-          const codexDoc = parseMarkdownAsCodex(text, filePath);
+          const isMarkdown = fileName.endsWith('.md');
+          const isCodexYaml = fileName.endsWith('.codex.yaml');
+          
+          let codexDoc;
+          if (isMarkdown) {
+            outputChannel.appendLine(`Parsing as Codex Lite (markdown), text length: ${text.length}`);
+            codexDoc = parseMarkdownAsCodex(text, filePath);
+          } else if (isCodexYaml) {
+            outputChannel.appendLine(`Parsing as Codex YAML, text length: ${text.length}`);
+            codexDoc = parseCodex(text);
+          } else {
+            outputChannel.appendLine(`ERROR: Unsupported file type: ${fileName}`);
+            vscode.window.showErrorMessage(`Unsupported file type: ${fileName}`);
+            return;
+          }
           
           if (!codexDoc || !codexDoc.rootNode) {
             outputChannel.appendLine(`Failed to parse as Codex, falling back to text editor`);
@@ -472,10 +485,11 @@ function registerCommands(context: vscode.ExtensionContext): void {
           outputChannel.appendLine(`  availableFields: ${codexDoc.rootNode.availableFields.join(', ')}`);
           
           // Create a temporary CodexTreeItem for the root node
+          const hasChildren = codexDoc.rootNode.children && codexDoc.rootNode.children.length > 0;
           const tempTreeItem = new CodexTreeItem(
             codexDoc.rootNode,
             uri,
-            false, // No children in Codex Lite
+            hasChildren, // .codex.yaml files can have children, .md files typically don't
             false, // Don't expand
             true   // Show fields (body, etc.)
           );
@@ -888,6 +902,9 @@ function registerCommands(context: vscode.ExtensionContext): void {
       const workspaceRoot = workspaceFolder.uri.fsPath;
       const folderPath = path.relative(workspaceRoot, uri.fsPath);
       
+      outputChannel.appendLine(`[setContextFolder] Called for folder: ${folderPath}`);
+      outputChannel.appendLine(`[setContextFolder] Workspace root: ${workspaceRoot}`);
+      
       // Generate index if needed (always regenerate)
       const indexPath = path.join(uri.fsPath, '.index.codex.yaml');
       
@@ -897,10 +914,14 @@ function registerCommands(context: vscode.ExtensionContext): void {
         cancellable: false,
       }, async () => {
         // Always regenerate index hierarchy recursively
-        console.log(`[ChapterWise Codex] Regenerating index hierarchy for: ${folderPath}`);
+        outputChannel.appendLine(`[setContextFolder] Regenerating index hierarchy for: ${folderPath}`);
         await generateFolderHierarchy(workspaceRoot, folderPath);
         
-        // Open the index file - that's it! The rest happens automatically
+        // EXPLICITLY set context in tree provider
+        outputChannel.appendLine(`[setContextFolder] Calling treeProvider.setContextFolder()`);
+        await treeProvider.setContextFolder(folderPath, workspaceRoot);
+        
+        // Open the index file so user can see it
         const doc = await vscode.workspace.openTextDocument(indexPath);
         await vscode.window.showTextDocument(doc);
         
@@ -908,6 +929,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
         treeView.title = `📋 ${path.basename(uri.fsPath)}`;
       });
       
+      outputChannel.appendLine(`[setContextFolder] Complete - Viewing: ${path.basename(uri.fsPath)}`);
       vscode.window.showInformationMessage(`📋 Viewing: ${path.basename(uri.fsPath)}`);
     })
   );
@@ -920,16 +942,31 @@ function registerCommands(context: vscode.ExtensionContext): void {
         return;
       }
       
-      // Just open the file! The rest happens automatically
+      outputChannel.appendLine(`[setContextFile] Called for file: ${uri.fsPath}`);
+      
+      // Find workspace root
+      const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+      if (!workspaceFolder) {
+        vscode.window.showErrorMessage('Could not determine workspace folder');
+        return;
+      }
+      
       try {
+        // Open the file
         const doc = await vscode.workspace.openTextDocument(uri.fsPath);
         await vscode.window.showTextDocument(doc);
+        
+        // EXPLICITLY set context - this is an explicit user action
+        outputChannel.appendLine(`[setContextFile] Calling treeProvider.setActiveDocument(explicit=true)`);
+        treeProvider.setActiveDocument(doc, true);
         
         // Update tree view title
         treeView.title = `📄 ${path.basename(uri.fsPath, '.codex.yaml')}`;
         
+        outputChannel.appendLine(`[setContextFile] Complete - Viewing: ${path.basename(uri.fsPath)}`);
         vscode.window.showInformationMessage(`📄 Viewing: ${path.basename(uri.fsPath)}`);
       } catch (error) {
+        outputChannel.appendLine(`[setContextFile] ERROR: ${error}`);
         vscode.window.showErrorMessage(`Failed to open file: ${error}`);
       }
     })

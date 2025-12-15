@@ -178,7 +178,7 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
     // Set context value for menu contributions
     this.contextValue = isFolder ? 'indexFolder' : 'indexFile';
     
-    // Command: Only for .md files (click to open in writer view)
+    // Command: For both .md and .codex.yaml files (click to open in writer view)
     if (isMarkdown) {
       // .md files open in Codex writer view (body editor)
       this.command = {
@@ -186,8 +186,14 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
         title: '', // Empty title to avoid redundant tooltip
         arguments: [this],
       };
+    } else if (isCodexYaml) {
+      // .codex.yaml files also open in Codex writer view
+      this.command = {
+        command: 'chapterwiseCodex.openIndexFileInWriterView',
+        title: '', // Empty title to avoid redundant tooltip
+        arguments: [this],
+      };
     }
-    // .codex.yaml files have no click command - user expands them instead
   }
   
   private createTooltip(): vscode.MarkdownString {
@@ -394,6 +400,9 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
   private openCodexFiles: vscode.TextDocument[] = []; // Track open files
   private isLoading: boolean = false;              // Loading state for index generation
   private loadingMessage: string | null = null;    // Loading message to display
+  private contextExplicitlySet: boolean = false;   // Track if user has explicitly set context
+  private contextFolder: string | null = null;     // Context folder path (kept for backward compatibility)
+  private workspaceRoot: string | null = null;     // Workspace root (kept for backward compatibility)
   
   /**
    * CENTRALIZED CONTEXT STATE
@@ -480,50 +489,26 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       // Removed automatic setActiveDocument - user must explicitly set context
     });
     
-    // Initialize with current editor if it's a codex file
-    this.initializeActiveDocument();
-  }
-  
-  /**
-   * Initialize by finding an INDEX file (not regular codex files)
-   * Only INDEX files should auto-initialize context on startup
-   * Regular codex files require explicit context setting
-   */
-  private initializeActiveDocument(): void {
-    // Try active editor first - but ONLY if it's an INDEX file
-    const editor = vscode.window.activeTextEditor;
-    if (editor && isIndexFile(editor.document.fileName)) {
-      console.log('[ChapterWise Codex] Init: Found active index file:', editor.document.fileName);
-      this.setActiveDocument(editor.document);
-      return;
-    }
-    
-    // Scan all visible editors - but ONLY for INDEX files
-    for (const visibleEditor of vscode.window.visibleTextEditors) {
-      if (isIndexFile(visibleEditor.document.fileName)) {
-        console.log('[ChapterWise Codex] Init: Found visible index file:', visibleEditor.document.fileName);
-        this.setActiveDocument(visibleEditor.document);
-        return;
-      }
-    }
-    
-    // Scan all open documents - but ONLY for INDEX files
-    for (const doc of vscode.workspace.textDocuments) {
-      if (isIndexFile(doc.fileName)) {
-        console.log('[ChapterWise Codex] Init: Found open index file:', doc.fileName);
-        this.setActiveDocument(doc);
-        return;
-      }
-    }
-    
-    console.log('[ChapterWise Codex] Init: No index files found - context will remain empty until explicitly set');
+    // REMOVED: initializeActiveDocument() - NO automatic context switching
+    // Context will remain empty until user explicitly right-clicks and sets it
+    console.log('[ChapterWise Codex] TreeProvider initialized - context empty until explicitly set');
   }
   
   /**
    * Set the active document to display in the tree
+   * @param document The document to set as active
+   * @param explicit If true, this is an explicit user action (right-click command). If false, block unless context was already explicitly set.
    */
-  setActiveDocument(document: vscode.TextDocument): void {
+  setActiveDocument(document: vscode.TextDocument, explicit: boolean = false): void {
     if (!isCodexLikeFile(document.fileName)) {
+      return;
+    }
+    
+    // BLOCK automatic context switching unless user has explicitly set context before
+    if (!explicit && !this.contextExplicitlySet) {
+      log(`[setActiveDocument] BLOCKED automatic context switch - user has not explicitly set context yet`);
+      log(`[setActiveDocument] File: ${document.fileName}`);
+      log(`[setActiveDocument] Stack: ${new Error().stack?.split('\n').slice(1, 5).join('\n')}`);
       return;
     }
     
@@ -540,6 +525,11 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       }
     }
     
+    // Mark context as explicitly set if this is an explicit action
+    if (explicit) {
+      this.contextExplicitlySet = true;
+    }
+    
     // Log context change
     this._logContextChange('setActiveDocument', {
       'New file': document.fileName,
@@ -547,7 +537,8 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       'Is index': isIndexFile(document.fileName),
       'Is codex-like': isCodexLikeFile(document.fileName),
       'Context workspace root': this.currentContext.workspaceRoot,
-      'Context folder': this.currentContext.contextFolder || 'none'
+      'Context folder': this.currentContext.contextFolder || 'none',
+      'Explicit': explicit
     });
     
     this.activeDocument = document;
@@ -636,6 +627,9 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       'Previous workspace root': this.workspaceRoot || 'none'
     });
     
+    // MARK CONTEXT AS EXPLICITLY SET BY USER
+    this.contextExplicitlySet = true;
+    
     // UPDATE CENTRALIZED CONTEXT
     this.currentContext.workspaceRoot = workspaceRoot;
     this.currentContext.contextFolder = folderPath;
@@ -670,8 +664,8 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
         const doc = await vscode.workspace.openTextDocument(indexPath);
         await vscode.window.showTextDocument(doc);
         
-        // setActiveDocument will be called automatically by the document watcher
-        // which will then load indexDoc and refresh
+        // EXPLICITLY set active document (context is already marked as explicitly set above)
+        this.setActiveDocument(doc, true);
         console.log('[ChapterWise Codex] Context folder index file opened');
       } catch (error) {
         console.error('[ChapterWise Codex] Error loading context index:', error);
@@ -680,6 +674,9 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     } else {
       // Reset to workspace root or FILES mode
       this.contextFolder = null;
+      this.workspaceRoot = null;
+      this.currentContext.contextFolder = null;
+      this.currentContext.workspaceRoot = null;
       this.isLoading = false;
       this.loadingMessage = null;
       this.refresh();
