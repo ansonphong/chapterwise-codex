@@ -129,14 +129,27 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
   ) {
     const displayName = indexNode.title || indexNode.name;
     
-    super(
-      displayName,
-      isFolder
-        ? (indexNode.expanded !== false
-            ? vscode.TreeItemCollapsibleState.Expanded
-            : vscode.TreeItemCollapsibleState.Collapsed)
-        : vscode.TreeItemCollapsibleState.None
-    );
+    // Determine file type for non-folder items
+    const filename = indexNode._filename || '';
+    const isCodexYaml = !isFolder && filename.endsWith('.codex.yaml');
+    const isMarkdown = !isFolder && filename.endsWith('.md');
+    
+    // Determine collapsible state based on type
+    let collapsibleState: vscode.TreeItemCollapsibleState;
+    if (isFolder) {
+      // Folders expand based on their expanded property
+      collapsibleState = indexNode.expanded !== false
+        ? vscode.TreeItemCollapsibleState.Expanded
+        : vscode.TreeItemCollapsibleState.Collapsed;
+    } else if (isCodexYaml) {
+      // .codex.yaml files are expandable to show their structure
+      collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+    } else {
+      // .md and other files are not expandable
+      collapsibleState = vscode.TreeItemCollapsibleState.None;
+    }
+    
+    super(displayName, collapsibleState);
     
     // Set description (show type)
     this.description = indexNode.type;
@@ -150,14 +163,16 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
     // Set context value for menu contributions
     this.contextValue = isFolder ? 'indexFolder' : 'indexFile';
     
-    // Command: Open file or expand folder
-    if (!isFolder) {
+    // Command: Only for .md files (click to open in writer view)
+    if (isMarkdown) {
+      // .md files open in Codex writer view (body editor)
       this.command = {
-        command: 'chapterwiseCodex.openIndexFile',
-        title: 'Open File',
+        command: 'chapterwiseCodex.openIndexFileInWriterView',
+        title: '', // Empty title to avoid redundant tooltip
         arguments: [this],
       };
     }
+    // .codex.yaml files have no click command - user expands them instead
   }
   
   private createTooltip(): vscode.MarkdownString {
@@ -202,8 +217,15 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
    * Resolve the absolute file path for this node
    */
   getFilePath(): string {
+    console.log(`[getFilePath] Called for node: ${this.indexNode.name}`);
+    console.log(`[getFilePath] _computed_path: ${this.indexNode._computed_path}`);
+    console.log(`[getFilePath] _filename: ${this.indexNode._filename}`);
+    console.log(`[getFilePath] workspaceRoot: ${this.workspaceRoot}`);
+    
     if (this.indexNode._computed_path) {
-      return path.join(this.workspaceRoot, this.indexNode._computed_path);
+      const resolvedPath = path.join(this.workspaceRoot, this.indexNode._computed_path);
+      console.log(`[getFilePath] Using _computed_path, resolved to: ${resolvedPath}`);
+      return resolvedPath;
     }
     
     // Fallback: build from parent chain
@@ -216,7 +238,10 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
       current = current.parent;
     }
     
-    return path.join(this.workspaceRoot, ...parts);
+    const fallbackPath = path.join(this.workspaceRoot, ...parts);
+    console.log(`[getFilePath] Using fallback path: ${fallbackPath}`);
+    console.log(`[getFilePath] Parts used: ${parts.join(', ')}`);
+    return fallbackPath;
   }
 }
 
@@ -344,8 +369,27 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
   private filterType: string | null = null;
   private navigationMode: NavigationMode = 'auto'; // Navigation mode state
   private openCodexFiles: vscode.TextDocument[] = []; // Track open files
-  private contextFolder: string | null = null;     // Current folder context for scoped view
-  private workspaceRoot: string | null = null;     // Workspace root path
+  private isLoading: boolean = false;              // Loading state for index generation
+  private loadingMessage: string | null = null;    // Loading message to display
+  
+  /**
+   * CENTRALIZED CONTEXT CHANGE METHOD
+   * ALL context changes MUST go through this method
+   */
+  private _logContextChange(reason: string, details: Record<string, any>): void {
+    console.log('╔════════════════════════════════════════════════════════════════');
+    console.log('║ CONTEXT SWITCH:', reason);
+    console.log('╠════════════════════════════════════════════════════════════════');
+    for (const [key, value] of Object.entries(details)) {
+      console.log(`║ ${key}:`, value);
+    }
+    console.log('║ Stack trace:');
+    const stack = new Error().stack?.split('\n').slice(3, 8) || [];
+    for (const line of stack) {
+      console.log('║   ' + line.trim());
+    }
+    console.log('╚════════════════════════════════════════════════════════════════');
+  }
   
   constructor() {
     console.log('[ChapterWise Codex] TreeProvider constructor called');
@@ -420,7 +464,19 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       return;
     }
     
+    // Log context change
+    this._logContextChange('setActiveDocument', {
+      'New file': document.fileName,
+      'Previous file': this.activeDocument?.fileName || 'none',
+      'Is index': isIndexFile(document.fileName),
+      'Is codex-like': isCodexLikeFile(document.fileName)
+    });
+    
     this.activeDocument = document;
+    
+    // Clear loading state
+    this.isLoading = false;
+    this.loadingMessage = null;
     
     // Check if this is an index file
     if (isIndexFile(document.fileName)) {
@@ -436,6 +492,10 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
    * Clear the active document
    */
   clearActiveDocument(): void {
+    this._logContextChange('clearActiveDocument', {
+      'Previous file': this.activeDocument?.fileName || 'none'
+    });
+    
     this.activeDocument = null;
     this.codexDoc = null;
     this.indexDoc = null;
@@ -491,7 +551,13 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
    * This will load and display the index for the specified folder
    */
   async setContextFolder(folderPath: string | null, workspaceRoot: string): Promise<void> {
-    console.log('[ChapterWise Codex] Setting context folder:', folderPath);
+    this._logContextChange('setContextFolder', {
+      'New folder': folderPath,
+      'Workspace root': workspaceRoot,
+      'Previous folder': this.contextFolder || 'none',
+      'Previous workspace root': this.workspaceRoot || 'none'
+    });
+    
     this.contextFolder = folderPath;
     this.workspaceRoot = workspaceRoot;
     
@@ -501,20 +567,30 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       // Check if index exists
       if (!fs.existsSync(indexPath)) {
         console.log('[ChapterWise Codex] Index not found, will be generated');
-        // Index generation happens in the command handler
-        // Just set the flag and refresh - empty state will be shown
+        // Show loading state immediately
+        this.isLoading = true;
+        this.loadingMessage = `Generating index for ${path.basename(folderPath)}...`;
         this.indexDoc = null;
         this.isIndexMode = true;
+        
+        // Don't need to set activeDocument yet - just show loading state
         this.refresh();
         return;
       }
       
       // Load existing index
       try {
-        this.indexDoc = parseIndexFile(indexPath);
-        this.isIndexMode = true;
-        this.refresh();
-        console.log('[ChapterWise Codex] Context folder index loaded');
+        // Clear loading state
+        this.isLoading = false;
+        this.loadingMessage = null;
+        
+        // Actually open the index file in the editor
+        const doc = await vscode.workspace.openTextDocument(indexPath);
+        await vscode.window.showTextDocument(doc);
+        
+        // setActiveDocument will be called automatically by the document watcher
+        // which will then load indexDoc and refresh
+        console.log('[ChapterWise Codex] Context folder index file opened');
       } catch (error) {
         console.error('[ChapterWise Codex] Error loading context index:', error);
         vscode.window.showErrorMessage(`Failed to load index: ${error}`);
@@ -522,6 +598,8 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     } else {
       // Reset to workspace root or FILES mode
       this.contextFolder = null;
+      this.isLoading = false;
+      this.loadingMessage = null;
       this.refresh();
     }
   }
@@ -630,29 +708,39 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
   }
   
   getChildren(element?: CodexTreeItemType): vscode.ProviderResult<CodexTreeItemType[]> {
-    // CONTEXT FOLDER MODE - prioritize if set
-    if (this.contextFolder && this.workspaceRoot) {
-      return this.getIndexChildren(element);
+    // Loading state
+    if (this.isLoading && !element) {
+      return [new CodexFileHeaderItem(
+        vscode.Uri.file(''),
+        false,
+        this.loadingMessage || 'Loading...'
+      )];
     }
     
-    // FILES MODE - show all open codex files
-    if (this.navigationMode === 'files') {
-      return this.getFilesChildren(element);
-    }
-    
-    // INDEX MODE (explicit or auto-detected)
-    if (this.navigationMode === 'index' || (this.navigationMode === 'auto' && this.isIndexMode && this.indexDoc)) {
-      return this.getIndexChildren(element);
-    }
-    
-    // AUTO MODE - SINGLE FILE MODE (existing code)
+    // No active document - show welcome message
     if (!this.activeDocument) {
-      // Return empty - the welcome view will show
       return [];
     }
     
-    if (!this.codexDoc) {
-      // Document exists but couldn't parse
+    // FOLDER MODE - activeDocument is an index file
+    if (this.indexDoc) {
+      return this.getIndexChildren(element);
+    }
+    
+    // FILE MODE - activeDocument is a regular codex file
+    if (this.codexDoc) {
+      return this.getCodexChildren(element);
+    }
+    
+    // Document failed to parse
+    return [];
+  }
+  
+  /**
+   * Get children for regular codex file mode
+   */
+  private getCodexChildren(element?: CodexTreeItemType): CodexTreeItemType[] {
+    if (!this.codexDoc || !this.activeDocument) {
       return [];
     }
     
@@ -776,10 +864,13 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       return [];
     }
     
-    const workspaceRoot = this.getWorkspaceRoot();
-    if (!workspaceRoot) {
+    // Get workspace root from the active document itself
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(this.activeDocument.uri);
+    if (!workspaceFolder) {
+      console.log('[ChapterWise Codex] getIndexChildren: No workspace folder');
       return [];
     }
+    const workspaceRoot = workspaceFolder.uri.fsPath;
     
     const uri = this.activeDocument.uri;
     
@@ -802,15 +893,30 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       return [];
     }
     
-    // Index folder node - return its children
+    // Index node expansion
     if (element instanceof IndexNodeTreeItem) {
-      if (!element.indexNode.children) {
-        return [];
+      const isFolder = element.indexNode.type === 'folder';
+      
+      if (isFolder) {
+        // Folder node - return its children from the index
+        if (!element.indexNode.children) {
+          return [];
+        }
+        
+        return element.indexNode.children.map(child =>
+          this.createIndexTreeItem(child, workspaceRoot, uri)
+        );
       }
       
-      return element.indexNode.children.map(child =>
-        this.createIndexTreeItem(child, workspaceRoot, uri)
-      );
+      // File node - check if it's a .codex.yaml file
+      const filename = element.indexNode._filename || '';
+      if (filename.endsWith('.codex.yaml')) {
+        // Load and show the file's internal structure
+        return this.getCodexFileStructure(element, workspaceRoot);
+      }
+      
+      // .md files and other types don't expand
+      return [];
     }
     
     return [];
@@ -947,6 +1053,70 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       isFolder,
       !!hasChildren
     );
+  }
+  
+  /**
+   * Load and parse a .codex.yaml file to show its internal structure
+   */
+  private getCodexFileStructure(element: IndexNodeTreeItem, workspaceRoot: string): CodexTreeItemType[] {
+    try {
+      // Get the file path
+      const filePath = element.getFilePath();
+      
+      console.log('[ChapterWise Codex] Attempting to load file structure:', {
+        filePath,
+        workspaceRoot,
+        _computed_path: element.indexNode._computed_path,
+        _filename: element.indexNode._filename
+      });
+      
+      if (!fs.existsSync(filePath)) {
+        console.error('[ChapterWise Codex] File not found:', filePath);
+        return [];
+      }
+      
+      // Load and parse the codex file
+      const fileContent = fs.readFileSync(filePath, 'utf-8');
+      const codexDoc = parseCodex(fileContent);
+      
+      if (!codexDoc || !codexDoc.rootNode) {
+        console.error('[ChapterWise Codex] Failed to parse codex file:', filePath);
+        return [];
+      }
+      
+      console.log('[ChapterWise Codex] Parsed codex file successfully:', {
+        filePath,
+        rootNodeType: codexDoc.rootNode.type,
+        childrenCount: codexDoc.rootNode.children.length
+      });
+      
+      // Create a URI for this file
+      const fileUri = vscode.Uri.file(filePath);
+      
+      // Get the root node
+      const root = codexDoc.rootNode;
+      
+      // Return the root node's children (modules) as tree items
+      if (root.children && root.children.length > 0) {
+        const items = root.children.map(child => 
+          new CodexTreeItem(
+            child,
+            fileUri,
+            child.children.length > 0,
+            false, // Don't expand by default
+            false  // Don't show fields for now (just the structure)
+          )
+        );
+        console.log('[ChapterWise Codex] Returning', items.length, 'child items');
+        return items;
+      }
+      
+      console.log('[ChapterWise Codex] No children found in root node');
+      return [];
+    } catch (error) {
+      console.error('[ChapterWise Codex] Failed to load codex file structure:', error);
+      return [];
+    }
   }
   
   /**

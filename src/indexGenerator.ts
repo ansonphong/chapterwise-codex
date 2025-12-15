@@ -69,23 +69,23 @@ export async function generateIndex(
 
   // Step 6: Build complete index
   const indexData = {
-    metadata: {
-      formatVersion: '2.1',
-      documentVersion: '1.0.0',
-      created: new Date().toISOString(),
-      generated: true,
-    },
+      metadata: {
+        formatVersion: '1.1',
+        documentVersion: '1.0.0',
+        created: new Date().toISOString(),
+        generated: true,
+      },
     id: indexDef?.id || 'index-root',
-    type: 'index',
+      type: 'index',
     name: indexDef?.name || path.basename(workspaceRoot),
     title: indexDef?.title,
     summary: indexDef?.summary,
     attributes: indexDef?.attributes,
-    patterns,
+      patterns,
     typeStyles: indexDef?.typeStyles,
     status: indexDef?.status || 'private',
-    children,
-  };
+      children,
+    };
 
   // Step 7: Write .index.codex.yaml
   const outputPath = path.join(workspaceRoot, '.index.codex.yaml');
@@ -94,52 +94,52 @@ export async function generateIndex(
   progressReporter?.report({ message: 'Complete!', increment: 5 });
 
   return outputPath;
-}
+  }
 
-/**
+  /**
  * Scan workspace for files matching patterns
- */
+   */
 async function scanWorkspace(
   root: string,
-  patterns: IndexPatterns
-): Promise<string[]> {
-  const files: string[] = [];
-
+    patterns: IndexPatterns
+  ): Promise<string[]> {
+    const files: string[] = [];
+    
   function walkDir(dir: string): void {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
 
-    for (const entry of entries) {
+        for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
       const relativePath = path.relative(root, fullPath);
 
       // Check exclude patterns first
       if (shouldExclude(relativePath, patterns.exclude)) {
-        continue;
-      }
+            continue;
+          }
 
-      if (entry.isDirectory()) {
+          if (entry.isDirectory()) {
         walkDir(fullPath);
-      } else if (entry.isFile()) {
+          } else if (entry.isFile()) {
         // Check include patterns
         if (shouldInclude(entry.name, patterns.include)) {
-          files.push(fullPath);
+              files.push(fullPath);
+            }
+          }
         }
-      }
-    }
   }
 
   try {
     walkDir(root);
-  } catch (error) {
+      } catch (error) {
     console.error('Error scanning workspace:', error);
-  }
+      }
 
   return files;
-}
+  }
 
-/**
+  /**
  * Check if file should be excluded
- */
+   */
 function shouldExclude(relativePath: string, excludePatterns: string[]): boolean {
   return excludePatterns.some((pattern) => minimatch(relativePath, pattern));
 }
@@ -149,14 +149,14 @@ function shouldExclude(relativePath: string, excludePatterns: string[]): boolean
  */
 function shouldInclude(fileName: string, includePatterns: string[]): boolean {
   return includePatterns.some((pattern) => minimatch(fileName, pattern));
-}
+  }
 
-/**
+  /**
  * Build hierarchical children structure from file list
  * NEW: Supports per-folder .index.codex.yaml merging
  */
 async function buildHierarchy(
-  files: string[],
+    files: string[],
   root: string
 ): Promise<any[]> {
   const tree = new Map<string, any>();
@@ -168,21 +168,21 @@ async function buildHierarchy(
     // Build folder structure
     let currentPath = '';
     for (let i = 0; i < parts.length - 1; i++) {
-      const part = parts[i];
+        const part = parts[i];
       const folderPath = currentPath ? `${currentPath}/${part}` : part;
 
       if (!tree.has(folderPath)) {
         tree.set(folderPath, {
           id: `folder-${folderPath.replace(/\//g, '-')}`,
           type: 'folder',
-          name: part,
+            name: part,
           _computed_path: folderPath,
           children: [],
         });
       }
 
       currentPath = folderPath;
-    }
+          }
 
     // Add file
     const fileName = parts[parts.length - 1];
@@ -282,7 +282,7 @@ async function mergePerFolderIndexes(
     try {
       const indexContent = fs.readFileSync(rootIndexPath, 'utf-8');
       const indexData = YAML.parse(indexContent);
-      
+
       if (indexData.children && Array.isArray(indexData.children)) {
         applyPerFolderOrders(rootChildren, indexData.children);
       }
@@ -319,13 +319,13 @@ function applyPerFolderOrders(
     } else if (child.order === undefined) {
       // Assign default order if not set
       child.order = indexChildren.length || 999;
+      }
     }
   }
-}
 
-/**
+  /**
  * Create file node with type detection
- */
+   */
 async function createFileNode(
   filePath: string,
   fileName: string,
@@ -354,8 +354,8 @@ async function createFileNode(
   }
 
   // Read actual type and name from file
-  try {
-    const content = fs.readFileSync(filePath, 'utf-8');
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
 
     if (format === 'yaml' || format === 'json') {
       const data = YAML.parse(content);
@@ -405,11 +405,11 @@ function parseFrontmatter(content: string): { type?: string; name?: string } {
   } catch {
     return {};
   }
-}
+  }
 
-/**
+  /**
  * Apply type styles to children recursively
- */
+   */
 function applyTypeStyles(children: any[], typeStyles: any[]): void {
   const styleMap = new Map(typeStyles.map((s) => [s.type, s]));
 
@@ -425,7 +425,7 @@ function applyTypeStyles(children: any[], typeStyles: any[]): void {
   }
 
   apply(children);
-}
+          }
 
 /**
  * Sort children recursively by order then name
@@ -434,7 +434,7 @@ function sortChildrenRecursive(children: any[]): void {
   children.sort((a, b) => {
     if (a.order !== undefined && b.order !== undefined) {
       return a.order - b.order;
-    }
+        }
     return a.name.localeCompare(b.name);
   });
 
@@ -443,9 +443,9 @@ function sortChildrenRecursive(children: any[]): void {
       sortChildrenRecursive(child.children);
     }
   }
-}
+  }
 
-/**
+  /**
  * Get default patterns
  */
 function getDefaultPatterns(): IndexPatterns {
@@ -510,15 +510,15 @@ export async function runGenerateIndex(): Promise<void> {
         const data = YAML.parse(content);
         const fileCount = countFiles(data.children);
 
-        const action = await vscode.window.showInformationMessage(
+      const action = await vscode.window.showInformationMessage(
           `✅ Generated .index.codex.yaml\nFound ${fileCount} files`,
-          'Open Index',
+        'Open Index',
           'Show in Explorer'
-        );
+      );
 
-        if (action === 'Open Index') {
+      if (action === 'Open Index') {
           const doc = await vscode.workspace.openTextDocument(outputPath);
-          await vscode.window.showTextDocument(doc);
+        await vscode.window.showTextDocument(doc);
         } else if (action === 'Show in Explorer') {
           vscode.commands.executeCommand(
             'revealFileInOS',
@@ -550,7 +550,7 @@ export async function generatePerFolderIndex(
   folderPath: string
 ): Promise<string> {
   const fullFolderPath = path.join(workspaceRoot, folderPath);
-  
+
   if (!fs.existsSync(fullFolderPath)) {
     throw new Error(`Folder not found: ${folderPath}`);
   }
@@ -571,18 +571,39 @@ export async function generatePerFolderIndex(
       if (entry.name.endsWith('.codex.yaml') || 
           entry.name.endsWith('.codex.json') || 
           entry.name.endsWith('.md')) {
-        const fileNode = await createFileNode(childPath, entry.name, fullFolderPath);
+        const fileNode = await createFileNode(childPath, entry.name, workspaceRoot);
+        // Fix _computed_path to be relative to workspace root, not folder
+        fileNode._computed_path = folderPath ? path.join(folderPath, entry.name) : entry.name;
         children.push(fileNode);
       }
     } else if (entry.isDirectory()) {
-      // Add folder entry
-      children.push({
+      // Create folder node
+      const folderNode: any = {
         id: `folder-${entry.name}`,
         type: 'folder',
         name: entry.name,
-        _computed_path: path.join(folderPath, entry.name),
-        order: 999, // Default order for folders
-      });
+        _computed_path: folderPath ? path.join(folderPath, entry.name) : entry.name,
+        order: 999,
+        children: [] // Initialize empty children array
+      };
+      
+      // Check if folder has a per-folder .index.codex.yaml
+      const subIndexPath = path.join(childPath, '.index.codex.yaml');
+      if (fs.existsSync(subIndexPath)) {
+        try {
+          const subIndexContent = fs.readFileSync(subIndexPath, 'utf-8');
+          const subIndexData = YAML.parse(subIndexContent);
+          
+          if (subIndexData.children && Array.isArray(subIndexData.children)) {
+            // Merge children from per-folder index
+            folderNode.children = subIndexData.children;
+          }
+        } catch (error) {
+          console.warn(`Failed to merge per-folder index for ${entry.name}:`, error);
+        }
+      }
+      
+      children.push(folderNode);
     }
   }
 
@@ -621,7 +642,7 @@ export async function generatePerFolderIndex(
   fs.writeFileSync(outputPath, YAML.stringify(indexData), 'utf-8');
 
   return outputPath;
-}
+      }
 
 /**
  * Cascade regenerate: update folder index and all parent indexes up to root
@@ -687,8 +708,8 @@ export async function generateFolderHierarchy(
         if (entry.isDirectory() && !entry.name.startsWith('.')) {
           const subfolder = path.join(folderPath, entry.name);
           collectSubfolders(subfolder);
-        }
       }
+    }
     } catch (error) {
       console.error(`[IndexGenerator] Error reading folder ${folderPath}:`, error);
     }

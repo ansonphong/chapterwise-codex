@@ -171,6 +171,11 @@
         "icon": "$(folder-active)"
       },
       {
+        "command": "chapterwiseCodex.setContextFile",
+        "title": "Set as Codex Context File",
+        "icon": "$(file-code)"
+      },
+      {
         "command": "chapterwiseCodex.resetContext",
         "title": "Reset to Workspace Root",
         "icon": "$(home)"
@@ -205,6 +210,11 @@
           "command": "chapterwiseCodex.setContextFolder",
           "when": "explorerResourceIsFolder",
           "group": "2_workspace@1"
+        },
+        {
+          "command": "chapterwiseCodex.setContextFile",
+          "when": "resourceExtname == .yaml && resourceFilename =~ /\\.codex\\.yaml$/",
+          "group": "2_workspace@2"
         }
       ],
       "editor/title": [

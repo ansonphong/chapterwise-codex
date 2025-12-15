@@ -1011,13 +1011,8 @@ export function validateCodex(codexDoc: CodexDocument | null, text: string): Cod
       severity: 'error',
       line: 1,
     });
-  } else if (codexDoc.metadata.formatVersion !== '1.0' && codexDoc.metadata.formatVersion !== '1.1') {
-    issues.push({
-      message: `Unsupported format version: ${codexDoc.metadata.formatVersion}. Only V1.0 and V1.1 are supported.`,
-      severity: 'error',
-      line: 1,
-    });
   }
+  // Note: We accept any format version for forward/backward compatibility
   
   // Check for nodes without IDs (skip include directives - they don't need IDs)
   const seenIds = new Set<string>();

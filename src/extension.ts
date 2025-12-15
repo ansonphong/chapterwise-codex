@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import { CodexTreeProvider, CodexTreeItem, CodexFieldTreeItem, IndexNodeTreeItem, CodexTreeItemType, createCodexTreeView } from './treeProvider';
 import { WriterViewManager } from './writerView';
 import { initializeValidation } from './validation';
-import { isCodexFile } from './codexModel';
+import { isCodexFile, parseMarkdownAsCodex } from './codexModel';
 import { runAutoFixer, disposeAutoFixer } from './autoFixer';
 import { runExplodeCodex, disposeExplodeCodex } from './explodeCodex';
 import { runImplodeCodex, disposeImplodeCodex } from './implodeCodex';
@@ -25,32 +25,37 @@ let treeProvider: CodexTreeProvider;
 let treeView: vscode.TreeView<CodexTreeItemType>;
 let writerViewManager: WriterViewManager;
 let statusBarItem: vscode.StatusBarItem;
+let outputChannel: vscode.OutputChannel;
 
 /**
  * Extension activation
  */
 export function activate(context: vscode.ExtensionContext): void {
-  console.log('ChapterWise Codex extension activating...');
+  // Create output channel for logs
+  outputChannel = vscode.window.createOutputChannel('ChapterWise Codex');
+  context.subscriptions.push(outputChannel);
+  
+  outputChannel.appendLine('ChapterWise Codex extension activating...');
   
   try {
     // Initialize tree view
     const { treeProvider: tp, treeView: tv } = createCodexTreeView(context);
     treeProvider = tp;
     treeView = tv;
-    console.log('ChapterWise Codex: Tree view created');
+    outputChannel.appendLine('Tree view created');
     
     // Initialize drag & drop controller
     const dragController = new CodexDragAndDropController(treeProvider);
     (treeView as any).dragAndDropController = dragController;
-    console.log('ChapterWise Codex: Drag & drop controller registered');
+    outputChannel.appendLine('Drag & drop controller registered');
     
     // Initialize Writer View manager
     writerViewManager = new WriterViewManager(context);
-    console.log('ChapterWise Codex: Writer view manager created');
+    outputChannel.appendLine('Writer view manager created');
     
     // Initialize validation system
     initializeValidation(context);
-    console.log('ChapterWise Codex: Validation initialized');
+    outputChannel.appendLine('Validation initialized');
     
     // Create status bar item
     statusBarItem = vscode.window.createStatusBarItem(
@@ -62,36 +67,18 @@ export function activate(context: vscode.ExtensionContext): void {
     
     // Register commands
     registerCommands(context);
-    console.log('ChapterWise Codex: Commands registered');
+    outputChannel.appendLine('Commands registered');
     
     // Update status bar based on active editor
     updateStatusBar();
     context.subscriptions.push(
       vscode.window.onDidChangeActiveTextEditor(() => {
         updateStatusBar();
-        // Also update tree when active editor changes to a codex file
-        const editor = vscode.window.activeTextEditor;
-        if (editor && isCodexFile(editor.document.fileName)) {
-          treeProvider.setActiveDocument(editor.document);
-        }
+        // Don't auto-switch context - user must explicitly set context
       })
     );
     
-    // Set initial document if one is open
-    const activeEditor = vscode.window.activeTextEditor;
-    if (activeEditor && isCodexFile(activeEditor.document.fileName)) {
-      console.log('ChapterWise Codex: Setting active document from editor:', activeEditor.document.fileName);
-      treeProvider.setActiveDocument(activeEditor.document);
-    }
-    
-    // Also check all open documents in case active editor detection failed
-    for (const doc of vscode.workspace.textDocuments) {
-      if (isCodexFile(doc.fileName)) {
-        console.log('ChapterWise Codex: Found open codex document:', doc.fileName);
-        treeProvider.setActiveDocument(doc);
-        break;
-      }
-    }
+    // Don't auto-set context on activation - user must explicitly choose context
     
     // Auto-discover index.codex.yaml in top-level folders
     autoDiscoverIndexFiles();
@@ -166,10 +153,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
   // Refresh tree command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.refresh', () => {
-      const editor = vscode.window.activeTextEditor;
-      if (editor && isCodexFile(editor.document.fileName)) {
-        treeProvider.setActiveDocument(editor.document);
-      }
+      // Just refresh the tree, don't change context
       treeProvider.refresh();
     })
   );
@@ -411,13 +395,97 @@ function registerCommands(context: vscode.ExtensionContext): void {
           const doc = await vscode.workspace.openTextDocument(uri);
           await vscode.window.showTextDocument(doc);
           
-          // Update tree to show the opened file
-          treeProvider.setActiveDocument(doc);
+          // Don't change context - let user keep their current context
         } catch (error) {
           vscode.window.showErrorMessage(
             `Failed to open file: ${path.basename(filePath)}`
           );
           console.error('Failed to open index file:', error);
+        }
+      }
+    )
+  );
+  
+  // Open Index File in Writer View command (for .md Codex Lite files)
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'chapterwiseCodex.openIndexFileInWriterView',
+      async (treeItem?: IndexNodeTreeItem) => {
+        if (!treeItem) {
+          outputChannel.appendLine('openIndexFileInWriterView: No treeItem provided');
+          return;
+        }
+        
+        outputChannel.appendLine('='.repeat(80));
+        outputChannel.appendLine(`openIndexFileInWriterView called for: ${treeItem.indexNode.name}`);
+        outputChannel.appendLine(`Call stack: ${new Error().stack}`);
+        outputChannel.appendLine(`TreeItem workspaceRoot: ${treeItem.workspaceRoot}`);
+        outputChannel.appendLine(`TreeItem _computed_path: ${treeItem.indexNode._computed_path}`);
+        outputChannel.appendLine(`TreeItem _filename: ${treeItem.indexNode._filename}`);
+        
+        const filePath = treeItem.getFilePath();
+        outputChannel.appendLine(`File path: ${filePath}`);
+        
+        try {
+          // Check if file exists first
+          if (!fs.existsSync(filePath)) {
+            const errorMsg = `File not found: ${filePath}`;
+            outputChannel.appendLine(`ERROR: ${errorMsg}`);
+            vscode.window.showErrorMessage(errorMsg);
+            return;
+          }
+          
+          outputChannel.appendLine(`File exists, opening document...`);
+          // Open the document first
+          const uri = vscode.Uri.file(filePath);
+          const doc = await vscode.workspace.openTextDocument(uri);
+          outputChannel.appendLine(`Document opened successfully`);
+          
+          // Parse as codex
+          const fileName = doc.fileName;
+          const text = doc.getText();
+          outputChannel.appendLine(`Parsing as Codex Lite, text length: ${text.length}`);
+          const codexDoc = parseMarkdownAsCodex(text, fileName);
+          
+          if (!codexDoc || !codexDoc.rootNode) {
+            outputChannel.appendLine(`Failed to parse as Codex, falling back to text editor`);
+            // Fallback to regular text editor if parsing fails
+            await vscode.window.showTextDocument(doc);
+            treeProvider.setActiveDocument(doc);
+            return;
+          }
+          
+          outputChannel.appendLine(`Parsed successfully, root node:`);
+          outputChannel.appendLine(`  name: ${codexDoc.rootNode.name}`);
+          outputChannel.appendLine(`  type: ${codexDoc.rootNode.type}`);
+          outputChannel.appendLine(`  proseField: ${codexDoc.rootNode.proseField}`);
+          outputChannel.appendLine(`  proseValue length: ${codexDoc.rootNode.proseValue?.length || 0}`);
+          outputChannel.appendLine(`  proseValue preview: ${codexDoc.rootNode.proseValue?.substring(0, 100) || 'EMPTY'}`);
+          outputChannel.appendLine(`  availableFields: ${codexDoc.rootNode.availableFields.join(', ')}`);
+          
+          // Create a temporary CodexTreeItem for the root node
+          const tempTreeItem = new CodexTreeItem(
+            codexDoc.rootNode,
+            uri,
+            false, // No children in Codex Lite
+            false, // Don't expand
+            true   // Show fields (body, etc.)
+          );
+          
+          outputChannel.appendLine(`Created temp tree item, opening writer view...`);
+          
+          // Open in writer view
+          await writerViewManager.openWriterView(tempTreeItem);
+          
+          outputChannel.appendLine(`Writer view opened successfully`);
+          
+          // Don't change context - let user keep their current index context
+        } catch (error) {
+          const errorMsg = `Failed to open file in Codex Editor: ${path.basename(filePath)}`;
+          outputChannel.appendLine(`ERROR: ${errorMsg}`);
+          outputChannel.appendLine(`Error details: ${error}`);
+          outputChannel.appendLine(`Error stack: ${error instanceof Error ? error.stack : 'No stack trace'}`);
+          vscode.window.showErrorMessage(errorMsg);
         }
       }
     )
@@ -802,42 +870,60 @@ function registerCommands(context: vscode.ExtensionContext): void {
         return;
       }
       
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-      if (!workspaceFolders || workspaceFolders.length === 0) {
-        vscode.window.showErrorMessage('No workspace folder found');
+      // Find the workspace folder that contains this URI
+      const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+      if (!workspaceFolder) {
+        vscode.window.showErrorMessage('Could not determine workspace folder for selected path');
         return;
       }
       
-      const workspaceRoot = workspaceFolders[0].uri.fsPath;
+      const workspaceRoot = workspaceFolder.uri.fsPath;
       const folderPath = path.relative(workspaceRoot, uri.fsPath);
+      
+      // Generate index if needed (always regenerate)
+      const indexPath = path.join(uri.fsPath, '.index.codex.yaml');
       
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
         title: `Setting context to: ${path.basename(uri.fsPath)}...`,
         cancellable: false,
       }, async () => {
-        // Check if index exists
-        const indexPath = path.join(uri.fsPath, '.index.codex.yaml');
+        // Always regenerate index hierarchy recursively
+        console.log(`[ChapterWise Codex] Regenerating index hierarchy for: ${folderPath}`);
+        await generateFolderHierarchy(workspaceRoot, folderPath);
         
-        if (!fs.existsSync(indexPath)) {
-          // Generate index hierarchy recursively
-          console.log(`[ChapterWise Codex] Generating index hierarchy for: ${folderPath}`);
-          await generateFolderHierarchy(workspaceRoot, folderPath);
-          vscode.window.showInformationMessage(`✅ Generated index hierarchy for: ${path.basename(uri.fsPath)}`);
-        }
-        
-        // Set context folder in tree provider
-        await treeProvider.setContextFolder(folderPath, workspaceRoot);
+        // Open the index file - that's it! The rest happens automatically
+        const doc = await vscode.workspace.openTextDocument(indexPath);
+        await vscode.window.showTextDocument(doc);
         
         // Update tree view title
         treeView.title = `📋 ${path.basename(uri.fsPath)}`;
-        
-        // Switch to INDEX mode
-        treeProvider.setNavigationMode('index');
-        await vscode.commands.executeCommand('setContext', 'codexNavigatorMode', 'index');
       });
       
       vscode.window.showInformationMessage(`📋 Viewing: ${path.basename(uri.fsPath)}`);
+    })
+  );
+  
+  // Set Context File command (for individual .codex.yaml files)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chapterwiseCodex.setContextFile', async (uri?: vscode.Uri) => {
+      if (!uri) {
+        vscode.window.showErrorMessage('No file selected');
+        return;
+      }
+      
+      // Just open the file! The rest happens automatically
+      try {
+        const doc = await vscode.workspace.openTextDocument(uri.fsPath);
+        await vscode.window.showTextDocument(doc);
+        
+        // Update tree view title
+        treeView.title = `📄 ${path.basename(uri.fsPath, '.codex.yaml')}`;
+        
+        vscode.window.showInformationMessage(`📄 Viewing: ${path.basename(uri.fsPath)}`);
+      } catch (error) {
+        vscode.window.showErrorMessage(`Failed to open file: ${error}`);
+      }
     })
   );
   
@@ -880,12 +966,12 @@ function updateStatusBar(): void {
       statusBarItem.text = `$(list-tree) Index: ${fileCount} files`;
       statusBarItem.tooltip = `ChapterWise Index\n${fileCount} files in project\nClick to open Navigator`;
     } else {
-      const codexDoc = treeProvider?.getCodexDocument();
-      const nodeCount = codexDoc?.allNodes.length ?? 0;
-      const typeCount = codexDoc?.types.size ?? 0;
-      
-      statusBarItem.text = `$(book) Codex: ${nodeCount} nodes`;
-      statusBarItem.tooltip = `ChapterWise Codex\n${nodeCount} nodes, ${typeCount} types\nClick to open Navigator`;
+    const codexDoc = treeProvider?.getCodexDocument();
+    const nodeCount = codexDoc?.allNodes.length ?? 0;
+    const typeCount = codexDoc?.types.size ?? 0;
+    
+    statusBarItem.text = `$(book) Codex: ${nodeCount} nodes`;
+    statusBarItem.tooltip = `ChapterWise Codex\n${nodeCount} nodes, ${typeCount} types\nClick to open Navigator`;
     }
     statusBarItem.show();
   } else {
@@ -904,5 +990,11 @@ export function deactivate(): void {
   disposeWordCount();
   disposeTagGenerator();
   disposeConvertFormat();
-  console.log('ChapterWise Codex extension deactivated');
+  outputChannel?.appendLine('ChapterWise Codex extension deactivated');
+  outputChannel?.dispose();
+}
+
+// Export for use by other modules
+export function log(message: string): void {
+  outputChannel?.appendLine(message);
 }
