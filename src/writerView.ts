@@ -541,9 +541,8 @@ export class WriterViewManager {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline' https://cdnjs.cloudflare.com; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codicon/0.0.29/codicon.min.css">
   <title>Writer: ${this.escapeHtml(node.name)}</title>
   <style>
     :root {
@@ -1091,7 +1090,11 @@ export class WriterViewManager {
     <div class="header-right">
       <span class="word-count" id="wordCount">${wordCount} words</span>
       <button class="save-btn" id="saveBtn" title="Save (Ctrl+S)">
-        <span class="codicon codicon-disk"></span>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;">
+          <rect x="2" y="2" width="12" height="12" rx="1"/>
+          <path d="M2 6h12"/>
+          <rect x="6" y="9" width="4" height="3" rx="0.5"/>
+        </svg>
       </button>
     </div>
   </div>
