@@ -165,10 +165,32 @@ function createBlockScalarIfNeeded(doc: YAML.Document, value: string): YAML.Scal
 export const PROSE_FIELDS = ['body', 'summary', 'description', 'content', 'text'];
 
 /**
+ * Prose fields allowed for Codex Lite (Markdown) files
+ * Only body and summary are supported in markdown format
+ */
+const CODEX_LITE_PROSE_FIELDS = ['body', 'summary'];
+
+/**
  * Gets all available prose fields from a node object
  */
 function getAvailableProseFields(nodeObj: Record<string, unknown>): string[] {
   return PROSE_FIELDS.filter(field => field in nodeObj && typeof nodeObj[field] === 'string');
+}
+
+/**
+ * Gets available prose fields, respecting Codex Lite limitations for markdown files
+ */
+function getAvailableProseFieldsForFormat(
+  nodeObj: Record<string, unknown>,
+  isMarkdown: boolean
+): string[] {
+  if (isMarkdown) {
+    // For Codex Lite (markdown), only support body and summary
+    return CODEX_LITE_PROSE_FIELDS.filter(field => field in nodeObj && typeof nodeObj[field] === 'string');
+  } else {
+    // For full Codex, support all prose fields
+    return getAvailableProseFields(nodeObj);
+  }
 }
 
 /**
@@ -239,7 +261,8 @@ function findLineNumber(doc: YAML.Document.Parsed, path: PathSegment[]): number 
 function parseNode(
   nodeObj: Record<string, unknown>,
   path: PathSegment[],
-  doc: YAML.Document.Parsed | null
+  doc: YAML.Document.Parsed | null,
+  isMarkdown: boolean = false
 ): CodexNode {
   // Check if this is an include directive
   const isInclude = 'include' in nodeObj && typeof nodeObj.include === 'string';
@@ -251,7 +274,9 @@ function parseNode(
     ? includePath!.split('/').pop()?.replace('.codex.yaml', '').replace('.codex.json', '') ?? '(include)'
     : ((nodeObj.name as string) ?? (nodeObj.title as string) ?? id ?? '(untitled)');
   
-  const { field: proseField, value: proseValue, availableFields } = getProseField(nodeObj);
+  const availableFields = getAvailableProseFieldsForFormat(nodeObj, isMarkdown);
+  const proseField = availableFields.length > 0 ? availableFields[0] : 'body';
+  const proseValue = (nodeObj[proseField] as string) ?? '';
   
   const hasAttributes = Array.isArray(nodeObj.attributes) && nodeObj.attributes.length > 0;
   const hasContentSections = Array.isArray(nodeObj.content) && nodeObj.content.length > 0;
@@ -328,7 +353,7 @@ function parseNode(
     nodeObj.children.forEach((child: unknown, idx: number) => {
       if (child && typeof child === 'object') {
         const childPath = [...path, 'children', idx];
-        const childNode = parseNode(child as Record<string, unknown>, childPath, doc);
+        const childNode = parseNode(child as Record<string, unknown>, childPath, doc, isMarkdown);
         childNode.parent = node;  // Set parent reference
         node.children.push(childNode);
       }
@@ -386,7 +411,8 @@ export function parseCodex(text: string): CodexDocument | null {
     };
     
     // Parse the root node (the document itself is the root node in V1.0+)
-    const rootNode = parseNode(root, [], rawDoc);
+    // isMarkdown=false for full Codex files (YAML/JSON)
+    const rootNode = parseNode(root, [], rawDoc, false);
     
     // Collect all nodes and types
     const allNodes = flattenNodes(rootNode);

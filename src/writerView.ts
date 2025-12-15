@@ -15,6 +15,7 @@ import {
   parseMarkdownAsCodex,
   setNodeProse, 
   setMarkdownNodeProse,
+  setMarkdownFrontmatterField,
   getNodeProse,
   getNodeAttributes,
   setNodeAttributes,
@@ -405,8 +406,15 @@ export class WriterViewManager {
           return;
         }
         
-        // For markdown, we just update the body (preserving frontmatter)
-        newDocText = setMarkdownNodeProse(originalText, newText, codexDoc.frontmatter);
+        // For markdown, handle body and summary differently
+        const fieldToSave = field || 'body';
+        if (fieldToSave === 'summary') {
+          // Save to frontmatter for summary field
+          newDocText = setMarkdownFrontmatterField(originalText, 'summary', newText);
+        } else {
+          // Update the body (preserving frontmatter)
+          newDocText = setMarkdownNodeProse(originalText, newText, codexDoc.frontmatter);
+        }
       } else {
         // Standard Codex file handling
         const codexDoc = parseCodex(originalText);
@@ -1123,10 +1131,6 @@ export class WriterViewManager {
   </div>
   
   <div class="footer">
-    <div class="keyboard-hint">
-      <span><kbd>Ctrl</kbd>+<kbd>S</kbd> Save</span>
-      <span><kbd>Ctrl</kbd>+<kbd>Z</kbd> Undo</span>
-    </div>
     <span id="charCount">${prose.length} chars</span>
   </div>
   
