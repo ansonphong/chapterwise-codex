@@ -153,8 +153,8 @@
       },
       {
         "command": "chapterwiseCodex.autofixFolder",
-        "title": "Autofix Folder (Renormalize Order)",
-        "icon": "$(sync-ignored)"
+        "title": "Autofix Folder",
+        "icon": "$(wand)"
       },
       {
         "command": "chapterwiseCodex.setContextFolder",

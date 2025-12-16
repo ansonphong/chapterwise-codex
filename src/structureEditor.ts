@@ -1045,7 +1045,7 @@ export class CodexStructureEditor {
    * Preserves the current sort order
    * 
    * @param workspaceRoot - Root of the workspace
-   * @param folderPath - Folder path (relative to workspace)
+   * @param folderPath - Folder path (relative to workspace) - e.g., "E02/chapters"
    * @returns Result of the operation
    */
   async autofixFolderOrder(
@@ -1053,35 +1053,109 @@ export class CodexStructureEditor {
     folderPath: string
   ): Promise<StructureOperationResult> {
     try {
-      const perFolderIndexPath = path.join(
-        workspaceRoot,
-        folderPath,
-        '.index.codex.yaml'
-      );
+      console.log(`[autofixFolderOrder] Starting for folderPath: ${folderPath}`);
+      console.log(`[autofixFolderOrder] Workspace root: ${workspaceRoot}`);
       
-      // Check if per-folder index exists
-      if (!fs.existsSync(perFolderIndexPath)) {
+      // STRATEGY: Find the parent index that contains this folder
+      // For "E02/chapters", look in "E02/.index.codex.yaml"
+      // For "E02", look in workspace root ".index.codex.yaml"
+      
+      const folderParts = folderPath.split(path.sep);
+      const folderName = folderParts[folderParts.length - 1]; // "chapters"
+      const parentPath = folderParts.slice(0, -1).join(path.sep); // "E02"
+      
+      console.log(`[autofixFolderOrder] Folder name: ${folderName}`);
+      console.log(`[autofixFolderOrder] Parent path: ${parentPath || '(workspace root)'}`);
+      
+      // Find the index file that contains this folder
+      let indexPath: string;
+      if (parentPath) {
+        // Look for parent/.index.codex.yaml
+        indexPath = path.join(workspaceRoot, parentPath, '.index.codex.yaml');
+      } else {
+        // Look in workspace root
+        indexPath = path.join(workspaceRoot, '.index.codex.yaml');
+      }
+      
+      console.log(`[autofixFolderOrder] Looking for index at: ${indexPath}`);
+      
+      // Check if index exists
+      if (!fs.existsSync(indexPath)) {
+        console.error(`[autofixFolderOrder] Index file not found at: ${indexPath}`);
+        
+        // List directory contents to help debug
+        const searchDir = parentPath 
+          ? path.join(workspaceRoot, parentPath)
+          : workspaceRoot;
+        
+        if (fs.existsSync(searchDir) && fs.statSync(searchDir).isDirectory()) {
+          const contents = fs.readdirSync(searchDir);
+          console.error(`[autofixFolderOrder] Directory contents: ${contents.join(', ')}`);
+        }
+        
         return {
           success: false,
-          message: 'Per-folder index not found'
+          message: `Index file not found at: ${indexPath}`
         };
       }
       
-      // Read per-folder index
-      const indexContent = fs.readFileSync(perFolderIndexPath, 'utf-8');
+      console.log(`[autofixFolderOrder] Found index at: ${indexPath}`);
+      
+      // Read index
+      const indexContent = fs.readFileSync(indexPath, 'utf-8');
       const doc = YAML.parseDocument(indexContent);
       
-      // Get children
-      const children = doc.get('children');
-      if (!children || !children.items) {
+      // Find the folder node within the index
+      const rootChildren = doc.get('children');
+      if (!rootChildren || !rootChildren.items) {
         return {
           success: false,
-          message: 'Invalid index structure: no children found'
+          message: 'Invalid index structure: no children found at root'
         };
       }
       
+      console.log(`[autofixFolderOrder] Searching for folder node: ${folderName}`);
+      
+      // Find the folder node by name or _computed_path
+      let folderNode: any = null;
+      for (const child of rootChildren.items) {
+        const childType = child.get('type');
+        const childName = child.get('name');
+        const childPath = child.get('_computed_path');
+        
+        console.log(`[autofixFolderOrder] Checking child: type=${childType}, name=${childName}, path=${childPath}`);
+        
+        if (childType === 'folder' && 
+            (childName === folderName || childPath === folderPath)) {
+          folderNode = child;
+          console.log(`[autofixFolderOrder] Found folder node!`);
+          break;
+        }
+      }
+      
+      if (!folderNode) {
+        console.error(`[autofixFolderOrder] Folder node not found in index`);
+        return {
+          success: false,
+          message: `Folder "${folderName}" not found in index at ${indexPath}`
+        };
+      }
+      
+      // Get children of the folder
+      const folderChildren = folderNode.get('children');
+      if (!folderChildren || !folderChildren.items) {
+        console.log(`[autofixFolderOrder] Folder has no children, nothing to renormalize`);
+        return {
+          success: true,
+          message: `Folder "${folderName}" has no children`,
+          affectedFiles: []
+        };
+      }
+      
+      console.log(`[autofixFolderOrder] Found ${folderChildren.items.length} children in folder`);
+      
       // Sort children by current order, then by name
-      const sortedChildren = [...children.items].sort((a: any, b: any) => {
+      const sortedChildren = [...folderChildren.items].sort((a: any, b: any) => {
         const orderA = a.get('order') ?? Infinity;
         const orderB = b.get('order') ?? Infinity;
         if (orderA !== orderB) return orderA - orderB;
@@ -1092,24 +1166,29 @@ export class CodexStructureEditor {
       });
       
       // Renormalize: assign 0, 1, 2, ...
+      console.log(`[autofixFolderOrder] Renormalizing order values...`);
       sortedChildren.forEach((child: any, index: number) => {
+        const oldOrder = child.get('order');
         child.set('order', index);
+        const childName = child.get('name');
+        console.log(`[autofixFolderOrder]   ${childName}: ${oldOrder} -> ${index}`);
       });
       
-      // Update children in document (preserve order)
-      children.items = sortedChildren;
+      // Update children in folder node
+      folderNode.set('children', sortedChildren);
       
-      // Write back
-      fs.writeFileSync(perFolderIndexPath, doc.toString(), 'utf-8');
+      // Write back to index
+      fs.writeFileSync(indexPath, doc.toString(), 'utf-8');
+      console.log(`[autofixFolderOrder] Wrote updated index to: ${indexPath}`);
       
-      // Cascade regenerate parent indexes
-      const { cascadeRegenerateIndexes } = require('./indexGenerator');
-      await cascadeRegenerateIndexes(workspaceRoot, folderPath);
+      // Cascade regenerate parent indexes (if needed)
+      // For now, just log - the cascade is optional
+      console.log(`[autofixFolderOrder] Consider cascading to parent indexes if needed`);
       
       return {
         success: true,
-        message: `Renormalized order values in ${folderPath}`,
-        affectedFiles: [perFolderIndexPath]
+        message: `Renormalized ${folderChildren.items.length} items in "${folderName}"`,
+        affectedFiles: [indexPath]
       };
     } catch (error) {
       return {
