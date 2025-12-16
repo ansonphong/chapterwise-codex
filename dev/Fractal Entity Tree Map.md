@@ -1,5 +1,41 @@
 # Fractal Entity Tree Map - Implementation Plan
 
+## 📋 Recent Updates (Dec 16, 2024)
+
+This plan has been enhanced with the following improvements:
+
+### 1. **Auto-Fixer Integration** 🔧
+- **Problem**: Entities without IDs cause field generation to fail
+- **Solution**: `loadAndParseCodexFile()` now detects missing IDs, runs auto-fixer, saves fixed file, and re-parses
+- **Impact**: All entities guaranteed to have valid IDs before processing
+- **Location**: Step 1 - Include Resolution
+
+### 2. **Circular Include Detection** 🔄
+- **Problem**: MAX_DEPTH prevents infinite loops but doesn't show what caused them
+- **Solution**: Track visited paths in `visitedPaths` Set, detect cycles early, show specific chain "A → B → A"
+- **Impact**: Better error messages for debugging circular references
+- **Location**: Step 1 - Include Resolution
+
+### 3. **Robust Navigation** 🎯
+- **Problem**: Simple string search fails with different indentation, quotes, JSON vs YAML
+- **Solution**: Multi-pattern regex with flexible whitespace, handles both formats
+- **Impact**: Navigation works reliably regardless of file format or style
+- **Location**: Step 4 - Navigation
+
+### 4. **Defensive Field ID Generation** 🛡️
+- **Problem**: If auto-fixer fails or is skipped, field generation crashes when `child.id` is undefined
+- **Solution**: `const entityId = child.id || generateFallbackId()` ensures ID always exists
+- **Impact**: Field generation never crashes, even with edge cases
+- **Location**: Step 2 - Entity Extraction
+
+### 5. **Scope Management** 📦
+- **Problem**: Complex commands (moveEntity, duplicateEntity, extractEntityToFile) add scope creep
+- **Solution**: Moved to new "Phase 7: Future Enhancements" section
+- **Impact**: Focus on core functionality first, prevents feature bloat
+- **Location**: Context Menu Commands
+
+---
+
 ## Overview
 
 Currently, the index only shows **files** and **folders**. The goal is to extend it to show **ALL entities** in a full fractal tree, including:
@@ -15,6 +51,13 @@ Currently, the index only shows **files** and **folders**. The goal is to extend
 ## 🚀 Quick Start: Implementation Order
 
 **Follow this sequence exactly. Do not skip ahead.**
+
+**Key Improvements in This Plan:**
+- 🔧 Auto-fixer runs automatically on files without IDs
+- 🔄 Circular includes detected early with specific error chains
+- 🎯 Navigation handles YAML/JSON formats, indentation, quotes
+- 🛡️ Defensive field ID generation prevents crashes
+- 📦 Complex commands deferred to Phase 7 (no scope creep)
 
 ### Phase 0: Preparation (30 minutes)
 1. Read [Current State Analysis](#current-state-analysis) - understand what works and what's missing
@@ -96,6 +139,13 @@ Currently, the index only shows **files** and **folders**. The goal is to extend
 - ✅ Everything updates automatically via cascade system
 - ✅ Tree state preserved across updates
 - ✅ Performance: < 2 seconds for E02/ index generation
+
+**Recent Improvements (Dec 2024):**
+- ✅ **Auto-fixer integration**: Files without IDs automatically fixed during indexing
+- ✅ **Circular include detection**: Track visited paths, show specific error chains
+- ✅ **Robust navigation**: Multi-pattern regex for YAML/JSON, handles indentation/quotes
+- ✅ **Field ID safety**: Defensive programming ensures field generation never fails
+- ✅ **Scope management**: Deferred complex commands (move/duplicate/extract) to Phase 7
 
 **Critical: Backend First!**
 Complete Phases 1-2 (backend) before starting Phase 3 (frontend). The frontend depends on new index fields (`_node_kind`, `_parent_file`, etc.).
@@ -198,7 +248,8 @@ async function resolveIncludes(
   codexData: any,
   basePath: string,
   workspaceRoot: string,
-  depth: number = 0
+  depth: number = 0,
+  visitedPaths: Set<string> = new Set()
 ): Promise<any> {
   // Depth limit check
   if (depth >= MAX_DEPTH) {
@@ -222,6 +273,22 @@ async function resolveIncludes(
       // Resolve include directive
       const includePath = resolveIncludePath(includeSpec.file, basePath, workspaceRoot);
       
+      // Circular include detection
+      const normalizedPath = path.resolve(includePath);
+      if (visitedPaths.has(normalizedPath)) {
+        console.warn(`Circular include detected: ${normalizedPath}`);
+        // Create error entry with circular reference info
+        const circularChain = Array.from(visitedPaths).join(' → ') + ' → ' + normalizedPath;
+        resolvedChildren.push({
+          id: `circular-${Date.now()}`,
+          type: 'error',
+          name: `${path.basename(includeSpec.file)} (Circular Reference)`,
+          _node_kind: 'error',
+          _error_message: `Circular include detected: ${circularChain}`,
+        });
+        continue;
+      }
+      
       // Check if file exists
       if (!fs.existsSync(includePath)) {
         console.warn(`Include file not found: ${includePath}`);
@@ -240,12 +307,17 @@ async function resolveIncludes(
         // Load included file
         const includedData = await loadAndParseCodexFile(includePath);
         
-        // Recursively resolve includes (increment depth)
+        // Add to visited paths
+        const newVisitedPaths = new Set(visitedPaths);
+        newVisitedPaths.add(normalizedPath);
+        
+        // Recursively resolve includes (increment depth, track visited paths)
         const resolved = await resolveIncludes(
           includedData, 
           path.dirname(includePath), 
           workspaceRoot, 
-          depth + 1
+          depth + 1,
+          newVisitedPaths
         );
         
         resolvedChildren.push(resolved);
@@ -267,7 +339,8 @@ async function resolveIncludes(
           { children: child.children }, 
           basePath, 
           workspaceRoot, 
-          depth + 1
+          depth + 1,
+          visitedPaths
         )).children;
       }
       resolvedChildren.push(child);
@@ -294,14 +367,60 @@ function resolveIncludePath(
 
 // NEW FUNCTION
 async function loadAndParseCodexFile(filePath: string): Promise<any> {
-  const content = fs.readFileSync(filePath, 'utf-8');
+  let content = fs.readFileSync(filePath, 'utf-8');
   
   // Support both .yaml and .json
+  let parsedData: any;
   if (filePath.endsWith('.json')) {
-    return JSON.parse(content);
+    parsedData = JSON.parse(content);
   } else {
-    return YAML.parse(content);
+    parsedData = YAML.parse(content);
   }
+  
+  // Check if file has missing IDs and auto-fix if needed
+  if (hasMissingIds(parsedData)) {
+    console.warn(`File ${filePath} has missing IDs, running auto-fixer...`);
+    
+    try {
+      const fixer = new CodexAutoFixer();
+      const result = fixer.autoFixCodex(content, false);
+      
+      if (result.success && result.fixesApplied.length > 0) {
+        // Save the fixed content back to file
+        fs.writeFileSync(filePath, result.fixedText, 'utf-8');
+        console.log(`Auto-fixed ${filePath}: ${result.fixesApplied.length} fixes applied`);
+        
+        // Re-parse the fixed content
+        if (filePath.endsWith('.json')) {
+          parsedData = JSON.parse(result.fixedText);
+        } else {
+          parsedData = YAML.parse(result.fixedText);
+        }
+      }
+    } catch (error) {
+      console.error(`Auto-fixer failed for ${filePath}:`, error);
+      // Continue with original parsed data
+    }
+  }
+  
+  return parsedData;
+}
+
+// Helper function to check if data has missing IDs
+function hasMissingIds(data: any): boolean {
+  if (typeof data !== 'object' || data === null) return false;
+  
+  // Check root level ID
+  if (!data.id) return true;
+  
+  // Recursively check children
+  if (data.children && Array.isArray(data.children)) {
+    for (const child of data.children) {
+      if (hasMissingIds(child)) return true;
+    }
+  }
+  
+  return false;
 }
 ```
 
@@ -467,8 +586,11 @@ async function extractEntityChildren(
   const extracted = [];
   
   for (const child of children) {
+    // Ensure entity has an ID (should be guaranteed by auto-fixer, but defensive programming)
+    const entityId = child.id || `entity-${Date.now()}-${Math.random()}`;
+    
     const entityNode: any = {
-      id: child.id || `entity-${Date.now()}-${Math.random()}`,
+      id: entityId,
       type: child.type || 'unknown',
       name: child.name || child.title || 'Untitled',
       _node_kind: 'entity', // ← Discriminator
@@ -483,24 +605,24 @@ async function extractEntityChildren(
     // Add prose fields if present
     if (child.summary) {
       fieldChildren.push({
-        id: `${child.id}-field-summary`, // ← Unique field ID
+        id: `${entityId}-field-summary`, // ← Use entityId (guaranteed to exist)
         _node_kind: 'field',
         _field_name: 'summary',
         _field_type: 'prose',
         name: 'Summary',
-        _parent_entity: child.id,
+        _parent_entity: entityId,
         _parent_file: parentFilePath,
       });
     }
     
     if (child.body) {
       fieldChildren.push({
-        id: `${child.id}-field-body`, // ← Unique field ID
+        id: `${entityId}-field-body`, // ← Use entityId
         _node_kind: 'field',
         _field_name: 'body',
         _field_type: 'prose',
         name: 'Body',
-        _parent_entity: child.id,
+        _parent_entity: entityId,
         _parent_file: parentFilePath,
       });
     }
@@ -508,12 +630,12 @@ async function extractEntityChildren(
     // Add attributes if present
     if (child.attributes && Array.isArray(child.attributes) && child.attributes.length > 0) {
       fieldChildren.push({
-        id: `${child.id}-field-attributes`, // ← Unique field ID
+        id: `${entityId}-field-attributes`, // ← Use entityId
         _node_kind: 'field',
         _field_name: 'attributes',
         _field_type: 'attributes',
         name: `Attributes (${child.attributes.length})`,
-        _parent_entity: child.id,
+        _parent_entity: entityId,
         _parent_file: parentFilePath,
       });
     }
@@ -521,12 +643,12 @@ async function extractEntityChildren(
     // Add content if present
     if (child.content && Array.isArray(child.content) && child.content.length > 0) {
       fieldChildren.push({
-        id: `${child.id}-field-content`, // ← Unique field ID
+        id: `${entityId}-field-content`, // ← Use entityId
         _node_kind: 'field',
         _field_name: 'content',
         _field_type: 'content',
         name: `Content (${child.content.length})`,
-        _parent_entity: child.id,
+        _parent_entity: entityId,
         _parent_file: parentFilePath,
       });
     }
@@ -717,6 +839,11 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
 ```typescript
 // extension.ts - NEW COMMANDS
 
+// Helper function to escape special regex characters
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Navigate to entity
 vscode.commands.registerCommand(
   'chapterwiseCodex.navigateToEntity',
@@ -743,14 +870,22 @@ vscode.commands.registerCommand(
     const doc = await vscode.workspace.openTextDocument(filePath);
     const editor = await vscode.window.showTextDocument(doc);
     
-    // Find entity in file by ID
+    // Find entity in file by ID (supports YAML and JSON formats)
     const text = doc.getText();
     const lines = text.split('\n');
     let entityLineStart = -1;
     
+    // Try multiple patterns to find the entity ID
+    // Supports: YAML (id: value, id: "value", id: 'value') and JSON ("id": "value")
+    const idPatterns = [
+      new RegExp(`^\\s*id:\\s*${escapeRegExp(entityId)}\\s*$`, 'i'),           // YAML: id: value
+      new RegExp(`^\\s*id:\\s*["']${escapeRegExp(entityId)}["']\\s*$`, 'i'),  // YAML: id: "value" or id: 'value'
+      new RegExp(`^\\s*["']id["']:\\s*["']${escapeRegExp(entityId)}["']`, 'i'), // JSON: "id": "value"
+    ];
+    
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (line.includes(`id: ${entityId}`) || line.includes(`id: "${entityId}"`)) {
+      if (idPatterns.some(pattern => pattern.test(line))) {
         entityLineStart = i;
         break;
       }
@@ -803,7 +938,7 @@ vscode.commands.registerCommand(
     const doc = await vscode.workspace.openTextDocument(filePath);
     const editor = await vscode.window.showTextDocument(doc);
     
-    // Find entity first (if specified), then field within it
+    // Find entity first (if specified), then field within it (supports YAML and JSON)
     const text = doc.getText();
     const lines = text.split('\n');
     let fieldLineStart = -1;
@@ -811,9 +946,15 @@ vscode.commands.registerCommand(
     
     // If parent entity specified, find it first
     if (parentEntity) {
+      const idPatterns = [
+        new RegExp(`^\\s*id:\\s*${escapeRegExp(parentEntity)}\\s*$`, 'i'),
+        new RegExp(`^\\s*id:\\s*["']${escapeRegExp(parentEntity)}["']\\s*$`, 'i'),
+        new RegExp(`^\\s*["']id["']:\\s*["']${escapeRegExp(parentEntity)}["']`, 'i'),
+      ];
+      
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        if (line.includes(`id: ${parentEntity}`) || line.includes(`id: "${parentEntity}"`)) {
+        if (idPatterns.some(pattern => pattern.test(line))) {
           entityLineStart = i;
           break;
         }
@@ -821,10 +962,16 @@ vscode.commands.registerCommand(
     }
     
     // Find field within entity or file
+    // Supports: YAML (field:) and JSON ("field":)
+    const fieldPatterns = [
+      new RegExp(`^\\s*${escapeRegExp(fieldName)}:\\s*`, 'i'),           // YAML: field:
+      new RegExp(`^\\s*["']${escapeRegExp(fieldName)}["']:\\s*`, 'i'),  // JSON: "field":
+    ];
+    
     const searchStart = entityLineStart >= 0 ? entityLineStart : 0;
     for (let i = searchStart; i < lines.length; i++) {
       const line = lines[i];
-      if (line.includes(`${fieldName}:`)) {
+      if (fieldPatterns.some(pattern => pattern.test(line))) {
         fieldLineStart = i;
         break;
       }
@@ -883,13 +1030,23 @@ PHASE 6: TESTING
 
 1. Add constants: `MAX_DEPTH = 8`, `MISSING_FILE_MARKER`
 2. Create `resolveIncludePath()` function (relative/absolute paths)
-3. Create `loadAndParseCodexFile()` function (YAML + JSON support)
-4. Create `resolveIncludes()` recursive function with depth limit
+3. Create `loadAndParseCodexFile()` function with:
+   - YAML + JSON support
+   - **Auto-fixer integration**: Detect files with missing IDs, run auto-fixer, save fixed file, re-parse
+   - Helper: `hasMissingIds()` to check if auto-fix needed
+4. Create `resolveIncludes()` recursive function with:
+   - Depth limit (MAX_DEPTH = 8)
+   - **Circular include detection**: Track visited paths, show specific error chain
+   - Pass `visitedPaths` Set through recursion
 5. Add missing file handling (create `_node_kind: 'missing'` nodes)
 6. Add parse error handling (create `_node_kind: 'error'` nodes)
-7. **Use try-catch for graceful degradation** - never abort, log and continue
+7. Add circular reference handling (create `_node_kind: 'error'` nodes with chain info)
+8. **Use try-catch for graceful degradation** - never abort, log and continue
 
-**Testing**: Generate index for E02/Concepts.codex.yaml, verify includes resolved
+**Testing**: 
+- Generate index for E02/Concepts.codex.yaml (verify includes resolved)
+- Test with file missing IDs (verify auto-fixer runs)
+- Test circular include A→B→A (verify error node with chain)
 
 **Integration Note**: This function is called from within `createFileNode()`, which is already part of the cascade system. No changes to `cascadeRegenerateIndexes()` needed.
 
@@ -905,8 +1062,10 @@ PHASE 6: TESTING
    - Call `resolveIncludes()` after parsing (wrapped in try-catch)
    - Create `extractEntityChildren()` recursive function
    - Extract entity metadata (`_node_kind: 'entity'`, `_parent_file`, `_depth`)
+   - **Ensure entity ID exists**: Use `const entityId = child.id || generateFallbackId()` for defensive programming
    - Extract field nodes from entities (`summary`, `body`, `attributes`, `content`)
-   - Add field node structure (`_node_kind: 'field'`, `_field_name`, `_field_type`)
+   - **Field ID generation**: Use `entityId` (guaranteed to exist) for field IDs: `${entityId}-field-summary`
+   - Add field node structure (`_node_kind: 'field'`, `_field_name`, `_field_type`, `_parent_entity`)
    - Combine fields + entity children (fields first, then entities)
    - Respect `MAX_DEPTH` limit
    - **Use try-catch for graceful degradation** - if extraction fails, keep file node with empty children
@@ -917,9 +1076,10 @@ PHASE 6: TESTING
    - Set `children: []` (leaf node)
 
 **Testing**: 
-- Generate index for E02/characters/Adrastos.codex.yaml (verify full entity tree)
+- Generate index for E02/characters/Adrastos.codex.yaml (verify full entity tree with field IDs)
 - Generate index for a .md file with frontmatter (verify flat structure, no entities)
 - Test with malformed file (verify error node created, other files processed)
+- Test file without entity IDs (verify auto-fixer ran in Step 1, all entities have IDs)
 
 **Cascade Integration**: 
 - `createFileNode()` is already called by `buildHierarchy()` which is used by both:
@@ -949,15 +1109,26 @@ PHASE 6: TESTING
 **Files**: `extension.ts`, `writerView.ts`  
 **Dependencies**: Step 3 complete
 
-1. Create `navigateToEntity` command
-2. Create `navigateToField` command  
-3. Implement entity finding by ID (search in file)
-4. Implement field finding within entity (search in file)
-5. Integrate with writer view (pass entity/field context)
-6. Add entity/field highlighting in editor
-7. Test navigation flow: file → entity → field
+1. Add helper: `escapeRegExp()` for safe pattern matching
+2. Create `navigateToEntity` command with:
+   - **Multi-pattern ID search**: Support YAML (`id: value`, `id: "value"`) and JSON (`"id": "value"`)
+   - Flexible regex with whitespace tolerance
+   - Line number detection for scrolling
+3. Create `navigateToField` command with:
+   - **Multi-pattern field search**: Support YAML (`field:`) and JSON (`"field":`)
+   - Optional parent entity scoping
+   - Flexible regex patterns
+4. Implement entity finding by ID (regex-based, format-agnostic)
+5. Implement field finding within entity (regex-based, format-agnostic)
+6. Integrate with writer view (pass entity/field context)
+7. Add entity/field highlighting in editor
+8. Test navigation flow: file → entity → field
 
-**Testing**: Click entity/field in tree, verify navigation works
+**Testing**: 
+- Click entity/field in tree, verify navigation works
+- Test with YAML files (various indentation levels)
+- Test with JSON files (quoted keys/values)
+- Test with quoted vs unquoted IDs
 
 ### Step 5: Tree View State Preservation
 **Priority**: High  
@@ -981,31 +1152,41 @@ PHASE 6: TESTING
 3. Verify includes are resolved (Concepts → The-Emissary, etc.)
 4. Verify entities are extracted (Adrastos → Powers & Abilities)
 5. Verify fields are present (Powers & Abilities → summary, body, etc.)
-6. Verify `_node_kind` is set correctly on all nodes
-7. Verify depth limit (8 levels max)
-8. Verify missing file handling (`_node_kind: 'missing'`)
-9. Verify parse error handling (`_node_kind: 'error'`)
+6. Verify field IDs are valid (`adrastos-field-summary`, etc.)
+7. Verify `_node_kind` is set correctly on all nodes
+8. Verify depth limit (8 levels max)
+9. Verify missing file handling (`_node_kind: 'missing'`)
+10. Verify parse error handling (`_node_kind: 'error'`)
+11. **Test auto-fixer**: Create file without entity IDs, verify auto-fixer runs and fixes it
+12. **Test circular includes**: Create A→B→A chain, verify error node with chain info
 
 **Frontend Testing** (after Step 5):
-10. Open tree view in VS Code
-11. Expand all nodes (files, entities, fields)
-12. Verify all icons display correctly
-13. Click file → verify opens in writer view
-14. Click entity → verify navigates to entity
-15. Click field → verify jumps to field editor
-16. Test missing file nodes (show error message)
-17. Test parse error nodes (show auto-fix button)
-18. Verify tree state preservation (expansion maintained)
+13. Open tree view in VS Code
+14. Expand all nodes (files, entities, fields)
+15. Verify all icons display correctly
+16. Click file → verify opens in writer view
+17. Click entity → verify navigates to entity
+18. Click field → verify jumps to field editor
+19. **Test YAML navigation**: Click entity in YAML file (various indentation levels)
+20. **Test JSON navigation**: Click entity in JSON file (quoted keys/values)
+21. **Test quoted IDs**: Click entity with `id: "my-id"` vs `id: my-id`
+22. Test missing file nodes (show error message)
+23. Test parse error nodes (show auto-fix button)
+24. Test circular reference nodes (show chain in error)
+25. Verify tree state preservation (expansion maintained)
 
 **Integration Testing**:
-19. Test with full 11-LIVES-CODEX project
-20. Test incremental updates (edit file, verify cascade)
-21. Test Full Codex formats (.codex.yaml and .codex.json with entity extraction)
-22. Test Codex Lite format (.md with frontmatter, flat structure)
-23. Test mixed project (both .codex.yaml and .md files together)
-24. Test Unicode entity names (emoji, non-ASCII)
-25. Performance testing (< 2s for E02/)
-26. Test edge cases (deep nesting, circular includes, large files)
+26. Test with full 11-LIVES-CODEX project
+27. Test incremental updates (edit file, verify cascade)
+28. Test Full Codex formats (.codex.yaml and .codex.json with entity extraction)
+29. Test Codex Lite format (.md with frontmatter, flat structure)
+30. Test mixed project (both .codex.yaml and .md files together)
+31. Test Unicode entity names (emoji, non-ASCII)
+32. **Test auto-fixer workflow**: Edit file to remove IDs, save, verify auto-fixer runs on next index
+33. **Test circular detection**: Create A→B→A, verify specific error chain shown
+34. **Test navigation edge cases**: Various indentation, quoted/unquoted, YAML/JSON
+35. Performance testing (< 2s for E02/)
+36. Test edge cases (deep nesting, large files, malformed YAML)
 
 ## Expected Results
 
@@ -1171,8 +1352,10 @@ try {
 ### Edge Cases to Handle
 
 1. **Circular includes**: A includes B, B includes A
-   - ✅ **Solution**: Maximum 8 levels of recursion (centralized `MAX_DEPTH = 8`)
-   - Prevents infinite loops
+   - ✅ **Solution**: Track visited file paths in `visitedPaths` Set
+   - ✅ **Enhanced**: Show specific error chain "A → B → A" in error message
+   - ✅ **Fallback**: Maximum 8 levels of recursion (centralized `MAX_DEPTH = 8`)
+   - Creates `_node_kind: 'error'` node with circular chain info
    
 2. **Missing include files**: Include path doesn't exist
    - ✅ **Solution**: Show filename with "⚠️ Not Available" indicator in tree
@@ -1206,6 +1389,20 @@ try {
    - NO entity extraction (Codex Lite doesn't support hierarchy)
    - Different from .codex.yaml (which gets full entity extraction)
 
+10. **Files without entity IDs**: Entities missing required `id` field
+   - ✅ **Solution**: Auto-fixer integration in `loadAndParseCodexFile()`
+   - Detect missing IDs via `hasMissingIds()` helper
+   - Run `CodexAutoFixer` to generate UUIDs for all entities
+   - Save fixed file back to disk
+   - Re-parse and continue with extraction
+   - Ensures all entities have valid IDs before field generation
+
+11. **Field ID generation without parent ID**: Field needs ID but parent entity has no ID
+   - ✅ **Solution**: Defensive programming in `extractEntityChildren()`
+   - Use `const entityId = child.id || generateFallbackId()` pattern
+   - Guaranteed valid ID for field generation: `${entityId}-field-summary`
+   - Should never happen after auto-fixer, but prevents crashes
+
 ## Testing Strategy
 
 ### Unit tests:
@@ -1232,16 +1429,21 @@ try {
 ✅ **All entities visible**: Every module/child appears in tree (Adrastos → Powers & Abilities, etc.)  
 ✅ **All fields visible**: Every field appears under entities (summary, body, attributes, content)  
 ✅ **Field IDs generated**: Each field has unique ID (e.g., `adrastos-field-summary`)  
+✅ **Field IDs always valid**: Defensive programming ensures field generation never fails (entityId fallback)
+✅ **Auto-fixer integration**: Files without IDs automatically fixed, saved, and re-parsed during indexing  
 ✅ **Full fractal depth**: Recursive children shown up to 8 levels deep  
 ✅ **Clear visual distinction**: Files vs entities vs fields vs folders vs missing/error states  
 ✅ **Navigation works for all types**: 
   - Click file → open entire file in writer view
-  - Click entity → navigate to entity in writer view  
-  - Click field → jump directly to that field editor in writer view
+  - Click entity → navigate to entity in writer view (YAML/JSON format-agnostic)
+  - Click field → jump directly to that field editor in writer view (YAML/JSON format-agnostic)
+✅ **Navigation robustness**: Multi-pattern regex handles indentation, quotes, YAML vs JSON
 ✅ **Performance acceptable**: < 2s to generate index for 11-LIVES-CODEX  
 ✅ **Depth limit enforced**: Max 8 levels, clear warning when reached  
+✅ **Circular includes detected**: Track visited paths, show specific error chain (A → B → A)
 ✅ **Missing files handled**: Show "⚠️ Not Available" indicator with `_node_kind: 'missing'`  
 ✅ **Parse errors handled**: Show "🔧 Auto-Fix" button with `_node_kind: 'error'`  
+✅ **Circular references handled**: Show error node with full circular chain info
 ✅ **Tree state preserved**: Expansion state maintained across index updates  
 ✅ **Cascade updates work**: Update one folder → index cascades up correctly with new entity data
 ✅ **Surgical updates**: Existing `cascadeRegenerateIndexes()` works transparently with entity extraction
@@ -1253,17 +1455,25 @@ try {
 ✅ **Discriminator pattern**: `_node_kind` field properly distinguishes all node types  
 ✅ **Folder nodes marked**: Existing folder code updated to include `_node_kind: 'folder'`  
 
-## Future Enhancements
+## Phase 7: Future Enhancements
+
+These features are intentionally deferred to avoid scope creep in the initial implementation. Complete Phases 1-6 first.
+
+### Context Menu Commands (Deferred)
+1. **Move Entity** (`moveEntity`) - Move entity to different parent or file
+2. **Duplicate Entity** (`duplicateEntity`) - Create copy of entity with new ID
+3. **Extract to File** (`extractEntityToFile`) - Extract entity into new standalone codex file
+4. **Move Field** - Reorder fields within entity
+5. **Bulk Operations** - Multi-select and batch operations
 
 ### V2 Features:
 1. **Search entities**: Full-text search across all entities
 2. **Filter by type**: Show only characters, only modules, etc.
 3. **Sort options**: By name, by type, by file
-4. **Drag and drop**: Reorder entities in tree
-5. **Inline editing**: Edit entity names in tree
-6. **Bulk operations**: Delete/move multiple entities
-7. **Entity relationships**: Visualize connections between entities
-8. **Export**: Generate documentation from entity tree
+4. **Drag and drop**: Reorder entities in tree via UI
+5. **Inline editing**: Edit entity names directly in tree
+6. **Entity relationships**: Visualize connections between entities
+7. **Export**: Generate documentation from entity tree
 
 ### V3 Features:
 1. **Git integration**: Track entity changes in git history
@@ -1391,11 +1601,11 @@ This table defines the complete mapping between node types, their metadata, clic
 
 #### Entity Nodes (from `.codex.yaml`/`.codex.json`)
 - **Edit** → `chapterwiseCodex.navigateToEntity`
-- **Move** → `chapterwiseCodex.moveEntity`
-- **Delete** → `chapterwiseCodex.deleteEntity`
 - **Copy ID** → `chapterwiseCodex.copyEntityId`
-- **Duplicate** → `chapterwiseCodex.duplicateEntity`
-- **Extract to File** → `chapterwiseCodex.extractEntityToFile` (create new codex file)
+- **Delete** → `chapterwiseCodex.deleteEntity`
+- ~~**Move** → `chapterwiseCodex.moveEntity`~~ (Phase 7: Future)
+- ~~**Duplicate** → `chapterwiseCodex.duplicateEntity`~~ (Phase 7: Future)
+- ~~**Extract to File** → `chapterwiseCodex.extractEntityToFile`~~ (Phase 7: Future)
 
 #### Field Nodes
 - **Edit** → `chapterwiseCodex.navigateToField`
@@ -1487,6 +1697,8 @@ if (node._node_kind === 'error') {
 ### Index as Single Source of Truth
 - **Index contains EVERYTHING** - complete entity tree with fields, fully resolved
 - **No lazy loading** - all includes resolved upfront during generation
+- **Auto-fixing upfront** - files without IDs fixed and saved before processing
+- **Circular detection early** - track visited paths to catch cycles immediately
 - **Tree view is just a reflection** - simple renderer, no additional logic
 - **`.index.codex.yaml` IS the cache** - no additional caching layer needed
 - **Discriminator pattern** - `_node_kind` field for type-safe node handling
