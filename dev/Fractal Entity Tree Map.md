@@ -10,6 +10,117 @@ Currently, the index only shows **files** and **folders**. The goal is to extend
 4. **Included entities** (via `include` directives)
 5. **Recursive expansion** - children of children, full fractal depth
 
+---
+
+## 🚀 Quick Start: Implementation Order
+
+**Follow this sequence exactly. Do not skip ahead.**
+
+### Phase 0: Preparation (30 minutes)
+1. Read [Current State Analysis](#current-state-analysis) - understand what works and what's missing
+2. Read [Problem Examples](#problem-examples) - see the specific issues to solve
+3. Read [Node Type Reference Table](#node-type-reference-table) - your complete reference for all node types
+4. Read [Architecture Principles](#architecture-principles) - understand the design philosophy
+
+### Phase 1: Backend - Include Resolution (4-6 hours)
+**File**: `src/indexGenerator.ts`
+
+1. Follow [Step 1: Include Resolution](#step-1-include-resolution-core-infrastructure---backend)
+2. Add constants (`MAX_DEPTH`, `MISSING_FILE_MARKER`)
+3. Implement `resolveIncludePath()` function
+4. Implement `loadAndParseCodexFile()` function
+5. Implement `resolveIncludes()` recursive function
+6. Test with E02/Concepts.codex.yaml
+7. **Checkpoint**: Verify includes are resolved in generated index
+
+### Phase 2: Backend - Entity & Field Extraction (6-8 hours)
+**File**: `src/indexGenerator.ts`
+
+1. Follow [Step 2: Entity & Field Extraction](#step-2-entity--field-extraction-index-enhancement---backend)
+2. Modify `createFileNode()` to add `_node_kind` and `_format`
+3. Add Full Codex processing (`.codex.yaml`/`.json`)
+4. Implement `extractEntityChildren()` recursive function
+5. Add Codex Lite processing (`.md` files)
+6. Test with Adrastos.codex.yaml and a .md file
+7. **Checkpoint**: Verify entities and fields appear in generated index
+
+### Phase 3: Frontend - Tree View Updates (4-6 hours)
+**File**: `src/treeProvider.ts`
+
+1. Follow [Step 3: Tree View Updates](#step-3-tree-view-updates-visual-representation---frontend)
+2. Modify `IndexNodeTreeItem` to handle `_node_kind` discriminator
+3. Add icon logic for all node types
+4. Set collapsible state based on node kind
+5. Add click commands for each node type
+6. Update context menus
+7. **Checkpoint**: Verify all node types display with correct icons
+
+### Phase 4: Frontend - Navigation (4-6 hours)
+**Files**: `src/extension.ts`, `src/writerView.ts`
+
+1. Follow [Step 4: Entity & Field Navigation](#step-4-entity--field-navigation-ux-enhancement---frontend)
+2. Implement `navigateToEntity` command
+3. Implement `navigateToField` command
+4. Integrate with writer view
+5. Test navigation flow
+6. **Checkpoint**: Verify clicking entities/fields navigates correctly
+
+### Phase 5: Tree State Preservation (2-3 hours)
+**File**: `src/treeProvider.ts`
+
+1. Follow [Step 5: Tree View State Preservation](#step-5-tree-view-state-preservation)
+2. Save expanded node IDs before refresh
+3. Restore expansion state after update
+4. **Checkpoint**: Verify expansion state maintained across refreshes
+
+### Phase 6: Full Integration Testing (4-5 hours)
+
+1. Follow [Step 6: Full Integration Testing](#step-6-full-integration-testing)
+2. Backend testing (Steps 1-9)
+3. Frontend testing (Steps 10-18)
+4. Integration testing (Steps 19-26)
+5. **Final Checkpoint**: All [Success Criteria](#success-criteria) met
+
+---
+
+### Summary
+
+**Total Estimated Time**: 24-34 hours (3-4 full development days)
+
+**What Success Looks Like:**
+- ✅ Tree view shows ALL entities from codex files (not just files/folders)
+- ✅ Includes are fully resolved (Concepts.codex.yaml shows The-Emissary, etc.)
+- ✅ Entity modules are visible (Adrastos → Powers & Abilities → Summary/Body/etc.)
+- ✅ Clicking entities navigates to them in Writer View
+- ✅ Missing files show warnings, parse errors show auto-fix
+- ✅ Everything updates automatically via cascade system
+- ✅ Tree state preserved across updates
+- ✅ Performance: < 2 seconds for E02/ index generation
+
+**Critical: Backend First!**
+Complete Phases 1-2 (backend) before starting Phase 3 (frontend). The frontend depends on new index fields (`_node_kind`, `_parent_file`, etc.).
+
+---
+
+## 📚 Detailed Documentation Below
+
+The sections below provide complete technical specifications, code examples, and edge case handling. Reference them during implementation.
+
+### Quick Navigation
+
+| Need to... | Go to... |
+|------------|----------|
+| Understand node types and their metadata | [Node Type Reference Table](#node-type-reference-table) |
+| See code examples for backend | [Solution Architecture](#solution-architecture) |
+| See code examples for frontend | [Phase 3: Tree View Enhancement](#phase-3-tree-view-enhancement) |
+| Understand error handling | [Error Recovery & Edge Cases](#error-recovery--edge-cases) |
+| Check if feature is complete | [Success Criteria](#success-criteria) |
+| Understand the cascade system | [Performance Considerations → Cascade Update System](#cascade-update-system-existing) |
+| See visual before/after | [Expected Results](#expected-results) |
+| Check implementation order | [Implementation Steps](#implementation-steps) |
+
+---
+
 ## Current State Analysis
 
 ### What Works
@@ -282,16 +393,17 @@ async function createFileNode(
     order: 1,
   };
   
-  // NEW: Extract children from codex files
+  // NEW: Extract children from FULL CODEX files ONLY
   if (format === 'yaml' || format === 'json') {
+    // Full Codex format (.codex.yaml / .codex.json)
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
       const data = YAML.parse(content);
       
-      // Resolve includes first
+      // Resolve includes first (recursive)
       const resolved = await resolveIncludes(data, path.dirname(filePath), root);
       
-      // Extract children
+      // Extract ALL children (entities + their fields)
       if (resolved.children && Array.isArray(resolved.children)) {
         node.children = await extractEntityChildren(
           resolved.children,
@@ -301,6 +413,38 @@ async function createFileNode(
       }
     } catch (error) {
       console.error(`Failed to extract children from ${filePath}:`, error);
+    }
+  } else if (format === 'md') {
+    // Codex Lite format (.md files with YAML frontmatter)
+    // NO entity extraction - Codex Lite is flat structure only
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      
+      // Parse frontmatter (if present)
+      const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+      if (frontmatterMatch) {
+        const frontmatter = YAML.parse(frontmatterMatch[1]);
+        
+        // Extract frontmatter fields to node (type, summary, tags, etc.)
+        if (frontmatter.type) node.type = frontmatter.type;
+        if (frontmatter.name) node.name = frontmatter.name;
+        if (frontmatter.summary) node.summary = frontmatter.summary;
+        if (frontmatter.tags) node.tags = frontmatter.tags;
+        if (frontmatter.status) node.status = frontmatter.status;
+      }
+      
+      // Extract first H1 as name if not in frontmatter
+      if (!node.name) {
+        const h1Match = content.match(/^#\s+(.+)$/m);
+        if (h1Match) {
+          node.name = h1Match[1];
+        }
+      }
+      
+      // NO children extraction (Codex Lite doesn't support hierarchy)
+      node.children = [];
+    } catch (error) {
+      console.error(`Failed to parse markdown frontmatter from ${filePath}:`, error);
     }
   }
   
@@ -743,8 +887,11 @@ PHASE 6: TESTING
 4. Create `resolveIncludes()` recursive function with depth limit
 5. Add missing file handling (create `_node_kind: 'missing'` nodes)
 6. Add parse error handling (create `_node_kind: 'error'` nodes)
+7. **Use try-catch for graceful degradation** - never abort, log and continue
 
 **Testing**: Generate index for E02/Concepts.codex.yaml, verify includes resolved
+
+**Integration Note**: This function is called from within `createFileNode()`, which is already part of the cascade system. No changes to `cascadeRegenerateIndexes()` needed.
 
 ### Step 2: Entity & Field Extraction (Index Enhancement) - BACKEND
 **Priority**: Critical  
@@ -753,15 +900,33 @@ PHASE 6: TESTING
 **Dependencies**: Step 1 complete
 
 1. Modify `createFileNode()` to add `_node_kind: 'file'`
-2. Call `resolveIncludes()` after parsing codex files
-3. Create `extractEntityChildren()` recursive function
-4. Extract entity metadata (`_node_kind: 'entity'`, `_parent_file`, `_depth`)
-5. Extract field nodes from entities (`summary`, `body`, `attributes`, `content`)
-6. Add field node structure (`_node_kind: 'field'`, `_field_name`, `_field_type`)
-7. Combine fields + entity children (fields first, then entities)
-8. Respect `MAX_DEPTH` limit
+2. Add format detection (`_format: 'yaml' | 'json' | 'md'`)
+3. **For Full Codex (`.codex.yaml`/`.codex.json`):**
+   - Call `resolveIncludes()` after parsing (wrapped in try-catch)
+   - Create `extractEntityChildren()` recursive function
+   - Extract entity metadata (`_node_kind: 'entity'`, `_parent_file`, `_depth`)
+   - Extract field nodes from entities (`summary`, `body`, `attributes`, `content`)
+   - Add field node structure (`_node_kind: 'field'`, `_field_name`, `_field_type`)
+   - Combine fields + entity children (fields first, then entities)
+   - Respect `MAX_DEPTH` limit
+   - **Use try-catch for graceful degradation** - if extraction fails, keep file node with empty children
+4. **For Codex Lite (`.md`):**
+   - Parse YAML frontmatter (if present, wrapped in try-catch)
+   - Extract first H1 as name (if no frontmatter name)
+   - NO entity/children extraction (Codex Lite is flat)
+   - Set `children: []` (leaf node)
 
-**Testing**: Generate index for E02/characters/Adrastos.codex.yaml, verify all entities and fields appear
+**Testing**: 
+- Generate index for E02/characters/Adrastos.codex.yaml (verify full entity tree)
+- Generate index for a .md file with frontmatter (verify flat structure, no entities)
+- Test with malformed file (verify error node created, other files processed)
+
+**Cascade Integration**: 
+- `createFileNode()` is already called by `buildHierarchy()` which is used by both:
+  - `generateIndex()` (full workspace scan)
+  - `cascadeRegenerateIndexes()` (surgical folder updates)
+- Entity extraction happens transparently - cascade system doesn't need changes
+- When a `.codex.yaml` file changes, cascade regeneration will now include its entities automatically
 
 ### Step 3: Tree View Updates (Visual Representation) - FRONTEND
 **Priority**: High  
@@ -835,10 +1000,12 @@ PHASE 6: TESTING
 **Integration Testing**:
 19. Test with full 11-LIVES-CODEX project
 20. Test incremental updates (edit file, verify cascade)
-21. Test both formats (.codex.yaml and .codex.json)
-22. Test Unicode entity names (emoji, non-ASCII)
-23. Performance testing (< 2s for E02/)
-24. Test edge cases (deep nesting, circular includes, large files)
+21. Test Full Codex formats (.codex.yaml and .codex.json with entity extraction)
+22. Test Codex Lite format (.md with frontmatter, flat structure)
+23. Test mixed project (both .codex.yaml and .md files together)
+24. Test Unicode entity names (emoji, non-ASCII)
+25. Performance testing (< 2s for E02/)
+26. Test edge cases (deep nesting, circular includes, large files)
 
 ## Expected Results
 
@@ -916,25 +1083,92 @@ PHASE 6: TESTING
 ```
 
 **Click behavior**:
-- **File** → Open entire file in writer view (root level editing)
+- **File (.codex.yaml)** → Open entire file in writer view with full entity tree
+- **File (.md)** → Open markdown file in writer view (frontmatter + content)
 - **Entity** → Navigate to entity in writer view (entity-focused editing)
 - **Field** → Jump directly to field editor in writer view (field-focused editing)
+
+### Format Comparison in Tree
+
+**Full Codex File (.codex.yaml):**
+```
+👤 Adrastos.codex.yaml (file - expandable)
+  📦 Powers & Abilities (entity)
+    📝 Summary (field)
+    📄 Body (field)
+  📦 Origin Story (entity)
+    📝 Summary (field)
+```
+
+**Codex Lite File (.md):**
+```
+📄 Character-Notes.md (file - leaf node, no expansion)
+```
+
+**Key Difference**: 
+- `.codex.yaml`/`.codex.json` → Full entity extraction, recursive structure
+- `.md` → Flat structure, frontmatter only, no entities/fields extracted
 
 ## Performance Considerations
 
 ### Optimization strategies:
 1. ~~**Lazy loading**~~ - **NOT NEEDED**: Keep it simple! Generate EVERYTHING in the index upfront. It's a book, not millions of items. Index is the source of truth, tree view just reflects it.
 2. **Caching**: `.index.codex.yaml` IS the cache - no additional caching layer needed
-3. **Incremental updates**: Already exists with cascade system - just ensure it works with entity extraction
+3. **Incremental updates**: Already exists with `cascadeRegenerateIndexes()` - just ensure entity extraction works within it
 4. **Background processing**: Use progress indicators to avoid hanging, but keep it simple
 5. **Debouncing**: Batch index regeneration requests to avoid spamming
+
+### Cascade Update System (Existing)
+
+The extension already has a **fractal cascade architecture** for surgical index updates:
+
+**How it works:**
+1. User edits a file in `/E02/characters/Adrastos.codex.yaml`
+2. System calls `cascadeRegenerateIndexes('/E02/characters/')`
+3. Regenerates `/E02/characters/.index.codex.yaml` (with new entity extraction)
+4. Cascades up to parent: Regenerates `/E02/.index.codex.yaml`
+5. Cascades up to root: Regenerates `/.index.codex.yaml`
+6. Tree view automatically refreshes to show updated index
+
+**Integration with new entity extraction:**
+- When `createFileNode()` is called during cascade regeneration, it will now extract entities/fields
+- The cascade system itself doesn't change - it just regenerates indexes with richer data
+- Existing `mergePerFolderIndexes()` function will merge the new entity nodes just like file nodes
+
+**No changes needed to cascade system** - entity extraction is transparent to it!
 
 ### Recursion limits:
 - **MAX 8 LEVELS** of recursion from top level down (centralized `MAX_DEPTH` constant)
 - Prevents circular includes and excessive nesting
 - Clear warning when depth limit reached
 
-## Edge Cases to Handle
+## Error Recovery & Edge Cases
+
+### Error Recovery Pattern
+
+**Graceful Degradation** - Continue with what's available:
+
+When index generation encounters errors:
+1. **Parse errors**: Log error, create error node with `_node_kind: 'error'`, continue processing other files
+2. **Missing includes**: Log warning, create missing node with `_node_kind: 'missing'`, continue
+3. **Entity extraction failures**: Log error, skip entity extraction for that file, keep file node
+4. **Field extraction failures**: Log error, skip field extraction for that entity, keep entity node
+
+**Never abort entire index generation** - always produce the best index possible with available data.
+
+**Example:**
+```typescript
+try {
+  const resolved = await resolveIncludes(data, path.dirname(filePath), root);
+  // ... extract entities
+} catch (error) {
+  console.error(`Failed to extract children from ${filePath}:`, error);
+  // File node still added to index, just without children
+  node.children = [];
+}
+```
+
+### Edge Cases to Handle
 
 1. **Circular includes**: A includes B, B includes A
    - ✅ **Solution**: Maximum 8 levels of recursion (centralized `MAX_DEPTH = 8`)
@@ -966,6 +1200,11 @@ PHASE 6: TESTING
 8. **Special characters**: Unicode in entity names/IDs
    - ✅ **Solution**: Full Unicode support
    - Test with emoji, non-ASCII characters
+
+9. **Markdown files (.md)**: Codex Lite format with frontmatter
+   - ✅ **Solution**: Parse YAML frontmatter, extract H1 for title, treat as flat leaf node
+   - NO entity extraction (Codex Lite doesn't support hierarchy)
+   - Different from .codex.yaml (which gets full entity extraction)
 
 ## Testing Strategy
 
@@ -1004,8 +1243,12 @@ PHASE 6: TESTING
 ✅ **Missing files handled**: Show "⚠️ Not Available" indicator with `_node_kind: 'missing'`  
 ✅ **Parse errors handled**: Show "🔧 Auto-Fix" button with `_node_kind: 'error'`  
 ✅ **Tree state preserved**: Expansion state maintained across index updates  
-✅ **Cascade updates work**: Update one folder → index cascades up correctly  
-✅ **Both formats supported**: .codex.yaml and .codex.json work identically  
+✅ **Cascade updates work**: Update one folder → index cascades up correctly with new entity data
+✅ **Surgical updates**: Existing `cascadeRegenerateIndexes()` works transparently with entity extraction
+✅ **Graceful degradation**: Parse errors don't block index generation, create error nodes and continue  
+✅ **Both codex formats supported**: .codex.yaml and .codex.json work identically with full entity extraction  
+✅ **Markdown (Codex Lite) supported**: .md files with YAML frontmatter treated as flat leaf nodes (no entity extraction)  
+✅ **Format discrimination**: `_format` field correctly identifies 'yaml', 'json', or 'md'  
 ✅ **Unicode support**: Entity names with emoji, non-ASCII characters display correctly  
 ✅ **Discriminator pattern**: `_node_kind` field properly distinguishes all node types  
 ✅ **Folder nodes marked**: Existing folder code updated to include `_node_kind: 'folder'`  
@@ -1037,6 +1280,208 @@ PHASE 6: TESTING
 - Current implementation: `/chapterwise-codex/src/indexGenerator.ts`
 - Tree provider: `/chapterwise-codex/src/treeProvider.ts`
 
+## Node Type Reference Table
+
+This table defines the complete mapping between node types, their metadata, click actions, and right-click context menus.
+
+### Node Kind Types
+
+| Node Kind | Source | Required Fields | Optional Fields | Click Action | Right-Click Menu |
+|-----------|--------|----------------|-----------------|--------------|------------------|
+| **`file`** | `.codex.yaml`/`.codex.json` | `_node_kind`, `_filename`, `_computed_path`, `_format` | `children`, `type`, `name`, `summary`, `tags`, `status` | Open file in Writer View (root level) | Open, Rename, Delete, Duplicate, Auto-Fix, Generate Tags, Refresh |
+| **`file`** | `.md` (Codex Lite) | `_node_kind`, `_filename`, `_computed_path`, `_format: 'md'` | Frontmatter fields (all optional) | Open file in Writer View (shows frontmatter + markdown) | Open, Rename, Delete, Duplicate, Auto-Fix, Generate Tags, Refresh |
+| **`entity`** | Codex child | `_node_kind`, `id`, `_parent_file`, `_depth` | `type`, `name`, `summary`, `body`, `attributes`, `content`, `children` | Navigate to entity in Writer View (entity-focused) | Edit, Move, Delete, Copy ID, Duplicate, Extract to File |
+| **`field`** | Entity field | `_node_kind`, `id`, `_field_name`, `_field_type`, `_parent_entity`, `_parent_file` | None | Jump to field editor in Writer View (field-focused) | Edit, Copy Value, Clear |
+| **`folder`** | Directory | `_node_kind`, `id`, `_computed_path`, `children` | `order`, `name` | Expand/Collapse (no navigation) | New File, New Folder, Refresh, Delete |
+| **`missing`** | Failed include | `_node_kind`, `id`, `_missing_path` | `name` | Show error message modal | Retry Load, Remove Reference, Create File |
+| **`error`** | Parse error | `_node_kind`, `id`, `_error_message` | `name` | Show error message modal | Auto-Fix, Open in Editor, Remove |
+
+### Format-Specific Handling
+
+#### Full Codex Files (`.codex.yaml` / `.codex.json`)
+
+**File Node Properties:**
+```typescript
+{
+  _node_kind: 'file',
+  _filename: 'Adrastos.codex.yaml',
+  _computed_path: 'E02/characters/Adrastos.codex.yaml',
+  _format: 'yaml',  // or 'json'
+  type: 'character',
+  name: 'Adrastos',
+  children: [...entityNodes, ...fieldNodes]  // Full extraction
+}
+```
+
+**Processing:**
+1. Parse YAML/JSON
+2. Resolve `include` directives recursively
+3. Extract all `children` as entity nodes
+4. Extract fields (summary, body, attributes, content) from each entity
+5. Build full fractal tree up to MAX_DEPTH
+
+#### Markdown Files (`.md` - Codex Lite)
+
+**File Node Properties:**
+```typescript
+{
+  _node_kind: 'file',
+  _filename: 'character-notes.md',
+  _computed_path: 'docs/character-notes.md',
+  _format: 'md',
+  type: 'character',  // From frontmatter
+  name: 'Character Notes',  // From frontmatter OR first H1
+  children: []  // NO entity extraction (Codex Lite is flat)
+}
+```
+
+**Processing:**
+1. Parse YAML frontmatter (if present)
+2. Extract first H1 as name (if no frontmatter name)
+3. Extract frontmatter fields (type, summary, tags, status, etc.)
+4. NO children extraction (Codex Lite doesn't support hierarchy)
+5. Markdown body is treated as flat content
+
+**Key Differences:**
+- `.md` files: Flat structure, no entity children
+- `.codex.yaml`/`.codex.json` files: Full recursive entity tree
+
+### Field Type Icons
+
+| Field Type | Field Name | Icon | Color |
+|------------|-----------|------|-------|
+| `prose` | `summary` | `symbol-key` | `symbolIcon.keyForeground` |
+| `prose` | `body` | `symbol-text` | `symbolIcon.textForeground` |
+| `attributes` | `attributes` | `symbol-property` | `symbolIcon.propertyForeground` |
+| `content` | `content` | `symbol-snippet` | `symbolIcon.snippetForeground` |
+
+### Entity Type Icons (Common)
+
+| Entity Type/ID | Icon | Color |
+|----------------|------|-------|
+| `module` (default) | `symbol-module` | `symbolIcon.moduleForeground` |
+| `powers-abilities` | `zap` | `symbolIcon.fieldForeground` |
+| `origin-story` | `history` | `symbolIcon.keyForeground` |
+| `relationships` | `organization` | `symbolIcon.referenceForeground` |
+| `philosophy` | `mortar-board` | `symbolIcon.textForeground` |
+| `goals` | `target` | `symbolIcon.eventForeground` |
+
+### File Type Icons
+
+| Type | Icon | Color |
+|------|------|-------|
+| `character` | `person` | `symbolIcon.variableForeground` |
+| `location` | `globe` | `symbolIcon.namespaceForeground` |
+| `scene` | `symbol-event` | `symbolIcon.eventForeground` |
+| `book` | `book` | `symbolIcon.classForeground` |
+| `chapter` | `file-text` | `symbolIcon.stringForeground` |
+| `concept` | `lightbulb` | `symbolIcon.keywordForeground` |
+| `note` | `note` | `symbolIcon.textForeground` |
+
+### Context Menu Commands
+
+#### File Nodes (`.codex.yaml`, `.codex.json`, `.md`)
+- **Open** → `chapterwiseCodex.openIndexFileInWriterView`
+- **Rename** → `chapterwiseCodex.renameFile`
+- **Delete** → `chapterwiseCodex.deleteFile`
+- **Duplicate** → `chapterwiseCodex.duplicateFile`
+- **Auto-Fix** → `chapterwiseCodex.autoFix` (if parse errors detected)
+- **Generate Tags** → `chapterwiseCodex.generateTags`
+- **Refresh** → `chapterwiseCodex.refreshIndex`
+
+#### Entity Nodes (from `.codex.yaml`/`.codex.json`)
+- **Edit** → `chapterwiseCodex.navigateToEntity`
+- **Move** → `chapterwiseCodex.moveEntity`
+- **Delete** → `chapterwiseCodex.deleteEntity`
+- **Copy ID** → `chapterwiseCodex.copyEntityId`
+- **Duplicate** → `chapterwiseCodex.duplicateEntity`
+- **Extract to File** → `chapterwiseCodex.extractEntityToFile` (create new codex file)
+
+#### Field Nodes
+- **Edit** → `chapterwiseCodex.navigateToField`
+- **Copy Value** → `chapterwiseCodex.copyFieldValue`
+- **Clear** → `chapterwiseCodex.clearField`
+
+#### Folder Nodes
+- **New File** → `chapterwiseCodex.newFile`
+- **New Folder** → `chapterwiseCodex.newFolder`
+- **Refresh** → `chapterwiseCodex.refreshIndex`
+- **Delete** → `chapterwiseCodex.deleteFolder`
+
+#### Missing Nodes (failed includes)
+- **Retry Load** → `chapterwiseCodex.retryInclude`
+- **Remove Reference** → `chapterwiseCodex.removeInclude`
+- **Create File** → `chapterwiseCodex.createMissingFile`
+
+#### Error Nodes (parse errors)
+- **Auto-Fix** → `chapterwiseCodex.autoFix`
+- **Open in Editor** → `chapterwiseCodex.openFile`
+- **Remove** → `chapterwiseCodex.deleteFile`
+
+### Validation Requirements
+
+Before index generation completes, validate each node:
+
+#### File Nodes
+```typescript
+if (node._node_kind === 'file') {
+  assert(node._filename, 'File node missing _filename');
+  assert(node._computed_path, 'File node missing _computed_path');
+  assert(node._format, 'File node missing _format');
+  assert(['yaml', 'json', 'md'].includes(node._format), 'Invalid _format');
+}
+```
+
+#### Entity Nodes
+```typescript
+if (node._node_kind === 'entity') {
+  assert(node.id, 'Entity node missing id');
+  assert(node._parent_file, 'Entity node missing _parent_file');
+  assert(typeof node._depth === 'number', 'Entity node missing _depth');
+  assert(node._depth <= MAX_DEPTH, `Entity depth ${node._depth} exceeds MAX_DEPTH`);
+}
+```
+
+#### Field Nodes
+```typescript
+if (node._node_kind === 'field') {
+  assert(node.id, 'Field node missing id');
+  assert(node._field_name, 'Field node missing _field_name');
+  assert(node._field_type, 'Field node missing _field_type');
+  assert(node._parent_entity, 'Field node missing _parent_entity');
+  assert(node._parent_file, 'Field node missing _parent_file');
+}
+```
+
+#### Folder Nodes
+```typescript
+if (node._node_kind === 'folder') {
+  assert(node._computed_path, 'Folder node missing _computed_path');
+  assert(Array.isArray(node.children), 'Folder node missing children array');
+}
+```
+
+#### Missing/Error Nodes
+```typescript
+if (node._node_kind === 'missing') {
+  assert(node._missing_path, 'Missing node missing _missing_path');
+}
+
+if (node._node_kind === 'error') {
+  assert(node._error_message, 'Error node missing _error_message');
+}
+```
+
+### Summary
+
+- **6 node kinds**: `file`, `entity`, `field`, `folder`, `missing`, `error`
+- **2 file formats**: Full Codex (`.codex.yaml`/`.json`) and Codex Lite (`.md`)
+- **Different processing**: Full Codex gets entity extraction, Markdown remains flat
+- **Complete validation**: All nodes validated before index completion
+- **Full command mapping**: Every node type has appropriate click and context actions
+
+---
+
 ## Architecture Principles
 
 ### Index as Single Source of Truth
@@ -1050,14 +1495,17 @@ PHASE 6: TESTING
 ### Simplicity First
 - **One index generation process** - clear, deterministic
 - **Centralized constants** - `MAX_DEPTH = 8` in one place
-- **Incremental updates via cascade** - already works, just extend it
+- **Incremental updates via cascade** - existing `cascadeRegenerateIndexes()` works transparently
+- **No changes to cascade system** - entity extraction happens inside `createFileNode()`, cascade system doesn't know or care
 - **No complex state management** - index is state
 
-### Error Handling Philosophy
-- **Never block generation** - show warnings, create placeholder entries
-- **Surface errors visually** - ⚠️ icons, error messages
+### Error Handling Philosophy (Graceful Degradation)
+- **Never block generation** - show warnings, create placeholder entries, continue processing
+- **Continue with what's available** - partial failures don't abort entire index
+- **Surface errors visually** - ⚠️ icons, error nodes with `_node_kind: 'error'`
 - **Provide fix actions** - 🔧 Auto-Fix button for parse errors
-- **Graceful degradation** - missing includes don't break entire tree
+- **Log everything** - detailed error logs for debugging without breaking UX
+- **Missing includes don't break entire tree** - create `_node_kind: 'missing'` placeholders
 
 ## Notes
 
