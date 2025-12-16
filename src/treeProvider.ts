@@ -1097,16 +1097,19 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
 /**
  * Create and register the tree view
  */
-export function createCodexTreeView(context: vscode.ExtensionContext): {
+export function createCodexTreeView(
+  context: vscode.ExtensionContext,
+  treeProvider: CodexTreeProvider,
+  dragAndDropController?: vscode.TreeDragAndDropController<CodexTreeItemType>
+): {
   treeProvider: CodexTreeProvider;
   treeView: vscode.TreeView<CodexTreeItemType>;
 } {
-  const treeProvider = new CodexTreeProvider();
-  
   const treeView = vscode.window.createTreeView('chapterwiseCodexNavigator', {
     treeDataProvider: treeProvider,
     showCollapseAll: true,
     canSelectMany: true, // Enable multi-selection (Cmd+Click, Shift+Click)
+    dragAndDropController: dragAndDropController, // Enable drag and drop
   });
   
   context.subscriptions.push(treeView);

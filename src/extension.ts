@@ -90,16 +90,20 @@ export function activate(context: vscode.ExtensionContext): void {
   outputChannel.appendLine('ChapterWise Codex extension activating...');
   
   try {
-    // Initialize tree view
-    const { treeProvider: tp, treeView: tv } = createCodexTreeView(context);
+    // Create tree provider first
+    const { CodexTreeProvider } = require('./treeProvider');
+    const tp = new CodexTreeProvider();
     treeProvider = tp;
-    treeView = tv;
-    outputChannel.appendLine('Tree view created');
+    outputChannel.appendLine('Tree provider created');
     
-    // Initialize drag & drop controller
+    // Initialize drag & drop controller (needs tree provider)
     const dragController = new CodexDragAndDropController(treeProvider);
-    (treeView as any).dragAndDropController = dragController;
-    outputChannel.appendLine('Drag & drop controller registered');
+    outputChannel.appendLine('Drag & drop controller created');
+    
+    // Initialize tree view with both tree provider and drag controller
+    const { treeView: tv } = createCodexTreeView(context, treeProvider, dragController);
+    treeView = tv;
+    outputChannel.appendLine('Tree view created with drag & drop support');
     
     // Initialize Writer View manager
     writerViewManager = new WriterViewManager(context);
@@ -817,9 +821,36 @@ function registerCommands(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'chapterwiseCodex.moveNodeUp',
-      async (treeItem?: CodexTreeItem) => {
+      async (treeItem?: CodexTreeItem | IndexNodeTreeItem) => {
         if (!treeItem) return;
-        vscode.window.showInformationMessage(`Move up functionality coming soon!`);
+        
+        // Only works in INDEX mode with IndexNodeTreeItem
+        if (!(treeItem instanceof IndexNodeTreeItem)) {
+          vscode.window.showInformationMessage('Move up/down only works in Index mode');
+          return;
+        }
+        
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+          vscode.window.showErrorMessage('No workspace folder found');
+          return;
+        }
+        
+        const workspaceRoot = workspaceFolder.uri.fsPath;
+        const filePath = treeItem.getFilePath();
+        const relativePath = path.relative(workspaceRoot, filePath);
+        
+        const { getStructureEditor } = await import('./structureEditor');
+        const editor = getStructureEditor();
+        
+        const result = await editor.moveFileUp(workspaceRoot, relativePath);
+        
+        if (result.success) {
+          vscode.window.showInformationMessage(result.message || 'Moved up');
+          treeProvider.refresh();
+        } else {
+          vscode.window.showWarningMessage(result.message || 'Failed to move up');
+        }
       }
     )
   );
@@ -828,9 +859,36 @@ function registerCommands(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'chapterwiseCodex.moveNodeDown',
-      async (treeItem?: CodexTreeItem) => {
+      async (treeItem?: CodexTreeItem | IndexNodeTreeItem) => {
         if (!treeItem) return;
-        vscode.window.showInformationMessage(`Move down functionality coming soon!`);
+        
+        // Only works in INDEX mode with IndexNodeTreeItem
+        if (!(treeItem instanceof IndexNodeTreeItem)) {
+          vscode.window.showInformationMessage('Move up/down only works in Index mode');
+          return;
+        }
+        
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+          vscode.window.showErrorMessage('No workspace folder found');
+          return;
+        }
+        
+        const workspaceRoot = workspaceFolder.uri.fsPath;
+        const filePath = treeItem.getFilePath();
+        const relativePath = path.relative(workspaceRoot, filePath);
+        
+        const { getStructureEditor } = await import('./structureEditor');
+        const editor = getStructureEditor();
+        
+        const result = await editor.moveFileDown(workspaceRoot, relativePath);
+        
+        if (result.success) {
+          vscode.window.showInformationMessage(result.message || 'Moved down');
+          treeProvider.refresh();
+        } else {
+          vscode.window.showWarningMessage(result.message || 'Failed to move down');
+        }
       }
     )
   );

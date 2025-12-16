@@ -1041,6 +1041,200 @@ export class CodexStructureEditor {
   }
   
   /**
+   * Move a file up in the order (swap with previous sibling)
+   * 
+   * @param workspaceRoot - Root of the workspace
+   * @param filePath - File path (relative to workspace)
+   * @returns Result of the operation
+   */
+  async moveFileUp(
+    workspaceRoot: string,
+    filePath: string
+  ): Promise<StructureOperationResult> {
+    try {
+      const folderPath = path.dirname(filePath);
+      const fileName = path.basename(filePath);
+      const perFolderIndexPath = path.join(
+        workspaceRoot,
+        folderPath,
+        '.index.codex.yaml'
+      );
+      
+      // Check if per-folder index exists
+      if (!fs.existsSync(perFolderIndexPath)) {
+        return {
+          success: false,
+          message: 'Index file not found. Generate index first.'
+        };
+      }
+      
+      // Read per-folder index
+      const indexContent = fs.readFileSync(perFolderIndexPath, 'utf-8');
+      const doc = YAML.parseDocument(indexContent);
+      
+      // Find the file node in children
+      const children = doc.get('children');
+      if (!children || !children.items) {
+        return {
+          success: false,
+          message: 'Invalid index structure: no children found'
+        };
+      }
+      
+      // Find node by _filename and get siblings
+      let currentIndex = -1;
+      for (let i = 0; i < children.items.length; i++) {
+        const childFilename = children.items[i].get('_filename');
+        if (childFilename === fileName) {
+          currentIndex = i;
+          break;
+        }
+      }
+      
+      if (currentIndex === -1) {
+        return {
+          success: false,
+          message: `File not found in index: ${fileName}`
+        };
+      }
+      
+      // Check if already at top
+      if (currentIndex === 0) {
+        return {
+          success: false,
+          message: 'Already at the top of the list'
+        };
+      }
+      
+      // Swap order values with previous sibling
+      const currentNode = children.items[currentIndex];
+      const previousNode = children.items[currentIndex - 1];
+      
+      const currentOrder = currentNode.get('order') ?? currentIndex;
+      const previousOrder = previousNode.get('order') ?? (currentIndex - 1);
+      
+      currentNode.set('order', previousOrder);
+      previousNode.set('order', currentOrder);
+      
+      // Write back per-folder index (preserves formatting)
+      fs.writeFileSync(perFolderIndexPath, doc.toString(), 'utf-8');
+      
+      // Cascade regenerate all parent indexes
+      const { cascadeRegenerateIndexes } = require('./indexGenerator');
+      await cascadeRegenerateIndexes(workspaceRoot, folderPath);
+      
+      return {
+        success: true,
+        message: `Moved ${fileName} up`,
+        newPath: filePath,
+        affectedFiles: [perFolderIndexPath]
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to move file up: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+  
+  /**
+   * Move a file down in the order (swap with next sibling)
+   * 
+   * @param workspaceRoot - Root of the workspace
+   * @param filePath - File path (relative to workspace)
+   * @returns Result of the operation
+   */
+  async moveFileDown(
+    workspaceRoot: string,
+    filePath: string
+  ): Promise<StructureOperationResult> {
+    try {
+      const folderPath = path.dirname(filePath);
+      const fileName = path.basename(filePath);
+      const perFolderIndexPath = path.join(
+        workspaceRoot,
+        folderPath,
+        '.index.codex.yaml'
+      );
+      
+      // Check if per-folder index exists
+      if (!fs.existsSync(perFolderIndexPath)) {
+        return {
+          success: false,
+          message: 'Index file not found. Generate index first.'
+        };
+      }
+      
+      // Read per-folder index
+      const indexContent = fs.readFileSync(perFolderIndexPath, 'utf-8');
+      const doc = YAML.parseDocument(indexContent);
+      
+      // Find the file node in children
+      const children = doc.get('children');
+      if (!children || !children.items) {
+        return {
+          success: false,
+          message: 'Invalid index structure: no children found'
+        };
+      }
+      
+      // Find node by _filename and get siblings
+      let currentIndex = -1;
+      for (let i = 0; i < children.items.length; i++) {
+        const childFilename = children.items[i].get('_filename');
+        if (childFilename === fileName) {
+          currentIndex = i;
+          break;
+        }
+      }
+      
+      if (currentIndex === -1) {
+        return {
+          success: false,
+          message: `File not found in index: ${fileName}`
+        };
+      }
+      
+      // Check if already at bottom
+      if (currentIndex === children.items.length - 1) {
+        return {
+          success: false,
+          message: 'Already at the bottom of the list'
+        };
+      }
+      
+      // Swap order values with next sibling
+      const currentNode = children.items[currentIndex];
+      const nextNode = children.items[currentIndex + 1];
+      
+      const currentOrder = currentNode.get('order') ?? currentIndex;
+      const nextOrder = nextNode.get('order') ?? (currentIndex + 1);
+      
+      currentNode.set('order', nextOrder);
+      nextNode.set('order', currentOrder);
+      
+      // Write back per-folder index (preserves formatting)
+      fs.writeFileSync(perFolderIndexPath, doc.toString(), 'utf-8');
+      
+      // Cascade regenerate all parent indexes
+      const { cascadeRegenerateIndexes } = require('./indexGenerator');
+      await cascadeRegenerateIndexes(workspaceRoot, folderPath);
+      
+      return {
+        success: true,
+        message: `Moved ${fileName} down`,
+        newPath: filePath,
+        affectedFiles: [perFolderIndexPath]
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to move file down: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+  
+  /**
    * Renormalize order values in a folder to sequential integers (0, 1, 2, ...)
    * Preserves the current sort order
    * 

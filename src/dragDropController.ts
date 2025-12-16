@@ -121,7 +121,31 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
     const draggedItems = transferItem.value as DragData[];
     
     // High-level validation
-    return this.validateDrop(draggedItems, target);
+    const isValid = this.validateDrop(draggedItems, target);
+    
+    // Provide visual feedback in status bar
+    if (isValid && target) {
+      const dragCount = draggedItems.length;
+      const itemText = dragCount === 1 ? draggedItems[0].name : `${dragCount} items`;
+      
+      if (target instanceof IndexNodeTreeItem) {
+        const position = this.getDropPosition(target, draggedItems);
+        
+        if (position === 'inside') {
+          vscode.window.setStatusBarMessage(
+            `$(folder) Move ${itemText} into "${target.indexNode.name}"`,
+            2000
+          );
+        } else {
+          vscode.window.setStatusBarMessage(
+            `$(arrow-swap) Reorder ${itemText} ${position} "${target.indexNode.name}"`,
+            2000
+          );
+        }
+      }
+    }
+    
+    return isValid;
   }
   
   /**
@@ -465,14 +489,34 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
     target: CodexTreeItemType,
     draggedItems: DragData[]
   ): 'before' | 'after' | 'inside' {
-    // If dropping on a folder, default to 'inside'
+    // If dropping on a folder, check if it's from same parent (reorder) or different (move)
     if (target instanceof IndexNodeTreeItem) {
       if (target.indexNode.type === 'folder') {
+        // Check if any dragged item is a sibling of target
+        // If so, this is likely a reorder operation, not a move into folder
+        const targetParentPath = target.indexNode._computed_path 
+          ? target.indexNode._computed_path.split('/').slice(0, -1).join('/')
+          : '';
+        
+        const hasSibling = draggedItems.some(item => {
+          if (item.filePath) {
+            const itemParentPath = item.filePath.split('/').slice(0, -1).join('/');
+            return itemParentPath === targetParentPath;
+          }
+          return false;
+        });
+        
+        // If dragging siblings, reorder instead of moving into folder
+        if (hasSibling) {
+          return 'after';
+        }
+        
+        // Otherwise, move into folder
         return 'inside';
       }
     }
     
-    // Otherwise, default to 'after' (reorder as sibling)
+    // For non-folder items, default to 'after' (reorder as sibling)
     return 'after';
   }
   
