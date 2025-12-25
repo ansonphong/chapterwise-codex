@@ -695,7 +695,15 @@ export class CodexAutoFixer {
         for (const pair of node.items) {
           if (YAML.isScalar(pair.value) && typeof pair.value.value === 'string') {
             const str = pair.value.value;
-            if (str.includes('\n') || str.length > 80) {
+            
+            // Check if string looks like time format (HH:MM:SS, MM:SS, HH:MM)
+            // Pattern: 1-2 digits, colon, 2 digits, optionally more colons and digits
+            // These MUST be quoted to prevent YAML sexagesimal parsing (e.g., 36:00 → 2160)
+            const timePattern = /^\d{1,2}:\d{2}(:\d{2})?(\.\d+)?$/;
+            if (timePattern.test(str)) {
+              // Force double quotes for time patterns to prevent sexagesimal parsing
+              pair.value.type = YAML.Scalar.QUOTE_DOUBLE;
+            } else if (str.includes('\n') || str.length > 80) {
               // Use block literal (|) for multiline or long strings
               pair.value.type = YAML.Scalar.BLOCK_LITERAL;
             }
