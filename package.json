@@ -2,7 +2,7 @@
   "name": "chapterwise-codex",
   "displayName": "ChapterWise Codex",
   "description": "Codex file format Manuscript editing with tree navigation, distraction-free prose editing, and format validation.",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "publisher": "StudioPhong",
   "icon": "media/icon.png",
   "repository": {
@@ -478,6 +478,18 @@
           "type": "boolean",
           "default": true,
           "description": "Show inherited colors with reduced opacity"
+        },
+        "chapterwiseCodex.writerView.theme": {
+          "type": "string",
+          "enum": ["light", "dark", "system", "theme"],
+          "default": "theme",
+          "enumDescriptions": [
+            "Always use light theme",
+            "Always use dark theme",
+            "Follow your operating system's light/dark mode setting",
+            "Adapt to your current VS Code theme colors"
+          ],
+          "description": "Color theme for the Writer View prose editor"
         }
       }
     }

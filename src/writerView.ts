@@ -28,13 +28,127 @@ import {
 import { CodexTreeItem, CodexFieldTreeItem } from './treeProvider';
 
 /**
+ * Interface for Writer View panel statistics
+ */
+interface WriterPanelStats {
+  wordCount: number;
+  charCount: number;
+  nodeName: string;
+  field?: string;
+}
+
+/**
  * Manages Writer View webview panels
  */
 export class WriterViewManager {
   private panels: Map<string, vscode.WebviewPanel> = new Map();
   private lastSelectedField: string = 'body';  // Remember field across node switches
+  private wordCountStatusBarItem: vscode.StatusBarItem;
+  private panelStats: Map<string, WriterPanelStats> = new Map();
   
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  constructor(private readonly context: vscode.ExtensionContext) {
+    // Create word count status bar item
+    this.wordCountStatusBarItem = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Right,
+      200  // Priority (position in status bar)
+    );
+    context.subscriptions.push(this.wordCountStatusBarItem);
+  }
+  
+  /**
+   * Calculate statistics from text
+   */
+  private calculateStats(text: string, nodeName: string, field?: string): WriterPanelStats {
+    const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+    const charCount = text.length;
+    
+    return {
+      wordCount,
+      charCount,
+      nodeName,
+      field
+    };
+  }
+  
+  /**
+   * Update status bar with word count
+   */
+  private updateStatusBar(stats: WriterPanelStats): void {
+    // Primary display: word count
+    this.wordCountStatusBarItem.text = `$(pencil) ${stats.wordCount} words`;
+    
+    // Rich tooltip with all stats
+    const tooltipLines = [
+      `${stats.wordCount} words in "${stats.nodeName}"`,
+      `${stats.charCount} characters`
+    ];
+    
+    if (stats.field) {
+      tooltipLines.push(`Field: ${stats.field}`);
+    }
+    
+    this.wordCountStatusBarItem.tooltip = tooltipLines.join('\n');
+    this.wordCountStatusBarItem.show();
+  }
+  
+  /**
+   * Hide status bar item
+   */
+  private hideStatusBar(): void {
+    this.wordCountStatusBarItem.hide();
+  }
+  
+  /**
+   * Update status bar to show the currently active Writer View panel
+   */
+  private updateStatusBarForActivePanel(): void {
+    // Find the panel that is both visible AND active
+    for (const [key, panel] of this.panels.entries()) {
+      if (panel.active && panel.visible) {
+        const stats = this.panelStats.get(key);
+        if (stats) {
+          this.updateStatusBar(stats);
+          return;
+        }
+      }
+    }
+    
+    // No active Writer View found - hide status bar
+    this.hideStatusBar();
+  }
+  
+  /**
+   * Store stats for a panel and update status bar if it's active
+   */
+  private updateStatsForPanel(
+    panelKey: string, 
+    panel: vscode.WebviewPanel,
+    stats: WriterPanelStats
+  ): void {
+    // Store stats for this panel
+    this.panelStats.set(panelKey, stats);
+    
+    // Only update status bar if THIS panel is the active one
+    if (panel.active && panel.visible) {
+      this.updateStatusBar(stats);
+    }
+  }
+  
+  /**
+   * Get the theme setting from configuration
+   */
+  private getThemeSetting(): 'light' | 'dark' | 'system' | 'theme' {
+    const config = vscode.workspace.getConfiguration('chapterwiseCodex.writerView');
+    return config.get<'light' | 'dark' | 'system' | 'theme'>('theme', 'theme');
+  }
+  
+  /**
+   * Get the current VS Code theme kind (light or dark)
+   */
+  private getVSCodeThemeKind(): 'light' | 'dark' {
+    const colorTheme = vscode.window.activeColorTheme;
+    return colorTheme.kind === vscode.ColorThemeKind.Light ? 'light' : 'dark';
+  }
   
   /**
    * Open or focus a Writer View for a node
@@ -114,10 +228,20 @@ export class WriterViewManager {
     // Set initial HTML with remembered field
     panel.webview.html = this.getWebviewHtml(panel.webview, node, prose, initialField);
     
+    // Store initial stats and update status bar
+    const initialStats = this.calculateStats(prose, node.name, initialField);
+    this.updateStatsForPanel(panelKey, panel, initialStats);
+    
     // Track current field for this panel
     let currentField = initialField;
     let currentAttributes: CodexAttribute[] = node.attributes || [];
     let currentContentSections: CodexContentSection[] = node.contentSections || [];
+    
+    // Listen for panel visibility/focus changes
+    const viewStateDisposable = panel.onDidChangeViewState(() => {
+      // Update status bar whenever any panel's state changes
+      this.updateStatusBarForActivePanel();
+    });
     
     // Handle messages from webview (closure captures node and documentUri)
     panel.webview.onDidReceiveMessage(
@@ -126,7 +250,18 @@ export class WriterViewManager {
           case 'save':
             const fieldToSave = message.field || currentField;
             await this.handleSave(documentUri, node, message.text, fieldToSave);
+            
+            // Update stored stats
+            const saveStats = this.calculateStats(message.text, node.name, fieldToSave);
+            this.updateStatsForPanel(panelKey, panel, saveStats);
+            
             panel.webview.postMessage({ type: 'saved' });
+            break;
+          
+          case 'contentChanged':
+            // New message type for real-time updates
+            const contentStats = this.calculateStats(message.text, node.name, currentField);
+            this.updateStatsForPanel(panelKey, panel, contentStats);
             break;
           
           case 'renameName':
@@ -216,9 +351,45 @@ export class WriterViewManager {
       this.context.subscriptions
     );
     
+    // Listen for VS Code theme changes (affects "theme" mode)
+    const themeChangeDisposable = vscode.window.onDidChangeActiveColorTheme(() => {
+      const vscodeThemeKind = this.getVSCodeThemeKind();
+      const themeSetting = this.getThemeSetting();
+      
+      // Update this specific panel
+      panel.webview.postMessage({ 
+        type: 'themeChanged',
+        themeSetting: themeSetting,
+        vscodeTheme: vscodeThemeKind
+      });
+    });
+    
+    // Listen for settings changes
+    const configChangeDisposable = vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('chapterwiseCodex.writerView.theme')) {
+        const themeSetting = this.getThemeSetting();
+        const vscodeThemeKind = this.getVSCodeThemeKind();
+        
+        // Update this specific panel
+        panel.webview.postMessage({ 
+          type: 'themeChanged',
+          themeSetting: themeSetting,
+          vscodeTheme: vscodeThemeKind
+        });
+      }
+    });
+    
     // Handle panel disposal
     panel.onDidDispose(() => {
       this.panels.delete(panelKey);
+      this.panelStats.delete(panelKey);
+      
+      // Update status bar (will show another Writer View if one exists, or hide)
+      this.updateStatusBarForActivePanel();
+      
+      themeChangeDisposable.dispose();
+      configChangeDisposable.dispose();
+      viewStateDisposable.dispose();
     });
   }
   
@@ -292,10 +463,20 @@ export class WriterViewManager {
     // Set initial HTML with the target field selected
     panel.webview.html = this.getWebviewHtml(panel.webview, node, prose, targetField);
     
+    // Store initial stats and update status bar
+    const initialStats = this.calculateStats(prose, node.name, targetField);
+    this.updateStatsForPanel(panelKey, panel, initialStats);
+    
     // Track current field for this panel
     let currentField = targetField;
     let currentAttributes: CodexAttribute[] = node.attributes || [];
     let currentContentSections: CodexContentSection[] = node.contentSections || [];
+    
+    // Listen for panel visibility/focus changes
+    const viewStateDisposable2 = panel.onDidChangeViewState(() => {
+      // Update status bar whenever any panel's state changes
+      this.updateStatusBarForActivePanel();
+    });
     
     // Handle messages from webview (same handlers as openWriterView)
     panel.webview.onDidReceiveMessage(
@@ -304,9 +485,20 @@ export class WriterViewManager {
           case 'save':
             const fieldToSave = message.field || currentField;
             await this.handleSave(documentUri, node, message.text, fieldToSave);
+            
+            // Update stored stats
+            const saveStats = this.calculateStats(message.text, node.name, fieldToSave);
+            this.updateStatsForPanel(panelKey, panel, saveStats);
+            
             panel.webview.postMessage({ type: 'saved' });
             break;
-            
+          
+          case 'contentChanged':
+            // New message type for real-time updates
+            const contentStats = this.calculateStats(message.text, node.name, currentField);
+            this.updateStatsForPanel(panelKey, panel, contentStats);
+            break;
+          
           case 'switchField':
             currentField = message.field;
             this.lastSelectedField = message.field;
@@ -385,9 +577,45 @@ export class WriterViewManager {
       this.context.subscriptions
     );
     
+    // Listen for VS Code theme changes (affects "theme" mode)
+    const themeChangeDisposable2 = vscode.window.onDidChangeActiveColorTheme(() => {
+      const vscodeThemeKind = this.getVSCodeThemeKind();
+      const themeSetting = this.getThemeSetting();
+      
+      // Update this specific panel
+      panel.webview.postMessage({ 
+        type: 'themeChanged',
+        themeSetting: themeSetting,
+        vscodeTheme: vscodeThemeKind
+      });
+    });
+    
+    // Listen for settings changes
+    const configChangeDisposable2 = vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('chapterwiseCodex.writerView.theme')) {
+        const themeSetting = this.getThemeSetting();
+        const vscodeThemeKind = this.getVSCodeThemeKind();
+        
+        // Update this specific panel
+        panel.webview.postMessage({ 
+          type: 'themeChanged',
+          themeSetting: themeSetting,
+          vscodeTheme: vscodeThemeKind
+        });
+      }
+    });
+    
     // Handle panel disposal
     panel.onDidDispose(() => {
       this.panels.delete(panelKey);
+      this.panelStats.delete(panelKey);
+      
+      // Update status bar (will show another Writer View if one exists, or hide)
+      this.updateStatusBarForActivePanel();
+      
+      themeChangeDisposable2.dispose();
+      configChangeDisposable2.dispose();
+      viewStateDisposable2.dispose();
     });
   }
   
@@ -590,6 +818,8 @@ export class WriterViewManager {
     initialField: string = 'body'
   ): string {
     const nonce = this.getNonce();
+    const themeSetting = this.getThemeSetting();
+    const vscodeThemeKind = this.getVSCodeThemeKind();
     
     // Escape prose for safe HTML injection
     const escapedProse = this.escapeHtml(prose);
@@ -598,7 +828,7 @@ export class WriterViewManager {
     const wordCount = prose.trim() ? prose.trim().split(/\s+/).length : 0;
     
     return /* html */ `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme-setting="${themeSetting}" data-vscode-theme="${vscodeThemeKind}">
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
@@ -606,6 +836,7 @@ export class WriterViewManager {
   <title>Writer: ${this.escapeHtml(node.name)}</title>
   <style>
     :root {
+      /* Default to dark theme as fallback */
       --bg-primary: #0d1117;
       --bg-secondary: #161b22;
       --bg-editor: #0d1117;
@@ -616,6 +847,79 @@ export class WriterViewManager {
       --accent: #58a6ff;
       --accent-hover: #79c0ff;
       --success: #3fb950;
+    }
+    
+    /* Light theme colors */
+    [data-theme-setting="light"] {
+      --bg-primary: #ffffff;
+      --bg-secondary: #f6f8fa;
+      --bg-editor: #ffffff;
+      --text-primary: #24292f;
+      --text-secondary: #57606a;
+      --text-muted: #6e7781;
+      --border-color: #d0d7de;
+      --accent: #0969da;
+      --accent-hover: #0860ca;
+      --success: #1a7f37;
+    }
+    
+    /* Dark theme colors (explicit) */
+    [data-theme-setting="dark"] {
+      --bg-primary: #0d1117;
+      --bg-secondary: #161b22;
+      --bg-editor: #0d1117;
+      --text-primary: #e6edf3;
+      --text-secondary: #8b949e;
+      --text-muted: #6e7681;
+      --border-color: #30363d;
+      --accent: #58a6ff;
+      --accent-hover: #79c0ff;
+      --success: #3fb950;
+    }
+    
+    /* Theme mode - use VS Code CSS variables */
+    [data-theme-setting="theme"] {
+      --bg-primary: var(--vscode-editor-background);
+      --bg-secondary: var(--vscode-sideBar-background);
+      --bg-editor: var(--vscode-editor-background);
+      --text-primary: var(--vscode-editor-foreground);
+      --text-secondary: var(--vscode-descriptionForeground);
+      --text-muted: var(--vscode-disabledForeground);
+      --border-color: var(--vscode-panel-border);
+      --accent: var(--vscode-focusBorder);
+      --accent-hover: var(--vscode-button-hoverBackground);
+      --success: var(--vscode-testing-iconPassed);
+    }
+    
+    /* System theme detection via CSS media query */
+    @media (prefers-color-scheme: light) {
+      [data-theme-setting="system"] {
+        --bg-primary: #ffffff;
+        --bg-secondary: #f6f8fa;
+        --bg-editor: #ffffff;
+        --text-primary: #24292f;
+        --text-secondary: #57606a;
+        --text-muted: #6e7781;
+        --border-color: #d0d7de;
+        --accent: #0969da;
+        --accent-hover: #0860ca;
+        --success: #1a7f37;
+      }
+    }
+    
+    @media (prefers-color-scheme: dark) {
+      [data-theme-setting="system"] {
+        --bg-primary: #0d1117;
+        --bg-secondary: #161b22;
+        --bg-editor: #0d1117;
+        --text-primary: #e6edf3;
+        --text-secondary: #8b949e;
+        --text-muted: #6e7681;
+        --border-color: #30363d;
+        --accent: #58a6ff;
+        --accent-hover: #79c0ff;
+        --success: #3fb950;
+      }
     }
     
     * {
@@ -1272,6 +1576,25 @@ export class WriterViewManager {
     let attributesDirty = false;
     let contentSectionsDirty = false;
     
+    // Detect system theme for JavaScript access
+    function detectSystemTheme() {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    
+    // Update data attribute for system theme (enhances CSS)
+    function updateSystemThemeAttribute() {
+      const systemTheme = detectSystemTheme();
+      document.documentElement.setAttribute('data-detected-system', systemTheme);
+    }
+    
+    // Initialize system theme detection
+    updateSystemThemeAttribute();
+    
+    // Listen for system theme changes
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      updateSystemThemeAttribute();
+    });
+    
     // Update word count
     function updateCounts() {
       const text = editor.innerText;
@@ -1673,10 +1996,25 @@ export class WriterViewManager {
       }
     });
     
+    // Throttle content change messages to avoid flooding
+    let contentChangeTimeout = null;
+    
     // Handle content changes
     function handleEditorChange() {
       markDirty();
       updateCounts();
+      
+      // Send content update to extension (throttled)
+      if (contentChangeTimeout) {
+        clearTimeout(contentChangeTimeout);
+      }
+      contentChangeTimeout = setTimeout(() => {
+        vscode.postMessage({
+          type: 'contentChanged',
+          text: editor.innerText,
+          field: currentField
+        });
+      }, 500); // Send every 500ms max
       
       // Auto-save after 2 seconds of inactivity
       if (saveTimeout) {
@@ -1764,6 +2102,13 @@ export class WriterViewManager {
           // External request to switch to a specific field
           fieldSelector.value = message.field;
           fieldSelector.dispatchEvent(new Event('change'));
+          break;
+          
+        case 'themeChanged':
+          // Update theme setting
+          document.documentElement.setAttribute('data-theme-setting', message.themeSetting);
+          document.documentElement.setAttribute('data-vscode-theme', message.vscodeTheme);
+          updateSystemThemeAttribute();
           break;
       }
     });
@@ -1939,6 +2284,8 @@ export class WriterViewManager {
       panel.dispose();
     }
     this.panels.clear();
+    this.panelStats.clear();
+    this.hideStatusBar();
   }
 }
 

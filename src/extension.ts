@@ -21,6 +21,16 @@ import { runConvertToMarkdown, runConvertToCodex, disposeConvertFormat } from '.
 import { countFilesInIndex as countIndexFiles } from './indexParser';
 import { CodexDragAndDropController } from './dragDropController';
 
+/**
+ * Notification Helper - Show transient messages that auto-dismiss
+ * Use this for success confirmations, context switches, and progress updates
+ * @param message - The message to display
+ * @param duration - Duration in milliseconds (default: 3000)
+ */
+function showTransientMessage(message: string, duration: number = 3000): void {
+  vscode.window.setStatusBarMessage(message, duration);
+}
+
 let treeProvider: CodexTreeProvider;
 let treeView: vscode.TreeView<CodexTreeItemType>;
 let writerViewManager: WriterViewManager;
@@ -672,7 +682,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
           if (success) {
             // Refresh tree
             treeProvider.setActiveDocument(document);
-            vscode.window.showInformationMessage(`Added child node: ${name}`);
+            showTransientMessage(`✓ Added child: ${name}`, 3000);
           }
         }
       }
@@ -728,7 +738,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
         
         if (success) {
           treeProvider.setActiveDocument(document);
-          vscode.window.showInformationMessage(`Added sibling node: ${name}`);
+          showTransientMessage(`✓ Added sibling: ${name}`, 3000);
         }
       }
     )
@@ -759,7 +769,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
         
         if (success) {
           treeProvider.setActiveDocument(document);
-          vscode.window.showInformationMessage(`Removed: ${treeItem.codexNode.name}`);
+          showTransientMessage(`✓ Removed: ${treeItem.codexNode.name}`, 3000);
         }
       }
     )
@@ -790,7 +800,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
         
         if (success) {
           treeProvider.setActiveDocument(document);
-          vscode.window.showInformationMessage(`Deleted: ${treeItem.codexNode.name}`);
+          showTransientMessage(`✓ Deleted: ${treeItem.codexNode.name}`, 3000);
         }
       }
     )
@@ -846,7 +856,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
         const result = await editor.moveFileUp(workspaceRoot, relativePath);
         
         if (result.success) {
-          vscode.window.showInformationMessage(result.message || 'Moved up');
+          showTransientMessage(result.message || '✓ Moved up', 3000);
           treeProvider.refresh();
         } else {
           vscode.window.showWarningMessage(result.message || 'Failed to move up');
@@ -884,7 +894,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
         const result = await editor.moveFileDown(workspaceRoot, relativePath);
         
         if (result.success) {
-          vscode.window.showInformationMessage(result.message || 'Moved down');
+          showTransientMessage(result.message || '✓ Moved down', 3000);
           treeProvider.refresh();
         } else {
           vscode.window.showWarningMessage(result.message || 'Failed to move down');
@@ -1010,7 +1020,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
         if (files.length === 0) {
           outputChannel.appendLine(`[autofixFolder] No .codex.yaml files found in folder`);
           treeProvider.refresh();
-          vscode.window.showInformationMessage(`✅ Autofix complete: ${result.message} (no files to fix)`);
+          showTransientMessage(`✅ Autofix complete: ${result.message} (no files to fix)`, 4000);
           return;
         }
         
@@ -1129,7 +1139,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       });
       
       outputChannel.appendLine(`[setContextFolder] Complete - Viewing: ${path.basename(uri.fsPath)}`);
-      vscode.window.showInformationMessage(`📋 Viewing: ${path.basename(uri.fsPath)}`);
+      showTransientMessage(`📋 Viewing: ${path.basename(uri.fsPath)}`, 3000);
     })
   );
   
@@ -1168,7 +1178,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
         outputChannel.appendLine(`[setContextFile] Context saved to workspace state`);
         
         outputChannel.appendLine(`[setContextFile] Complete - Viewing: ${path.basename(uri.fsPath)}`);
-        vscode.window.showInformationMessage(`📄 Viewing: ${path.basename(uri.fsPath)}`);
+        showTransientMessage(`📄 Viewing: ${path.basename(uri.fsPath)}`, 3000);
       } catch (error) {
         outputChannel.appendLine(`[setContextFile] ERROR: ${error}`);
         vscode.window.showErrorMessage(`Failed to open file: ${error}`);

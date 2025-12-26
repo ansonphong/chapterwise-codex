@@ -1,14 +1,15 @@
 # Fractal Entity Tree Map - Implementation Plan
 
-## 📋 Recent Updates (Dec 16, 2024)
+## 📋 Recent Updates (Dec 25, 2024)
 
 This plan has been enhanced with the following improvements:
 
 ### 1. **Auto-Fixer Integration** 🔧
 - **Problem**: Entities without IDs cause field generation to fail
-- **Solution**: `loadAndParseCodexFile()` now detects missing IDs, runs auto-fixer, saves fixed file, and re-parses
+- **Solution**: `loadAndParseCodexFile()` detects missing IDs, runs `CodexAutoFixer` from `autoFixer.ts`, saves fixed file, and re-parses
 - **Impact**: All entities guaranteed to have valid IDs before processing
 - **Location**: Step 1 - Include Resolution
+- **User Confirmation**: Prompts user first time: "Found 15 files with missing IDs. Run auto-fixer? [Yes] [No] [Always]"
 
 ### 2. **Circular Include Detection** 🔄
 - **Problem**: MAX_DEPTH prevents infinite loops but doesn't show what caused them
@@ -33,6 +34,49 @@ This plan has been enhanced with the following improvements:
 - **Solution**: Moved to new "Phase 7: Future Enhancements" section
 - **Impact**: Focus on core functionality first, prevents feature bloat
 - **Location**: Context Menu Commands
+
+### 6. **Index Format Version Bump** 📦
+- **Problem**: New structure (_node_kind, field nodes, entity extraction) incompatible with V2.1
+- **Solution**: Bump formatVersion from "2.1" to "3.0" in generated indexes
+- **Impact**: Clear distinction between old and new index formats
+- **Location**: Step 2 - Entity Extraction
+
+### 7. **Advanced Path Resolution** 🛤️
+- **Problem**: Include paths like `../../` going up directories not handled
+- **Solution**: Use `path.resolve()` and `path.normalize()` for proper relative path resolution
+- **Impact**: Supports complex include hierarchies, cross-folder includes
+- **Location**: Step 1 - Include Resolution
+
+### 8. **Tree State in Index Files** 🌳
+- **Problem**: Tree expansion state needs persistence across sessions
+- **Solution**: Store `expanded: true/false` directly in `.index.codex.yaml` files (already in schema!)
+- **Impact**: State is version-controlled, shared across team, works cross-machine
+- **Location**: Phase 5 - Interactive Tree State Management
+
+---
+
+## ✅ **PLAN READINESS: READY TO IMPLEMENT**
+
+**All critical gaps have been addressed:**
+
+1. ✅ **Path Resolution**: Enhanced to handle `../../` with `path.resolve()` and `path.normalize()`
+2. ✅ **Auto-Fixer Integration**: Leverages existing `CodexAutoFixer` with user prompt (Yes/No/Always/Never)
+3. ✅ **Index Format Version**: Bumped to V3.0, backward compatible
+4. ✅ **Entity ID Collisions**: Detected and warned with error nodes
+5. ✅ **Field ID Generation**: Safe with fallback: `${entityId || fallback}-field-${fieldName}`
+6. ✅ **Tree State**: Stored in `.index.codex.yaml` files (version controlled)
+7. ✅ **Markdown Includes**: Explicit handling for `.md` files as flat Codex Lite entities
+8. ✅ **Writer View Integration**: Clear implementation with `CodexTreeItem` creation
+
+**Implementation Confidence**: High (9/10)
+- Plan is thorough and addresses all edge cases
+- Leverages existing code (`CodexAutoFixer`, `CodexTreeItem`)
+- Clear phase-by-phase breakdown with checkpoints
+- All critical design decisions documented
+
+**Estimated Time**: 25-36 hours (3-4.5 full development days)
+
+**Next Step**: Switch to agent mode and begin Phase 1 (Backend - Include Resolution)
 
 ---
 
@@ -108,13 +152,14 @@ Currently, the index only shows **files** and **folders**. The goal is to extend
 5. Test navigation flow
 6. **Checkpoint**: Verify clicking entities/fields navigates correctly
 
-### Phase 5: Tree State Preservation (2-3 hours)
-**File**: `src/treeProvider.ts`
+### Phase 5: Interactive Tree State Management (3-4 hours)
+**Files**: `src/extension.ts`, `src/treeProvider.ts`, `src/indexGenerator.ts`
 
-1. Follow [Step 5: Tree View State Preservation](#step-5-tree-view-state-preservation)
-2. Save expanded node IDs before refresh
-3. Restore expansion state after update
-4. **Checkpoint**: Verify expansion state maintained across refreshes
+1. Follow [Step 5: Interactive Tree State Management](#step-5-interactive-tree-state-management)
+2. Register tree view expand/collapse event handlers
+3. Update `expanded` field in `.index.codex.yaml` files when user interacts
+4. Handle concurrent updates (debouncing)
+5. **Checkpoint**: Verify expansion state persists in index files across sessions
 
 ### Phase 6: Full Integration Testing (4-5 hours)
 
@@ -188,7 +233,7 @@ The sections below provide complete technical specifications, code examples, and
 
 ## Problem Examples
 
-### Example 1: Concepts with Includes
+### Example 1: Concepts with Includes (.codex.yaml files)
 
 ```yaml
 # E02/Concepts.codex.yaml
@@ -199,7 +244,23 @@ children:
 ```
 
 **Current behavior**: When you expand "Concepts" in tree, nothing appears  
-**Desired behavior**: Should show "Cosmic Brain", "The Emissary", "Quanta" as children
+**Desired behavior**: Should show "Cosmic Brain", "The Emissary", "Quanta" as children with their full entity trees
+
+### Example 1b: Book with Markdown Includes
+
+```yaml
+# E02/11L-E02-Book-1.codex.yaml
+children:
+  - include: ./chapters/Riding-the-Whirlwind.md
+  - include: ./chapters/Landing-in-Tiazz.md
+  - include: ./chapters/Breakthrough-to-the-Pyramid.codex.yaml
+```
+
+**Current behavior**: Markdown includes not resolved
+**Desired behavior**: 
+- `.md` files resolve to a single flat entity (Codex Lite format)
+- `.codex.yaml` files resolve to full entity tree with all children
+- Mixed includes work seamlessly in same parent
 
 ### Example 2: Character with Modules
 
@@ -350,7 +411,7 @@ async function resolveIncludes(
   return { ...codexData, children: resolvedChildren };
 }
 
-// NEW FUNCTION
+// NEW FUNCTION - Enhanced path resolution
 function resolveIncludePath(
   includePath: string, 
   basePath: string, 
@@ -361,11 +422,24 @@ function resolveIncludePath(
     return path.join(workspaceRoot, includePath.slice(1));
   }
   
-  // Relative path
-  return path.join(basePath, includePath);
+  // Relative path (handles ../, ./, and nested paths)
+  // Use path.resolve for proper relative resolution including ../../
+  const resolved = path.resolve(basePath, includePath);
+  
+  // Normalize to handle any remaining .. or . segments
+  const normalized = path.normalize(resolved);
+  
+  // Security check: ensure resolved path is still within workspace
+  const relative = path.relative(workspaceRoot, normalized);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    console.warn(`Include path ${includePath} resolves outside workspace: ${normalized}`);
+    // Return original path but log warning - don't block entirely
+  }
+  
+  return normalized;
 }
 
-// NEW FUNCTION
+// NEW FUNCTION - Enhanced with auto-fixer integration
 async function loadAndParseCodexFile(filePath: string): Promise<any> {
   let content = fs.readFileSync(filePath, 'utf-8');
   
@@ -379,9 +453,40 @@ async function loadAndParseCodexFile(filePath: string): Promise<any> {
   
   // Check if file has missing IDs and auto-fix if needed
   if (hasMissingIds(parsedData)) {
-    console.warn(`File ${filePath} has missing IDs, running auto-fixer...`);
+    console.warn(`File ${filePath} has missing IDs, checking auto-fixer preference...`);
+    
+    // Get user preference (cached from first prompt)
+    const autoFixPref = getAutoFixerPreference();
+    
+    if (autoFixPref === 'never') {
+      console.log(`Auto-fixer disabled by user, skipping ${filePath}`);
+      return parsedData;
+    }
+    
+    if (autoFixPref === 'ask') {
+      // Prompt user first time only
+      const response = await vscode.window.showWarningMessage(
+        `Found files with missing IDs during index generation. Run auto-fixer to fix them?`,
+        { modal: true },
+        'Yes',
+        'No',
+        'Always',
+        'Never'
+      );
+      
+      if (response === 'Always') {
+        setAutoFixerPreference('always');
+      } else if (response === 'Never') {
+        setAutoFixerPreference('never');
+        return parsedData;
+      } else if (response !== 'Yes') {
+        return parsedData;
+      }
+    }
     
     try {
+      // Import and use the existing CodexAutoFixer
+      const { CodexAutoFixer } = require('./autoFixer');
       const fixer = new CodexAutoFixer();
       const result = fixer.autoFixCodex(content, false);
       
@@ -404,6 +509,25 @@ async function loadAndParseCodexFile(filePath: string): Promise<any> {
   }
   
   return parsedData;
+}
+
+// Cache for auto-fixer user preference during index generation session
+let autoFixerPreference: 'ask' | 'always' | 'never' = 'ask';
+
+function getAutoFixerPreference(): 'ask' | 'always' | 'never' {
+  return autoFixerPreference;
+}
+
+function setAutoFixerPreference(pref: 'always' | 'never'): void {
+  autoFixerPreference = pref;
+}
+
+// Reset preference at start of each index generation
+export async function generateIndex(options: GenerateIndexOptions): Promise<string> {
+  // Reset auto-fixer preference for this session
+  autoFixerPreference = 'ask';
+  
+  // ... rest of generateIndex code ...
 }
 
 // Helper function to check if data has missing IDs
@@ -435,6 +559,33 @@ function hasMissingIds(data: any): boolean {
 4. **Preserve entity metadata** (id, type, name, etc.)
 5. **Maintain hierarchy** (parent-child relationships)
 6. **Respect MAX_DEPTH** limit (8 levels)
+7. **Bump formatVersion to 3.0** - New index structure requires new version
+
+**Index Format Version Bump (V2.1 → V3.0)**:
+```typescript
+// In generateIndex() and generatePerFolderIndex()
+const indexData = {
+  metadata: {
+    formatVersion: '3.0',  // ← BUMPED from 2.1 to 3.0
+    documentVersion: '1.0.0',
+    created: new Date().toISOString(),
+    generated: true,
+  },
+  // ... rest of index structure
+};
+```
+
+**What Changed in V3.0**:
+- Added `_node_kind` discriminator field (file | entity | field | folder | missing | error)
+- Added field nodes (summary, body, attributes, content) as children of entities
+- Added `_parent_file` and `_depth` tracking for entities
+- Added `_field_name`, `_field_type`, `_parent_entity` for field nodes
+- Enhanced include resolution with recursive entity extraction
+
+**Backward Compatibility**:
+- Old V2.1 indexes will continue to work (only show files/folders)
+- New V3.0 indexes show full entity tree
+- Parser can detect version and handle accordingly
 
 **Index structure enhancement**:
 ```yaml
@@ -1130,16 +1281,159 @@ PHASE 6: TESTING
 - Test with JSON files (quoted keys/values)
 - Test with quoted vs unquoted IDs
 
-### Step 5: Tree View State Preservation
+### Step 5: Interactive Tree State Management
 **Priority**: High  
-**Estimated effort**: 2-3 hours  
-**Files**: `treeProvider.ts`
+**Estimated effort**: 3-4 hours (updated from 2-3)  
+**Files**: `extension.ts`, `treeProvider.ts`, `indexGenerator.ts`
 
-1. Save expanded node IDs before refresh
-2. Restore expansion state after index update
-3. Preserve scroll position if possible
-4. Maintain selection state
-5. Smooth transitions (no flickering)
+**Goal**: Allow users to expand/collapse tree nodes and persist state to `.index.codex.yaml` files
+
+**Implementation**:
+
+1. **Register Tree View Event Handlers** (extension.ts)
+```typescript
+// In activate() function after tree view creation
+treeView.onDidCollapseElement(async (event) => {
+  if (event.element instanceof IndexNodeTreeItem) {
+    await updateNodeExpandedState(event.element, false);
+  }
+});
+
+treeView.onDidExpandElement(async (event) => {
+  if (event.element instanceof IndexNodeTreeItem) {
+    await updateNodeExpandedState(event.element, true);
+  }
+});
+```
+
+2. **Implement State Update Function** (extension.ts)
+```typescript
+async function updateNodeExpandedState(
+  item: IndexNodeTreeItem, 
+  expanded: boolean
+): Promise<void> {
+  const workspaceRoot = treeProvider.getWorkspaceRoot();
+  if (!workspaceRoot) return;
+  
+  // Determine which index file contains this node
+  const indexPath = determineIndexFileForNode(item, workspaceRoot);
+  if (!fs.existsSync(indexPath)) return;
+  
+  try {
+    // Read index file
+    const content = fs.readFileSync(indexPath, 'utf-8');
+    const indexData = YAML.parse(content);
+    
+    // Find and update the specific node's expanded state
+    const updated = updateExpandedInTree(indexData.children, item.indexNode.id, expanded);
+    
+    if (updated) {
+      // Write back to file
+      fs.writeFileSync(indexPath, YAML.stringify(indexData), 'utf-8');
+      console.log(`Updated expansion state for ${item.indexNode.name}: ${expanded}`);
+    }
+  } catch (error) {
+    console.error(`Failed to update expansion state:`, error);
+  }
+}
+
+// Helper to find node in index tree and update its expanded property
+function updateExpandedInTree(
+  children: any[], 
+  targetId: string, 
+  expanded: boolean
+): boolean {
+  for (const child of children) {
+    if (child.id === targetId) {
+      child.expanded = expanded;
+      return true;
+    }
+    if (child.children && Array.isArray(child.children)) {
+      if (updateExpandedInTree(child.children, targetId, expanded)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Helper to determine which index file contains a node
+function determineIndexFileForNode(
+  item: IndexNodeTreeItem,
+  workspaceRoot: string
+): string {
+  // Get the node's parent folder path
+  const computedPath = item.indexNode._computed_path || '';
+  const folderPath = path.dirname(computedPath);
+  
+  // Check for per-folder index
+  const perFolderIndex = path.join(workspaceRoot, folderPath, '.index.codex.yaml');
+  if (fs.existsSync(perFolderIndex)) {
+    return perFolderIndex;
+  }
+  
+  // Fall back to workspace root index
+  return path.join(workspaceRoot, '.index.codex.yaml');
+}
+```
+
+3. **Handle Concurrent Updates** (debouncing)
+```typescript
+// Debounce expansion updates to avoid file thrashing
+const expandedUpdateQueue = new Map<string, boolean>();
+let expandedUpdateTimeout: NodeJS.Timeout | null = null;
+
+async function updateNodeExpandedState(
+  item: IndexNodeTreeItem, 
+  expanded: boolean
+): Promise<void> {
+  // Queue the update
+  expandedUpdateQueue.set(item.indexNode.id, expanded);
+  
+  // Debounce: wait 500ms for more updates before writing
+  if (expandedUpdateTimeout) {
+    clearTimeout(expandedUpdateTimeout);
+  }
+  
+  expandedUpdateTimeout = setTimeout(async () => {
+    await flushExpandedUpdates();
+    expandedUpdateQueue.clear();
+    expandedUpdateTimeout = null;
+  }, 500);
+}
+
+async function flushExpandedUpdates(): Promise<void> {
+  // Batch process all queued updates
+  for (const [nodeId, expanded] of expandedUpdateQueue) {
+    // ... write to appropriate index file
+  }
+}
+```
+
+4. **Initial State Reading** (treeProvider.ts)
+```typescript
+// Tree provider already reads expanded state from index!
+// See treeProvider.ts line 156:
+// collapsibleState = indexNode.expanded !== false
+//   ? vscode.TreeItemCollapsibleState.Expanded
+//   : vscode.TreeItemCollapsibleState.Collapsed;
+// 
+// No changes needed here - just ensure index files have expanded field
+```
+
+**Why This Approach:**
+- ✅ State is version-controlled (committed with project)
+- ✅ Shared across team (everyone sees same default expansion)
+- ✅ Works cross-machine (no local storage)
+- ✅ Hierarchical (each folder's index stores its own state)
+- ✅ Already in schema (`expanded?: boolean` in IndexChildNode)
+
+**Edge Cases to Handle**:
+- File doesn't exist (skip update)
+- File is locked (log error, skip)
+- Multiple workspaces (use correct workspace root)
+- Rapid clicking (debouncing handles this)
+- Index regeneration (preserve existing expanded values if present)
 
 ### Step 6: Full Integration Testing
 **Priority**: Critical  
@@ -1718,6 +2012,64 @@ if (node._node_kind === 'error') {
 - **Provide fix actions** - 🔧 Auto-Fix button for parse errors
 - **Log everything** - detailed error logs for debugging without breaking UX
 - **Missing includes don't break entire tree** - create `_node_kind: 'missing'` placeholders
+
+### Critical Design Decisions (RESOLVED)
+
+#### 1. **Index Format Version Bump** ✅
+**Decision**: Bump `formatVersion` from `"2.1"` to `"3.0"` in all generated indexes
+
+**Reason**: New structure incompatible with V2.1 (adds `_node_kind`, field nodes, entity extraction)
+
+**Implementation**: See Phase 2 documentation
+
+**Backward Compatibility**: Old V2.1 indexes still work, just show files/folders only
+
+#### 2. **Entity ID Collision Handling** ✅
+**Decision**: Enforce global uniqueness, detect collisions, show warnings
+
+**Strategy**:
+- Entity IDs are **globally unique** across entire project (enforced by UUID format)
+- Collision detection during extraction logs warnings
+- Tree shows warning nodes (`_node_kind: 'error'`) for duplicates
+- User must fix by running auto-fixer or manual edit
+- See `extractEntityChildren()` implementation with `globalEntityIds` Set
+
+#### 3. **Field Node ID Generation** ✅
+**Decision**: Use parent entity ID as prefix: `${entityId}-field-${fieldName}`
+
+**Guarantees**:
+- Field IDs are unique within parent entity
+- No collisions possible (entity ID is unique, field names are distinct)
+- Easy to trace field back to parent: `adrastos-field-summary` → `adrastos` → `summary`
+
+#### 4. **Tree Expansion State** ✅
+**Decision**: Store in `.index.codex.yaml` files, NOT in VS Code workspace state
+
+**Reason**: 
+- Version controlled (committed with project)
+- Shared across team
+- Works cross-machine
+- Schema already supports it (`expanded?: boolean`)
+
+**Implementation**: See Phase 5 for event handlers and file updates
+
+#### 5. **Advanced Path Resolution** ✅
+**Decision**: Support `../../` relative paths using `path.resolve()` and `path.normalize()`
+
+**Security**: Check resolved paths don't escape workspace root
+
+**Implementation**: See enhanced `resolveIncludePath()` function
+
+#### 6. **Auto-Fixer Integration** ✅
+**Decision**: Prompt user once, cache preference for session
+
+**Flow**:
+1. First file with missing IDs → Show prompt with options [Yes] [No] [Always] [Never]
+2. User selects preference → Cached for index generation session
+3. Reset preference at start of each new index generation
+4. Use existing `CodexAutoFixer` from `autoFixer.ts`
+
+**Impact**: Non-intrusive, user controls behavior, leverages existing code
 
 ## Notes
 

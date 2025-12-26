@@ -5,7 +5,8 @@
 
 import * as vscode from 'vscode';
 import * as YAML from 'yaml';
-import { generateUuid, isCodexFile } from './codexModel';
+import * as path from 'path';
+import { generateUuid, isCodexFile, isCodexLikeFile, isMarkdownFile } from './codexModel';
 
 /**
  * Result of an auto-fix operation
@@ -15,6 +16,14 @@ export interface AutoFixResult {
   fixesApplied: string[];
   success: boolean;
   error?: string;
+}
+
+/**
+ * Markdown frontmatter and body structure
+ */
+interface MarkdownParts {
+  frontmatter: Record<string, unknown>;
+  body: string;
 }
 
 /**
@@ -100,6 +109,142 @@ export class CodexAutoFixer {
         error: error instanceof Error ? error.message : String(error),
       };
     }
+  }
+
+  /**
+   * Auto-fix a Codex Lite (Markdown) document
+   * @param text Raw markdown text with YAML frontmatter
+   * @param fileName Optional filename for extracting name fallback
+   * @returns AutoFixResult with fixed text and list of fixes applied
+   */
+  autoFixCodexLite(text: string, fileName?: string): AutoFixResult {
+    this.usedIds = new Set();
+    this.fixesApplied = [];
+
+    try {
+      const { frontmatter, body } = this.extractFrontmatter(text);
+
+      // Fix missing name
+      if (!frontmatter.name && !frontmatter.title) {
+        const h1 = this.extractH1FromMarkdown(body);
+        if (h1) {
+          frontmatter.name = h1;
+          this.fixesApplied.push(`Added missing 'name' from H1: '${h1}'`);
+        } else if (fileName) {
+          const nameFromFile = path.basename(fileName, '.md');
+          frontmatter.name = nameFromFile;
+          this.fixesApplied.push(`Added missing 'name' from filename: '${nameFromFile}'`);
+        } else {
+          frontmatter.name = 'Untitled';
+          this.fixesApplied.push("Added missing 'name' with default: 'Untitled'");
+        }
+      }
+
+      // Fix missing or invalid ID
+      if (!frontmatter.id || typeof frontmatter.id !== 'string') {
+        frontmatter.id = this.generateNewUuid();
+        this.fixesApplied.push(`Added missing 'id': '${frontmatter.id}'`);
+      } else if (!this.isValidUuid(frontmatter.id)) {
+        const oldId = frontmatter.id;
+        frontmatter.id = this.generateNewUuid();
+        this.fixesApplied.push(`Fixed invalid UUID format: '${oldId}' → '${frontmatter.id}'`);
+      }
+
+      // Ensure type field exists
+      if (!frontmatter.type || typeof frontmatter.type !== 'string') {
+        frontmatter.type = 'document';
+        this.fixesApplied.push("Added missing 'type' field: 'document'");
+      }
+
+      // Update word count
+      const wordCount = this.countWords(body);
+      const oldWordCount = frontmatter.word_count;
+      if (oldWordCount !== wordCount) {
+        frontmatter.word_count = wordCount;
+        if (oldWordCount === undefined) {
+          this.fixesApplied.push(`Added 'word_count': ${wordCount}`);
+        } else {
+          this.fixesApplied.push(`Updated 'word_count': ${oldWordCount} → ${wordCount}`);
+        }
+      }
+
+      // Serialize back to markdown
+      const fixedText = this.serializeMarkdown(frontmatter, body);
+
+      return {
+        fixedText,
+        fixesApplied: this.fixesApplied,
+        success: true,
+      };
+    } catch (error) {
+      return {
+        fixedText: text,
+        fixesApplied: this.fixesApplied,
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Extract YAML frontmatter from markdown text
+   */
+  private extractFrontmatter(text: string): MarkdownParts {
+    const trimmed = text.trimStart();
+
+    // Check for frontmatter delimiter
+    if (!trimmed.startsWith('---')) {
+      return { frontmatter: {}, body: text };
+    }
+
+    // Find the closing delimiter
+    const afterFirst = trimmed.slice(3);
+    const endIndex = afterFirst.indexOf('\n---');
+
+    if (endIndex === -1) {
+      return { frontmatter: {}, body: text };
+    }
+
+    const frontmatterText = afterFirst.slice(0, endIndex);
+    const bodyStart = 3 + endIndex + 4; // "---" + content + "\n---"
+    const body = trimmed.slice(bodyStart).trim();
+
+    try {
+      const frontmatter = YAML.parse(frontmatterText) as Record<string, unknown>;
+      return { frontmatter: frontmatter || {}, body };
+    } catch {
+      return { frontmatter: {}, body: text };
+    }
+  }
+
+  /**
+   * Extract first H1 heading from markdown text
+   */
+  private extractH1FromMarkdown(text: string): string | null {
+    const match = text.match(/^#\s+(.+)$/m);
+    return match ? match[1].trim() : null;
+  }
+
+  /**
+   * Count words in text (split on whitespace)
+   */
+  private countWords(text: string): number {
+    if (!text || typeof text !== 'string') {
+      return 0;
+    }
+    return text.split(/\s+/).filter(w => w.length > 0).length;
+  }
+
+  /**
+   * Serialize frontmatter and body back to markdown format
+   */
+  private serializeMarkdown(frontmatter: Record<string, unknown>, body: string): string {
+    if (Object.keys(frontmatter).length === 0) {
+      return body;
+    }
+
+    const fmYaml = YAML.stringify(frontmatter, { lineWidth: 0 }).trim();
+    return `---\n${fmYaml}\n---\n\n${body}`;
   }
 
   /**
@@ -750,13 +895,18 @@ export async function runAutoFixer(regenerateAllIds: boolean = false): Promise<v
     return;
   }
 
-  if (!isCodexFile(editor.document.fileName)) {
-    vscode.window.showErrorMessage('Current file is not a Codex file (.codex.yaml, .codex.json, or .codex)');
+  const fileName = editor.document.fileName;
+
+  if (!isCodexLikeFile(fileName)) {
+    vscode.window.showErrorMessage('Current file is not a Codex file (.codex.yaml, .codex.json, .codex, or .md)');
     return;
   }
 
-  // Confirm if regenerating all IDs
-  if (regenerateAllIds) {
+  // Check if it's a markdown file
+  const isMarkdown = isMarkdownFile(fileName);
+
+  // Confirm if regenerating all IDs (only for full Codex files)
+  if (regenerateAllIds && !isMarkdown) {
     const confirm = await vscode.window.showWarningMessage(
       'This will regenerate ALL IDs in the document, even valid ones. This may break external references. Continue?',
       { modal: true },
@@ -771,7 +921,11 @@ export async function runAutoFixer(regenerateAllIds: boolean = false): Promise<v
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: regenerateAllIds ? 'Auto-Fixing (Regenerating IDs)...' : 'Auto-Fixing Codex...',
+      title: isMarkdown 
+        ? 'Auto-Fixing Codex Lite (Markdown)...' 
+        : regenerateAllIds 
+          ? 'Auto-Fixing (Regenerating IDs)...' 
+          : 'Auto-Fixing Codex...',
       cancellable: false,
     },
     async () => {
@@ -779,7 +933,9 @@ export async function runAutoFixer(regenerateAllIds: boolean = false): Promise<v
       const text = document.getText();
 
       const fixer = new CodexAutoFixer();
-      const result = fixer.autoFixCodex(text, regenerateAllIds);
+      const result = isMarkdown 
+        ? fixer.autoFixCodexLite(text, fileName)
+        : fixer.autoFixCodex(text, regenerateAllIds);
 
       if (!result.success) {
         vscode.window.showErrorMessage(`Auto-fix failed: ${result.error}`);
@@ -787,7 +943,7 @@ export async function runAutoFixer(regenerateAllIds: boolean = false): Promise<v
       }
 
       if (result.fixesApplied.length === 0) {
-        vscode.window.showInformationMessage('✅ No fixes needed - document is already valid!');
+        vscode.window.setStatusBarMessage('✅ No fixes needed - document is already valid!', 3000);
         return;
       }
 
@@ -807,7 +963,10 @@ export async function runAutoFixer(regenerateAllIds: boolean = false): Promise<v
         channel.appendLine(`\n${'='.repeat(60)}`);
         channel.appendLine(`Auto-Fix Results - ${new Date().toLocaleString()}`);
         channel.appendLine(`File: ${document.fileName}`);
-        channel.appendLine(`Regenerate All IDs: ${regenerateAllIds}`);
+        channel.appendLine(`Format: ${isMarkdown ? 'Codex Lite (Markdown)' : 'Full Codex'}`);
+        if (!isMarkdown) {
+          channel.appendLine(`Regenerate All IDs: ${regenerateAllIds}`);
+        }
         channel.appendLine(`${'='.repeat(60)}`);
         result.fixesApplied.forEach((fix, i) => {
           channel.appendLine(`${i + 1}. ${fix}`);

@@ -303,7 +303,7 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
         channel.show();
       }
     } else if (results.succeeded.length > 0) {
-      vscode.window.showInformationMessage(`${isReorder ? 'Reordered' : 'Moved'} ${results.succeeded.length} item(s) successfully`);
+      vscode.window.setStatusBarMessage(`✓ ${isReorder ? 'Reordered' : 'Moved'} ${results.succeeded.length} item(s)`, 3000);
     }
     
     // Refresh tree view

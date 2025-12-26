@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as YAML from 'yaml';
-import { isCodexFile } from './codexModel';
+import { isCodexFile, isCodexLikeFile, isMarkdownFile } from './codexModel';
 
 /**
  * Options for word count operation
@@ -159,6 +159,10 @@ export class WordCounter {
     }
 
     if (!isCodexFile(filePath)) {
+      // Skip markdown files in includes for now
+      if (isMarkdownFile(filePath)) {
+        return;
+      }
       this.errors.push(`Include is not a valid codex file: ${filePath}`);
       return;
     }
@@ -228,6 +232,82 @@ export class WordCounter {
   }
 
   /**
+   * Extract YAML frontmatter from markdown text
+   */
+  private extractFrontmatter(text: string): { frontmatter: Record<string, unknown>; body: string } {
+    const trimmed = text.trimStart();
+
+    // Check for frontmatter delimiter
+    if (!trimmed.startsWith('---')) {
+      return { frontmatter: {}, body: text };
+    }
+
+    // Find the closing delimiter
+    const afterFirst = trimmed.slice(3);
+    const endIndex = afterFirst.indexOf('\n---');
+
+    if (endIndex === -1) {
+      return { frontmatter: {}, body: text };
+    }
+
+    const frontmatterText = afterFirst.slice(0, endIndex);
+    const bodyStart = 3 + endIndex + 4; // "---" + content + "\n---"
+    const body = trimmed.slice(bodyStart).trim();
+
+    try {
+      const frontmatter = YAML.parse(frontmatterText) as Record<string, unknown>;
+      return { frontmatter: frontmatter || {}, body };
+    } catch {
+      return { frontmatter: {}, body: text };
+    }
+  }
+
+  /**
+   * Serialize frontmatter and body back to markdown format
+   */
+  private serializeMarkdown(frontmatter: Record<string, unknown>, body: string): string {
+    if (Object.keys(frontmatter).length === 0) {
+      return body;
+    }
+
+    const fmYaml = YAML.stringify(frontmatter, { lineWidth: 0 }).trim();
+    return `---\n${fmYaml}\n---\n\n${body}`;
+  }
+
+  /**
+   * Update word count in a markdown file
+   */
+  private updateWordCountInMarkdown(filePath: string): boolean {
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const { frontmatter, body } = this.extractFrontmatter(content);
+
+      // Count words in body
+      const wordCount = this.countWords(body);
+      this.totalWords += wordCount;
+
+      // Check if word_count needs to be updated
+      const oldWordCount = frontmatter.word_count;
+      if (oldWordCount === wordCount) {
+        return false; // No change needed
+      }
+
+      // Update word count
+      frontmatter.word_count = wordCount;
+      this.entitiesUpdated++;
+
+      // Write back to file
+      const newContent = this.serializeMarkdown(frontmatter, body);
+      fs.writeFileSync(filePath, newContent, 'utf-8');
+      
+      return true;
+    } catch (e) {
+      this.errors.push(`Failed to update markdown file "${filePath}": ${e}`);
+      return false;
+    }
+  }
+
+  /**
    * Update word counts in a codex file
    */
   async updateWordCounts(
@@ -250,6 +330,25 @@ export class WordCounter {
       // Mark this file as processed
       this.processedFiles.add(inputPath);
 
+      // Check if this is a markdown file
+      if (isMarkdownFile(inputPath)) {
+        // Handle Codex Lite (Markdown) format
+        const wasModified = this.updateWordCountInMarkdown(inputPath);
+        
+        if (wasModified) {
+          this.filesModified.push(inputPath);
+        }
+
+        return {
+          success: true,
+          entitiesUpdated: this.entitiesUpdated,
+          totalWords: this.totalWords,
+          filesModified: this.filesModified,
+          errors: this.errors
+        };
+      }
+
+      // Handle full Codex format files
       const fileContent = fs.readFileSync(inputPath, 'utf-8');
       const isJson = inputPath.toLowerCase().endsWith('.json');
       
@@ -382,8 +481,8 @@ export async function runUpdateWordCount(): Promise<void> {
     return;
   }
 
-  if (!isCodexFile(editor.document.fileName)) {
-    vscode.window.showErrorMessage('Current file is not a Codex file (.codex.yaml, .codex.json, or .codex)');
+  if (!isCodexLikeFile(editor.document.fileName)) {
+    vscode.window.showErrorMessage('Current file is not a Codex file (.codex.yaml, .codex.json, .codex, or .md)');
     return;
   }
 
@@ -394,9 +493,10 @@ export async function runUpdateWordCount(): Promise<void> {
 
   const documentText = editor.document.getText();
   const documentUri = editor.document.uri;
+  const isMarkdown = isMarkdownFile(editor.document.fileName);
 
-  // Check if document has includes
-  const hasIncludes = WordCounter.hasIncludes(documentText);
+  // Check if document has includes (only for full Codex files)
+  const hasIncludes = !isMarkdown && WordCounter.hasIncludes(documentText);
   let followIncludes = false;
 
   if (hasIncludes) {
@@ -501,6 +601,10 @@ export async function runUpdateWordCount(): Promise<void> {
 export function disposeWordCount(): void {
   outputChannel?.dispose();
 }
+
+
+
+
 
 
 

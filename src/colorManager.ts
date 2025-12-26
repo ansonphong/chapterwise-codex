@@ -243,10 +243,11 @@ export class ColorManager {
       await vscode.workspace.applyEdit(edit);
       await document.save();
       
-      vscode.window.showInformationMessage(
+      vscode.window.setStatusBarMessage(
         color 
-          ? `Color updated to ${color}` 
-          : 'Color removed'
+          ? `✓ Color updated to ${color}` 
+          : '✓ Color removed',
+        2000
       );
       
       return true;
@@ -331,8 +332,9 @@ export class ColorManager {
     }
     
     if (successCount > 0) {
-      vscode.window.showInformationMessage(
-        `Updated color for ${successCount} node(s)`
+      vscode.window.setStatusBarMessage(
+        `✓ Updated color for ${successCount} node(s)`,
+        3000
       );
     }
     
