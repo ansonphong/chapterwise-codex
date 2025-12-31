@@ -953,19 +953,19 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       )];
     }
     
-    // No active document - show welcome message
-    if (!this.activeDocument) {
-      return [];
-    }
-    
-    // FOLDER MODE - activeDocument is an index file
+    // FOLDER MODE - activeDocument is an index file (OR we loaded index directly)
     if (this.indexDoc) {
       return this.getIndexChildren(element);
     }
     
     // FILE MODE - activeDocument is a regular codex file
-    if (this.codexDoc) {
+    if (this.codexDoc && this.activeDocument) {
       return this.getCodexChildren(element);
+    }
+    
+    // No active document and no index - show welcome message
+    if (!this.activeDocument && !this.indexDoc) {
+      return [];
     }
     
     // Document failed to parse
