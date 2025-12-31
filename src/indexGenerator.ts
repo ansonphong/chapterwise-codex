@@ -19,12 +19,53 @@ import { minimatch } from 'minimatch';
 export interface GenerateIndexOptions {
   workspaceRoot: string;
   indexFilePath?: string;
-  progressReporter?: vscode.Progress<{ message?: string; increment?: number }>;
+  progressReporter?: IndexGenerationProgress;
 }
 
 export interface IndexPatterns {
   include: string[];
   exclude: string[];
+}
+
+/**
+ * Progress reporting interface for index generation
+ */
+export interface IndexGenerationProgress {
+  report: (message: string, increment?: number) => void;
+  token?: vscode.CancellationToken;
+}
+
+// ============================================================================
+// PHASE 1: Include Resolution - Constants & State
+// ============================================================================
+
+/**
+ * Maximum depth for recursive include resolution and entity extraction
+ * Prevents infinite loops and stack overflow
+ */
+const MAX_DEPTH = 8;
+
+/**
+ * Marker text for missing files in the index
+ */
+const MISSING_FILE_MARKER = '⚠️ Not Available';
+
+/**
+ * Auto-fixer preference for current session
+ * Persists across multiple files during one index generation
+ */
+let autoFixerPreference: 'yes' | 'no' | 'always' | 'never' | null = null;
+
+function getAutoFixerPreference(): typeof autoFixerPreference {
+  return autoFixerPreference;
+}
+
+function setAutoFixerPreference(pref: typeof autoFixerPreference): void {
+  autoFixerPreference = pref;
+}
+
+function resetAutoFixerPreference(): void {
+  autoFixerPreference = null;
 }
 
 /**
@@ -35,6 +76,9 @@ export async function generateIndex(
 ): Promise<string> {
   const { workspaceRoot, indexFilePath, progressReporter } = options;
 
+  // Reset auto-fixer preference for new generation
+  resetAutoFixerPreference();
+
   // Step 1: Load index.codex.yaml if exists
   let indexDef: any = null;
   if (indexFilePath && fs.existsSync(indexFilePath)) {
@@ -42,22 +86,19 @@ export async function generateIndex(
     indexDef = YAML.parse(content);
   }
 
-  progressReporter?.report({ message: 'Loading patterns...', increment: 10 });
+  progressReporter?.report('Loading patterns...', 10);
 
   // Step 2: Get patterns
   const patterns = indexDef?.patterns || getDefaultPatterns();
 
   // Step 3: Scan workspace
-  progressReporter?.report({ message: 'Scanning workspace...', increment: 20 });
+  progressReporter?.report('Scanning workspace...', 20);
   const files = await scanWorkspace(workspaceRoot, patterns);
 
-  progressReporter?.report({
-    message: `Found ${files.length} files...`,
-    increment: 30,
-  });
+  progressReporter?.report(`Found ${files.length} files...`, 30);
 
   // Step 4: Build hierarchy
-  progressReporter?.report({ message: 'Building hierarchy...', increment: 20 });
+  progressReporter?.report('Building hierarchy...', 20);
   const children = await buildHierarchy(files, workspaceRoot);
 
   // Step 5: Apply type styles
@@ -65,12 +106,12 @@ export async function generateIndex(
     applyTypeStyles(children, indexDef.typeStyles);
   }
 
-  progressReporter?.report({ message: 'Writing index file...', increment: 15 });
+  progressReporter?.report('Writing index file...', 15);
 
   // Step 6: Build complete index
   const indexData = {
       metadata: {
-        formatVersion: '1.1',
+        formatVersion: '3.0', // Phase 2: Bumped for entity + field extraction
         documentVersion: '1.0.0',
         created: new Date().toISOString(),
         generated: true,
@@ -91,7 +132,7 @@ export async function generateIndex(
   const outputPath = path.join(workspaceRoot, '.index.codex.yaml');
   fs.writeFileSync(outputPath, YAML.stringify(indexData), 'utf-8');
 
-  progressReporter?.report({ message: 'Complete!', increment: 5 });
+  progressReporter?.report('Complete!', 5);
 
   return outputPath;
   }
@@ -320,12 +361,364 @@ function applyPerFolderOrders(
       // Assign default order if not set
       child.order = indexChildren.length || 999;
       }
+  }
+}
+
+// ============================================================================
+// PHASE 1: Include Resolution - Core Functions
+// ============================================================================
+
+/**
+ * Resolve include path relative to parent file
+ * Supports:
+ * - Absolute paths: /path/to/file.codex.yaml
+ * - Relative paths: ./sibling.codex.yaml
+ * - Parent paths: ../parent/file.codex.yaml
+ * - Multi-level: ../../grandparent/file.codex.yaml
+ */
+function resolveIncludePath(
+  includePath: string,
+  parentFilePath: string,
+  workspaceRoot: string
+): string {
+  // If absolute path (starts with /), resolve from workspace root
+  if (includePath.startsWith('/')) {
+    return path.join(workspaceRoot, includePath.substring(1));
+  }
+  
+  // Otherwise, resolve relative to parent file's directory
+  const parentDir = path.dirname(parentFilePath);
+  const resolved = path.resolve(parentDir, includePath);
+  
+  // Normalize to remove .. and . segments
+  const normalized = path.normalize(resolved);
+  
+  // Security check: ensure resolved path is within workspace
+  const relative = path.relative(workspaceRoot, normalized);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(`Include path escapes workspace root: ${includePath}`);
+  }
+  
+  return normalized;
+}
+
+/**
+ * Check if codex data has missing IDs (recursively)
+ * Skip include directives (they don't need IDs)
+ */
+function hasMissingIds(data: any): boolean {
+  if (!data || typeof data !== 'object') {
+    return false;
+  }
+  
+  // Check children array
+  if (Array.isArray(data.children)) {
+    for (const child of data.children) {
+      // Skip include directives
+      if (child.include) {
+        continue;
+      }
+      
+      // Check if this entity is missing an ID
+      if (child.type && !child.id) {
+        return true;
+      }
+      
+      // Recursively check nested children
+      if (hasMissingIds(child)) {
+        return true;
+      }
     }
   }
+  
+  return false;
+}
 
-  /**
- * Create file node with type detection
-   */
+/**
+ * Load and parse codex file with auto-fixer integration
+ * If file has missing IDs, prompts user and runs auto-fixer
+ */
+async function loadAndParseCodexFile(
+  filePath: string,
+  workspaceRoot: string
+): Promise<any> {
+  const content = fs.readFileSync(filePath, 'utf-8');
+  let data = YAML.parse(content);
+  
+  // Check if file needs auto-fixing
+  if (hasMissingIds(data)) {
+    const currentPref = getAutoFixerPreference();
+    
+    // If user said "never", skip
+    if (currentPref === 'never') {
+      return data;
+    }
+    
+    // If user said "always", auto-fix without prompt
+    if (currentPref === 'always') {
+      const { CodexAutoFixer } = await import('./autoFixer');
+      const fixer = new CodexAutoFixer();
+      const fixed = fixer.autoFixCodex(data);
+      
+      // Save fixed file
+      fs.writeFileSync(filePath, YAML.stringify(fixed), 'utf-8');
+      return fixed;
+    }
+    
+    // Otherwise, prompt user (first time or "yes"/"no" per file)
+    const relativePath = path.relative(workspaceRoot, filePath);
+    const choice = await vscode.window.showWarningMessage(
+      `File has missing IDs: ${relativePath}\nRun auto-fixer?`,
+      'Yes',
+      'No',
+      'Always',
+      'Never'
+    );
+    
+    if (choice === 'Always') {
+      setAutoFixerPreference('always');
+    } else if (choice === 'Never') {
+      setAutoFixerPreference('never');
+      return data;
+    }
+    
+    if (choice === 'Yes' || choice === 'Always') {
+      const { CodexAutoFixer } = await import('./autoFixer');
+      const fixer = new CodexAutoFixer();
+      const fixed = fixer.autoFixCodex(data);
+      
+      // Save fixed file
+      fs.writeFileSync(filePath, YAML.stringify(fixed), 'utf-8');
+      return fixed;
+    }
+  }
+  
+  return data;
+}
+
+/**
+ * Resolve includes recursively within codex data
+ * Returns modified children array with includes replaced by actual content
+ * 
+ * @param children - Children array from codex file
+ * @param parentFilePath - Absolute path to parent codex file
+ * @param workspaceRoot - Workspace root path
+ * @param depth - Current recursion depth
+ * @param visitedPaths - Set of visited file paths (for circular detection)
+ */
+async function resolveIncludes(
+  children: any[] | undefined,
+  parentFilePath: string,
+  workspaceRoot: string,
+  depth: number = 0,
+  visitedPaths: Set<string> = new Set()
+): Promise<any[]> {
+  if (!children || !Array.isArray(children)) {
+    return [];
+  }
+  
+  // Check depth limit
+  if (depth >= MAX_DEPTH) {
+    console.warn(`[resolveIncludes] Max depth ${MAX_DEPTH} reached at ${parentFilePath}`);
+    return children;
+  }
+  
+  const resolved: any[] = [];
+  
+  for (const child of children) {
+    // Handle include directives
+    if (child.include) {
+      try {
+        const includePath = child.include;
+        const resolvedPath = resolveIncludePath(includePath, parentFilePath, workspaceRoot);
+        
+        // Check for circular includes
+        if (visitedPaths.has(resolvedPath)) {
+          const chain = Array.from(visitedPaths).join(' → ');
+          resolved.push({
+            _node_kind: 'error',
+            name: `Circular include: ${path.basename(includePath)}`,
+            _error_message: `Circular include detected:\n${chain} → ${resolvedPath}`,
+            _original_include: includePath,
+          });
+          continue;
+        }
+        
+        // Check if file exists
+        if (!fs.existsSync(resolvedPath)) {
+          resolved.push({
+            _node_kind: 'missing',
+            name: `${MISSING_FILE_MARKER} ${path.basename(includePath)}`,
+            _computed_path: path.relative(workspaceRoot, resolvedPath),
+            _original_include: includePath,
+          });
+          continue;
+        }
+        
+        // Load and parse included file
+        try {
+          const includedData = await loadAndParseCodexFile(resolvedPath, workspaceRoot);
+          
+          // Add to visited set for circular detection
+          const newVisited = new Set(visitedPaths);
+          newVisited.add(resolvedPath);
+          
+          // Recursively resolve includes in the included file
+          const includedChildren = await resolveIncludes(
+            includedData.children,
+            resolvedPath,
+            workspaceRoot,
+            depth + 1,
+            newVisited
+          );
+          
+          // Merge included entity with its resolved children
+          const includedNode = {
+            ...includedData,
+            children: includedChildren,
+            _included_from: path.relative(workspaceRoot, resolvedPath),
+            _node_kind: 'entity', // Included files become entities in the tree
+          };
+          
+          resolved.push(includedNode);
+        } catch (parseError: any) {
+          resolved.push({
+            _node_kind: 'error',
+            name: `🔧 Parse Error: ${path.basename(includePath)}`,
+            _error_message: parseError.message,
+            _original_include: includePath,
+          });
+        }
+      } catch (error: any) {
+        resolved.push({
+          _node_kind: 'error',
+          name: `Error: ${child.include}`,
+          _error_message: error.message,
+          _original_include: child.include,
+        });
+      }
+    } else {
+      // Regular child (not an include) - recursively process its children
+      const resolvedChild = {
+        ...child,
+        children: await resolveIncludes(
+          child.children,
+          parentFilePath,
+          workspaceRoot,
+          depth,
+          visitedPaths
+        ),
+      };
+      resolved.push(resolvedChild);
+    }
+  }
+  
+  return resolved;
+}
+
+// ============================================================================
+// PHASE 2: Entity & Field Extraction
+// ============================================================================
+
+/**
+ * Extract entity and field children from codex data (recursive)
+ * Creates nodes for entities (type: module/character/etc) and their fields (summary, body, etc)
+ * 
+ * @param children - Children array from codex file
+ * @param parentFilePath - Relative path to parent file (for _parent_file)
+ * @param workspaceRoot - Workspace root path
+ * @param depth - Current depth (1 = first-level entities)
+ * @param parentEntityId - Parent entity ID (for nested entities)
+ */
+async function extractEntityChildren(
+  children: any[] | undefined,
+  parentFilePath: string,
+  workspaceRoot: string,
+  depth: number = 1,
+  parentEntityId?: string
+): Promise<any[]> {
+  if (!children || !Array.isArray(children)) {
+    return [];
+  }
+  
+  // Check depth limit
+  if (depth > MAX_DEPTH) {
+    console.warn(`[extractEntityChildren] Max depth ${MAX_DEPTH} reached`);
+    return [];
+  }
+  
+  const extracted: any[] = [];
+  
+  for (const child of children) {
+    // Skip if this is not an entity (e.g., it's an include directive or malformed)
+    if (!child.type) {
+      continue;
+    }
+    
+    // Generate defensive entity ID
+    const entityId = child.id || `entity-${child.type}-${depth}-${extracted.length}`;
+    
+    // Create entity node
+    const entityNode: any = {
+      ...child,
+      id: entityId,
+      _node_kind: 'entity',
+      _parent_file: parentFilePath,
+      _depth: depth,
+      children: [], // Will be populated with fields + nested entities
+    };
+    
+    if (parentEntityId) {
+      entityNode._parent_entity = parentEntityId;
+    }
+    
+    // Extract field children (summary, body, attributes, content)
+    const fieldChildren: any[] = [];
+    const fieldNames = ['summary', 'body', 'attributes', 'content'];
+    
+    for (const fieldName of fieldNames) {
+      if (child[fieldName] !== undefined) {
+        const fieldValue = child[fieldName];
+        const fieldType = typeof fieldValue === 'string' ? 'string' : 
+                         Array.isArray(fieldValue) ? 'array' : 'object';
+        
+        fieldChildren.push({
+          id: `${entityId}-${fieldName}`,
+          type: 'field',
+          name: fieldName,
+          _node_kind: 'field',
+          _field_name: fieldName,
+          _field_type: fieldType,
+          _parent_file: parentFilePath,
+          _parent_entity: entityId,
+          _depth: depth + 1,
+        });
+      }
+    }
+    
+    // Extract nested entity children (recursively)
+    const entityChildren = child.children
+      ? await extractEntityChildren(
+          child.children,
+          parentFilePath,
+          workspaceRoot,
+          depth + 1,
+          entityId
+        )
+      : [];
+    
+    // Combine field children + entity children
+    entityNode.children = [...fieldChildren, ...entityChildren];
+    
+    extracted.push(entityNode);
+  }
+  
+  return extracted;
+}
+
+/**
+ * Create file node with type detection + Phase 1 & 2 integration
+ */
 async function createFileNode(
   filePath: string,
   fileName: string,
@@ -353,40 +746,75 @@ async function createFileNode(
     name = fileName.replace('.md', '');
   }
 
-  // Read actual type and name from file
+  // Base file node structure with Phase 2 discriminator
+  const baseNode: any = {
+    id: `file-${relative.replace(/[\\/\.]/g, '-')}`,
+    type,
+    name, // Will be updated from file content
+    _node_kind: 'file', // Phase 2: Discriminator
+    _filename: fileName,
+    _computed_path: relative,
+    _format: format,
+    _default_status: 'private',
+    order: 1,
+    children: [], // Will be populated with entities/fields
+  };
+
+  // Process Full Codex files (YAML/JSON) - Phase 1 & 2 integration
+  if (format === 'yaml' || format === 'json') {
+    try {
+      // Phase 1: Load file with auto-fixer
+      const data = await loadAndParseCodexFile(filePath, root);
+      
+      if (data.type) {baseNode.type = data.type;}
+      if (data.name) {baseNode.name = data.name;}
+      
+      // Phase 1: Resolve includes
+      const resolvedChildren = await resolveIncludes(
+        data.children,
+        filePath,
+        root,
+        0, // Start at depth 0 for includes
+        new Set([filePath]) // Mark this file as visited
+      );
+      
+      // Phase 2: Extract entities and fields from resolved children
+      const entityChildren = await extractEntityChildren(
+        resolvedChildren,
+        relative, // Pass relative path for _parent_file
+        root,
+        1 // First-level entities start at depth 1
+      );
+      
+      baseNode.children = entityChildren;
+    } catch (error) {
+      console.error(`[createFileNode] Error processing ${fileName}:`, error);
+      // Return base node without children on error
+    }
+  }
+  
+  // Process Codex Lite (Markdown) files
+  else if (format === 'markdown') {
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
-
-    if (format === 'yaml' || format === 'json') {
-      const data = YAML.parse(content);
-      if (data.type) {type = data.type;}
-      if (data.name) {name = data.name;}
-    } else if (format === 'markdown') {
-      // Parse frontmatter
       const { type: fmType, name: fmName } = parseFrontmatter(content);
-      if (fmType) {type = fmType;}
+      
+      if (fmType) {baseNode.type = fmType;}
       if (fmName) {
-        name = fmName;
+        baseNode.name = fmName;
       } else {
         // Extract from first H1
         const h1Match = content.match(/^#\s+(.+)$/m);
-        if (h1Match) {name = h1Match[1].trim();}
+        if (h1Match) {baseNode.name = h1Match[1].trim();}
       }
+      
+      // Markdown files are treated as flat entities (no children extraction)
+    } catch (error) {
+      // Use defaults if parsing fails
     }
-  } catch (error) {
-    // Use defaults if parsing fails
   }
 
-  return {
-    id: `file-${relative.replace(/[\\/\.]/g, '-')}`,
-    type,
-    name, // Display name (extension stripped)
-    _filename: fileName, // Actual filename (with extension)
-    _computed_path: relative, // Will be recomputed by parser
-    _format: format,
-    _default_status: 'private',
-    order: 1, // Will be adjusted during sorting
-  };
+  return baseNode;
 }
 
 /**
@@ -495,14 +923,21 @@ export async function runGenerateIndex(): Promise<void> {
     {
       location: vscode.ProgressLocation.Notification,
       title: 'Generating Index',
-      cancellable: false,
+      cancellable: true,
     },
-    async (progress) => {
+    async (progress, token) => {
       try {
+        const progressReporter: IndexGenerationProgress = {
+          report: (message: string, increment?: number) => {
+            progress.report({ message, increment });
+          },
+          token
+        };
+        
         const outputPath = await generateIndex({
           workspaceRoot,
           indexFilePath: fs.existsSync(indexPath) ? indexPath : undefined,
-          progressReporter: progress,
+          progressReporter,
         });
 
         // Count files
@@ -525,7 +960,11 @@ export async function runGenerateIndex(): Promise<void> {
             vscode.Uri.file(outputPath)
           );
         }
-      } catch (error) {
+      } catch (error: any) {
+        if (error.message?.includes('cancelled')) {
+          vscode.window.showInformationMessage('Index generation cancelled');
+          return;
+        }
         vscode.window.showErrorMessage(
           `Failed to generate index: ${error instanceof Error ? error.message : String(error)}`
         );
@@ -547,7 +986,8 @@ export async function runRegenerateIndex(basePath?: string): Promise<void> {
  */
 export async function generatePerFolderIndex(
   workspaceRoot: string,
-  folderPath: string
+  folderPath: string,
+  progress?: IndexGenerationProgress
 ): Promise<string> {
   const fullFolderPath = path.join(workspaceRoot, folderPath);
 
@@ -563,6 +1003,14 @@ export async function generatePerFolderIndex(
     if (entry.name === '.index.codex.yaml' || entry.name.startsWith('.')) {
       continue; // Skip hidden files and the index itself
     }
+
+    // Check cancellation before processing each file
+    if (progress?.token?.isCancellationRequested) {
+      throw new Error('Index generation cancelled by user');
+    }
+
+    // Report progress for this file
+    progress?.report(`  → ${entry.name}`, 0);
 
     const childPath = path.join(fullFolderPath, entry.name);
 
@@ -625,7 +1073,7 @@ export async function generatePerFolderIndex(
   // Build index data
   const indexData = {
     metadata: {
-      formatVersion: '2.1',
+      formatVersion: '3.0', // Phase 2: Bumped for entity + field extraction
       documentVersion: '1.0.0',
       created: new Date().toISOString(),
       generated: true,
@@ -681,10 +1129,12 @@ export async function cascadeRegenerateIndexes(
  * 
  * @param workspaceRoot - Workspace root path
  * @param startFolder - Starting folder path (relative to workspace root)
+ * @param progress - Optional progress reporter with cancellation support
  */
 export async function generateFolderHierarchy(
   workspaceRoot: string,
-  startFolder: string
+  startFolder: string,
+  progress?: IndexGenerationProgress
 ): Promise<void> {
   console.log(`[IndexGenerator] Generating folder hierarchy for: ${startFolder}`);
   
@@ -717,7 +1167,9 @@ export async function generateFolderHierarchy(
   
   collectSubfolders(fullStartPath);
   
-  console.log(`[IndexGenerator] Found ${allFolders.length} folders to process`);
+  const totalFolders = allFolders.length;
+  console.log(`[IndexGenerator] Found ${totalFolders} folders to process`);
+  progress?.report(`Scanning ${totalFolders} folders...`, 0);
   
   // 2. Sort by depth (deepest first)
   allFolders.sort((a, b) => {
@@ -727,10 +1179,27 @@ export async function generateFolderHierarchy(
   });
   
   // 3. Generate per-folder index for each (deepest first)
-  for (const folderPath of allFolders) {
+  for (let i = 0; i < allFolders.length; i++) {
+    const folderPath = allFolders[i];
+    
+    // Check cancellation
+    if (progress?.token?.isCancellationRequested) {
+      throw new Error('Index generation cancelled by user');
+    }
+    
     try {
+      const folderName = folderPath === '.' ? 'root' : path.basename(folderPath);
+      progress?.report(
+        `Processing folder ${i + 1}/${totalFolders}: ${folderName}`,
+        (100 / totalFolders)
+      );
       console.log(`[IndexGenerator] Generating index for: ${folderPath}`);
-      await generatePerFolderIndex(workspaceRoot, folderPath === '.' ? '' : folderPath);
+      
+      await generatePerFolderIndex(
+        workspaceRoot,
+        folderPath === '.' ? '' : folderPath,
+        progress  // Pass progress through
+      );
     } catch (error) {
       console.error(`[IndexGenerator] Error generating index for ${folderPath}:`, error);
       // Continue with other folders even if one fails
@@ -738,6 +1207,7 @@ export async function generateFolderHierarchy(
   }
   
   // 4. Finally, regenerate top-level .index.codex.yaml to merge everything
+  progress?.report('Finalizing index...', 0);
   console.log(`[IndexGenerator] Regenerating top-level index`);
   await generateIndex({ workspaceRoot });
   
