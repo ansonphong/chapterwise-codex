@@ -429,7 +429,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     
     attributesContainer.addEventListener('click', (e) => {
       // Handle inline editing clicks
-      const nameSpan = e.target.closest('.attr-name.editable');
+      const nameSpan = e.target.closest('.attr-name.inline-editable');
       if (nameSpan) {
         e.stopPropagation();
         e.preventDefault();
@@ -714,10 +714,10 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     
     contentContainer.addEventListener('click', (e) => {
       // Don't toggle if clicking on any editable elements or their edit spans
-      const nameSpan = e.target.closest('.content-section-name.editable, .content-section-name-edit');
+      const nameSpan = e.target.closest('.content-section-name.inline-editable, .content-section-name-edit');
       
       // Handle inline editing clicks
-      if (nameSpan && nameSpan.classList.contains('editable')) {
+      if (nameSpan && nameSpan.classList.contains('inline-editable')) {
         e.stopPropagation();
         e.preventDefault();
         const index = parseInt(nameSpan.dataset.index);
