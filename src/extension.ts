@@ -10,7 +10,7 @@ import * as YAML from 'yaml';
 import { CodexTreeProvider, CodexTreeItem, CodexFieldTreeItem, IndexNodeTreeItem, CodexTreeItemType, createCodexTreeView } from './treeProvider';
 import { WriterViewManager } from './writerView';
 import { initializeValidation } from './validation';
-import { isCodexFile, parseMarkdownAsCodex, parseCodex } from './codexModel';
+import { isCodexFile, parseMarkdownAsCodex, parseCodex, CodexNode } from './codexModel';
 import { runAutoFixer, disposeAutoFixer } from './autoFixer';
 import { runExplodeCodex, disposeExplodeCodex } from './explodeCodex';
 import { runImplodeCodex, disposeImplodeCodex } from './implodeCodex';
@@ -645,16 +645,23 @@ function registerCommands(context: vscode.ExtensionContext): void {
         }
         
         // Determine initial field based on entity structure
-        let initialField = 'body';  // default
+        let initialField = '__overview__';  // default to overview
         
-        // Check if entity has multiple fields - if so, show overview
+        // Count available fields
+        const hasSummary = entityNode.summary !== undefined && entityNode.summary !== null && entityNode.summary !== '';
+        const hasBody = entityNode.body !== undefined && entityNode.body !== null && entityNode.body !== '';
         const hasChildren = entityNode.children && entityNode.children.length > 0;
         const hasContentSections = entityNode.contentSections && entityNode.contentSections.length > 0;
         const hasAttributes = entityNode.attributes && entityNode.attributes.length > 0;
-        const hasMultipleFields = hasChildren || hasContentSections || hasAttributes;
         
-        if (hasMultipleFields) {
-          initialField = '__overview__';
+        // Count total fields
+        const fieldCount = [hasSummary, hasBody, hasContentSections, hasAttributes, hasChildren].filter(Boolean).length;
+        
+        // Only show single field if there's literally just one field
+        if (fieldCount === 1) {
+          if (hasSummary) initialField = 'summary';
+          else if (hasBody) initialField = 'body';
+          // Otherwise stay in overview mode for single structured field
         }
         
         // Create document URI

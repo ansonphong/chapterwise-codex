@@ -281,16 +281,8 @@ function parseNode(
   const hasAttributes = Array.isArray(nodeObj.attributes) && nodeObj.attributes.length > 0;
   const hasContentSections = Array.isArray(nodeObj.content) && nodeObj.content.length > 0;
   
-  // For Codex files (not Markdown), add special fields to availableFields
+  // availableFields should only contain actual prose field names
   const availableFields = [...baseAvailableFields];
-  if (!isMarkdown) {
-    if (hasAttributes || Array.isArray(nodeObj.attributes)) {
-      availableFields.push('__attributes__');
-    }
-    if (hasContentSections || Array.isArray(nodeObj.content)) {
-      availableFields.push('__content__');
-    }
-  }
   
   const node: CodexNode = {
     id,

@@ -172,8 +172,8 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
     
     // Set description (show type or field info)
     if (isField) {
-      const fieldType = (indexNode as any)._field_type;
-      this.description = `field: ${fieldType || 'unknown'}`;
+      // Don't show field type in tree view - cleaner layout
+      this.description = undefined;
     } else if (isMissing) {
       this.description = 'missing';
     } else if (isError) {
