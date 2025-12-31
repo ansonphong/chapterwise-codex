@@ -177,7 +177,7 @@ function buildFieldSelectorOptions(node: CodexNode, initialField: string): strin
     
     // Add content sections option if node has them
     if (node.hasContentSections && node.contentSections && node.contentSections.length > 0) {
-      options.push(`<option value="__content__" ${initialField === '__content__' ? 'selected' : ''}>📝 content sections (${node.contentSections.length})</option>`);
+      options.push(`<option value="__content__" ${initialField === '__content__' ? 'selected' : ''}>📝 content (${node.contentSections.length})</option>`);
     }
   }
   
