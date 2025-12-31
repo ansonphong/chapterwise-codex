@@ -296,7 +296,6 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
             <div class="attr-title">
               <span class="attr-name name-field inline-editable" data-index="\${i}" tabindex="0" title="Click to edit name">\${escapeHtml(attr.name || 'Untitled')}</span>
               <span class="attr-name-edit name-field inline-edit-field" data-index="\${i}" contenteditable="false"></span>
-              <span class="key-badge" data-index="\${i}">\${escapeHtml(attr.key || '')}</span>
             </div>
             <input type="text" class="attr-value-input" data-index="\${i}" value="\${escapeHtml(String(attr.value || ''))}" placeholder="Value" />
             <select class="type-select" data-index="\${i}">
@@ -388,15 +387,9 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       // Update local state
       localAttributes[index].name = newValue;
       
-      // Auto-generate key from name
+      // Auto-generate key from name (silently, not shown in UI)
       const sanitizedKey = sanitizeKey(newValue);
       localAttributes[index].key = sanitizedKey;
-      
-      // Update key display
-      const keySpan = attributesContainer.querySelector(\`.attr-key[data-index="\${index}"]\`);
-      if (keySpan) {
-        keySpan.textContent = sanitizedKey;
-      }
       
       markAttributesDirty();
       
@@ -568,8 +561,6 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
               <span class="content-section-toggle">▶</span>
               <span class="content-section-name name-field inline-editable" data-index="\${i}" tabindex="0" title="Click to edit name">\${escapeHtml(section.name || 'Untitled')}</span>
               <span class="content-section-name-edit name-field inline-edit-field" data-index="\${i}" contenteditable="false"></span>
-              <span class="content-section-key key-badge inline-editable" data-index="\${i}" tabindex="0" title="Click to edit key">\${escapeHtml(section.key || '')}</span>
-              <span class="content-section-key-edit inline-edit-field" data-index="\${i}" contenteditable="false"></span>
             </div>
             <div class="dropdown-menu">
               <button class="menu-btn" title="More options">⋮</button>
@@ -707,16 +698,10 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       // Update local state
       localContentSections[index][field] = newValue;
       
-      // Auto-generate key from name
+      // Auto-generate key from name (silently, not shown in UI)
       if (field === 'name') {
         const sanitizedKey = sanitizeKey(newValue);
         localContentSections[index].key = sanitizedKey;
-        
-        // Update key display
-        const keyDisplaySpan = contentContainer.querySelector(\`.content-section-key[data-index="\${index}"]\`);
-        if (keyDisplaySpan) {
-          keyDisplaySpan.textContent = sanitizedKey;
-        }
       }
       
       markContentSectionsDirty();
@@ -730,7 +715,6 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     contentContainer.addEventListener('click', (e) => {
       // Don't toggle if clicking on any editable elements or their edit spans
       const nameSpan = e.target.closest('.content-section-name.editable, .content-section-name-edit');
-      const keySpan = e.target.closest('.content-section-key.editable, .content-section-key-edit');
       
       // Handle inline editing clicks
       if (nameSpan && nameSpan.classList.contains('editable')) {
@@ -739,13 +723,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
         const index = parseInt(nameSpan.dataset.index);
         enterContentSectionEdit(index, 'name');
         return;
-      } else if (keySpan && keySpan.classList.contains('editable')) {
-        e.stopPropagation();
-        e.preventDefault();
-        const index = parseInt(keySpan.dataset.index);
-        enterContentSectionEdit(index, 'key');
-        return;
-      } else if (nameSpan || keySpan) {
+      } else if (nameSpan) {
         // Clicked on edit span while editing - don't toggle
         e.stopPropagation();
         return;
@@ -815,11 +793,11 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     });
     
     contentContainer.addEventListener('keydown', (e) => {
-      const editSpan = e.target.closest('.content-section-name-edit, .content-section-key-edit');
+      const editSpan = e.target.closest('.content-section-name-edit');
       if (!editSpan) return;
       
       const index = parseInt(editSpan.dataset.index);
-      const field = editSpan.classList.contains('content-section-name-edit') ? 'name' : 'key';
+      const field = 'name';
       
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -833,11 +811,11 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     });
     
     contentContainer.addEventListener('blur', (e) => {
-      const editSpan = e.target.closest('.content-section-name-edit, .content-section-key-edit');
+      const editSpan = e.target.closest('.content-section-name-edit');
       if (!editSpan) return;
       
       const index = parseInt(editSpan.dataset.index);
-      const field = editSpan.classList.contains('content-section-name-edit') ? 'name' : 'key';
+      const field = 'name';
       
       const key = \`\${index}-\${field}\`;
       if (editingState.get(key)?.isEditing) {
