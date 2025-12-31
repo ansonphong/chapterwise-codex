@@ -790,26 +790,13 @@ export function getWriterViewStyles(): string {
       border: 1px solid var(--border-color);
       border-radius: 6px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-      min-width: 280px;
+      max-width: 150px;
       z-index: 1000;
       overflow: hidden;
     }
 
     .save-menu-dropdown.show {
       display: block;
-    }
-
-    .save-menu-header {
-      padding: 0.75rem 1rem;
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
-      background: rgba(255, 255, 255, 0.02);
-      border-bottom: 1px solid var(--border-color);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      cursor: default;
     }
 
     .save-menu-divider {
@@ -821,15 +808,15 @@ export function getWriterViewStyles(): string {
     .save-menu-item {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.5rem;
       width: 100%;
-      padding: 0.75rem 1rem;
+      padding: 0.625rem 0.75rem;
       background: transparent;
       border: none;
       color: var(--text-primary);
       cursor: pointer;
       transition: background 0.15s ease;
-      font-size: 0.875rem;
+      font-size: 0.8rem;
       text-align: left;
     }
 
@@ -840,6 +827,8 @@ export function getWriterViewStyles(): string {
     .save-menu-item svg {
       flex-shrink: 0;
       opacity: 0.8;
+      width: 12px;
+      height: 12px;
     }
 
     .save-menu-item span:first-of-type {
@@ -847,9 +836,32 @@ export function getWriterViewStyles(): string {
     }
 
     .save-menu-shortcut {
-      font-size: 0.75rem;
+      font-size: 0.65rem;
       color: var(--text-muted);
       font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+      margin-left: auto;
+    }
+    
+    .save-menu-footer {
+      display: block;
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      background: rgba(255, 255, 255, 0.02);
+      border: none;
+      border-top: 1px solid var(--border-color);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: background 0.15s ease;
+      font-size: 0.65rem;
+      text-align: left;
+      word-wrap: break-word;
+      white-space: normal;
+      line-height: 1.3;
+    }
+    
+    .save-menu-footer:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-primary);
     }
     
     @keyframes greenFlash {

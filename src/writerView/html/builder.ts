@@ -96,16 +96,12 @@ ${getWriterViewStyles()}
           </svg>
         </button>
         <div class="save-menu-dropdown" id="saveMenuDropdown">
-          <div class="save-menu-header" title="${escapeHtml(fullPath)}">
-            📄 ${escapeHtml(relativePath)}
-          </div>
-          <div class="save-menu-divider"></div>
           <button class="save-menu-item" data-action="save">
             <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor">
               <path d="M27.71,9.29l-5-5A1,1,0,0,0,22,4H6A2,2,0,0,0,4,6V26a2,2,0,0,0,2,2H26a2,2,0,0,0,2-2V10A1,1,0,0,0,27.71,9.29ZM12,6h8v4H12Zm8,20H12V18h8Zm2,0V18a2,2,0,0,0-2-2H12a2,2,0,0,0-2,2v8H6V6h4v4a2,2,0,0,0,2,2h8a2,2,0,0,0,2-2V6.41l4,4V26Z"/>
             </svg>
             <span>Save</span>
-            <span class="save-menu-shortcut">Ctrl+S</span>
+            <span class="save-menu-shortcut">⌘S</span>
           </button>
           <button class="save-menu-item" data-action="saveAs">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -115,6 +111,10 @@ ${getWriterViewStyles()}
               <rect x="5" y="12" width="4" height="1" opacity="0.6"/>
             </svg>
             <span>Save As...</span>
+          </button>
+          <div class="save-menu-divider"></div>
+          <button class="save-menu-footer" data-action="openFile" title="${escapeHtml(fullPath)}">
+            📄 ${escapeHtml(relativePath)}
           </button>
         </div>
       </div>

@@ -338,6 +338,12 @@ export class WriterViewManager {
             await this.handleSaveAs(documentUri);
             break;
           
+          case 'openFile':
+            // Open the file in normal code editor
+            const doc = await vscode.workspace.openTextDocument(documentUri);
+            await vscode.window.showTextDocument(doc, { preview: false });
+            break;
+          
           case 'typeChanged':
             // Store the new type value (will be saved with next save)
             currentType = message.newType;
@@ -609,6 +615,12 @@ export class WriterViewManager {
           
           case 'saveAs':
             await this.handleSaveAs(documentUri);
+            break;
+          
+          case 'openFile':
+            // Open the file in normal code editor
+            const doc = await vscode.workspace.openTextDocument(documentUri);
+            await vscode.window.showTextDocument(doc, { preview: false });
             break;
           
           case 'typeChanged':

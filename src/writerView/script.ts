@@ -979,6 +979,9 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
         case 'saveAs':
           vscode.postMessage({ type: 'saveAs' });
           break;
+        case 'openFile':
+          vscode.postMessage({ type: 'openFile' });
+          break;
       }
     });
     
