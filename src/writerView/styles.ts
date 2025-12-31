@@ -226,6 +226,7 @@ export function getWriterViewStyles(): string {
       flex: 1;
       padding: 1.5rem;
       overflow-y: auto;
+      overflow-x: visible;
     }
     
     .structured-editor.active {
@@ -552,7 +553,9 @@ export function getWriterViewStyles(): string {
     
     /* Menu item styles (shared by both dropdowns) */
     .menu-item {
-      display: block;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
       width: 100%;
       background: transparent;
       border: none;
@@ -566,14 +569,6 @@ export function getWriterViewStyles(): string {
     
     .menu-item:hover {
       background: rgba(255, 255, 255, 0.1);
-    }
-    
-    .menu-item.delete-item {
-      color: #ff6b6b;
-    }
-    
-    .menu-item.delete-item:hover {
-      background: rgba(255, 50, 50, 0.1);
     }
     
     .empty-state {
@@ -881,7 +876,8 @@ export function getWriterViewStyles(): string {
       background: var(--bg-secondary);
       border: 1px solid var(--border-color);
       border-radius: 6px;
-      overflow: hidden;
+      overflow-y: auto;
+      overflow-x: visible;
       padding: 0;
     }
     
