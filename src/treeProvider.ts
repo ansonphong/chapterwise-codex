@@ -802,16 +802,24 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
         this.isLoading = false;
         this.loadingMessage = null;
         
-        // Load the index file WITHOUT opening in editor (just read from disk)
-        // This avoids hanging on huge YAML files
-        const doc = await vscode.workspace.openTextDocument(indexPath);
+        // Read index directly from disk - MUCH faster than opening as VS Code document
+        log('[TreeProvider] Reading index from disk...');
+        const startTime = Date.now();
+        const indexContent = fs.readFileSync(indexPath, 'utf-8');
+        const readTime = Date.now() - startTime;
+        log(`[TreeProvider] Index read in ${readTime}ms, size: ${(indexContent.length / 1024).toFixed(2)} KB`);
         
-        // EXPLICITLY set active document (context is already marked as explicitly set above)
-        // This will parse the index internally but not show the raw YAML
-        this.setActiveDocument(doc, true);
-        console.log('[ChapterWise Codex] Context folder index loaded');
+        // Parse the index
+        const parseStart = Date.now();
+        this.indexDoc = parseIndexFile(indexContent);
+        const parseTime = Date.now() - parseStart;
+        log(`[TreeProvider] Index parsed in ${parseTime}ms`);
+        
+        this.isIndexMode = true;
+        this.refresh();
+        log('[ChapterWise Codex] Context folder index loaded and displayed');
       } catch (error) {
-        console.error('[ChapterWise Codex] Error loading context index:', error);
+        log(`[TreeProvider] Error loading context index: ${error}`);
         vscode.window.showErrorMessage(`Failed to load index: ${error}`);
       }
     } else {
