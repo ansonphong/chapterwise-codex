@@ -71,6 +71,9 @@ ${getWriterViewStyles()}
   
   <div class="editor-container" id="proseEditor">
     <div class="editor-wrapper">
+      <div class="overview-section-header" data-field="summary" style="display: none;">
+        <span class="overview-section-title">Summary</span>
+      </div>
       <div 
         id="editor" 
         contenteditable="true" 
@@ -83,7 +86,7 @@ ${getWriterViewStyles()}
   <!-- Attributes Editor -->
   <div class="structured-editor" id="attributesEditor">
     <div class="structured-header">
-      <span class="structured-title">Attributes</span>
+      <span class="structured-title overview-section-header-inline" data-field="__attributes__">Attributes</span>
       <button class="add-btn" id="addAttrBtn">+ Add Attribute</button>
     </div>
     <div id="attributesContainer">
@@ -94,7 +97,7 @@ ${getWriterViewStyles()}
   <!-- Content Sections Editor -->
   <div class="structured-editor" id="contentEditor">
     <div class="structured-header">
-      <span class="structured-title">Content Sections</span>
+      <span class="structured-title overview-section-header-inline" data-field="__content__">Content Sections</span>
       <div class="header-buttons">
         <button class="toggle-all-btn" id="toggleAllContentBtn">Expand All ▼</button>
         <button class="add-btn" id="addContentBtn">+ Add Section</button>
@@ -148,16 +151,19 @@ function buildFieldSelectorOptions(node: CodexNode, initialField: string): strin
     options.push(`<option value="summary" ${initialField === 'summary' ? 'selected' : ''}>summary (new)</option>`);
   }
   
-  // Add separator and special fields if present
-  const specialFields = node.availableFields.filter(f => f.startsWith('__'));
-  if (specialFields.length > 0) {
+  // Add separator and special fields if present (check actual node properties, not availableFields)
+  const hasSpecialFields = node.hasAttributes || node.hasContentSections;
+  if (hasSpecialFields) {
     options.push('<option disabled>───────────</option>');
-    for (const f of specialFields) {
-      const isAttributes = f === '__attributes__';
-      const label = isAttributes ? '📊 attributes' : '📝 content sections';
-      const count = isAttributes ? node.attributes?.length : node.contentSections?.length;
-      const countStr = count ? ` (${count})` : ' (new)';
-      options.push(`<option value="${f}" ${f === initialField ? 'selected' : ''}>${label}${countStr}</option>`);
+    
+    // Add attributes option if node has attributes
+    if (node.hasAttributes && node.attributes && node.attributes.length > 0) {
+      options.push(`<option value="__attributes__" ${initialField === '__attributes__' ? 'selected' : ''}>📊 attributes (${node.attributes.length})</option>`);
+    }
+    
+    // Add content sections option if node has them
+    if (node.hasContentSections && node.contentSections && node.contentSections.length > 0) {
+      options.push(`<option value="__content__" ${initialField === '__content__' ? 'selected' : ''}>📝 content sections (${node.contentSections.length})</option>`);
     }
   }
   

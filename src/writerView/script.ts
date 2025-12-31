@@ -857,6 +857,19 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       }
     });
     
+    // Overview mode: Make section headers clickable to navigate to specific views
+    document.addEventListener('click', (e) => {
+      const sectionHeader = e.target.closest('.overview-section-header, .overview-section-header-inline');
+      if (sectionHeader && document.body.classList.contains('mode-overview')) {
+        const targetField = sectionHeader.dataset.field;
+        if (targetField && fieldSelector) {
+          // Switch to the target field
+          fieldSelector.value = targetField;
+          fieldSelector.dispatchEvent(new Event('change'));
+        }
+      }
+    });
+    
     // Throttle content change messages to avoid flooding
     let contentChangeTimeout = null;
     

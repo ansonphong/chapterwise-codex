@@ -877,18 +877,6 @@ export function getWriterViewStyles(): string {
       overflow: visible;
     }
     
-    /* Add section header to prose editor in overview mode */
-    body.mode-overview .editor-wrapper::before {
-      content: 'Summary';
-      display: block;
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-muted);
-      margin-bottom: 0.75rem;
-      font-weight: 600;
-    }
-    
     /* Make attributes/content look like cards with same width */
     body.mode-overview .structured-editor {
       background: var(--bg-secondary);
@@ -896,6 +884,43 @@ export function getWriterViewStyles(): string {
       border-radius: 6px;
       overflow: hidden;
       padding: 0;
+    }
+    
+    /* Overview section header (for prose/summary) */
+    .overview-section-header {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+      cursor: pointer;
+      transition: color 0.15s ease;
+      user-select: none;
+    }
+    
+    .overview-section-header:hover {
+      color: var(--text-primary);
+    }
+    
+    .overview-section-title {
+      display: inline-block;
+    }
+    
+    /* Show overview section header only in overview mode */
+    body.mode-overview .overview-section-header {
+      display: block !important;
+    }
+    
+    /* Make structured titles (Attributes, Content Sections) clickable in overview mode */
+    body.mode-overview .overview-section-header-inline {
+      cursor: pointer;
+      transition: color 0.15s ease;
+      user-select: none;
+    }
+    
+    body.mode-overview .overview-section-header-inline:hover {
+      color: var(--text-primary);
     }
     
     /* Ensure structured editor containers don't override width */
