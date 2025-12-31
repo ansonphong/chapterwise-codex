@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as YAML from 'yaml';
 import { CodexTreeProvider, CodexTreeItem, CodexFieldTreeItem, IndexNodeTreeItem, CodexTreeItemType, createCodexTreeView } from './treeProvider';
 import { WriterViewManager } from './writerView';
 import { initializeValidation } from './validation';
@@ -89,6 +90,10 @@ async function restoreLastContext(context: vscode.ExtensionContext): Promise<voi
   }
 }
 
+// Phase 5: Tree State Management - Debounce state for expansion updates
+const expandedUpdateQueue = new Map<string, { indexPath: string; nodeId: string; expanded: boolean }>();
+let expandedUpdateTimeout: NodeJS.Timeout | null = null;
+
 /**
  * Extension activation
  */
@@ -114,6 +119,20 @@ export function activate(context: vscode.ExtensionContext): void {
     const { treeView: tv } = createCodexTreeView(context, treeProvider, dragController);
     treeView = tv;
     outputChannel.appendLine('Tree view created with drag & drop support');
+    
+    // Phase 5: Register expansion state handlers
+    treeView.onDidCollapseElement(async (event) => {
+      if (event.element instanceof IndexNodeTreeItem) {
+        await updateNodeExpandedState(event.element, false);
+      }
+    });
+    
+    treeView.onDidExpandElement(async (event) => {
+      if (event.element instanceof IndexNodeTreeItem) {
+        await updateNodeExpandedState(event.element, true);
+      }
+    });
+    outputChannel.appendLine('Tree expansion state handlers registered');
     
     // Initialize Writer View manager
     writerViewManager = new WriterViewManager(context);
@@ -1463,6 +1482,160 @@ function updateStatusBar(): void {
     statusBarItem?.hide();
   }
 }
+
+// ============================================================================
+// Phase 5: Tree State Management Helper Functions
+// ============================================================================
+
+/**
+ * Update the expansion state of a node (debounced)
+ */
+async function updateNodeExpandedState(
+  item: IndexNodeTreeItem,
+  expanded: boolean
+): Promise<void> {
+  const workspaceRoot = treeProvider.getWorkspaceRoot();
+  if (!workspaceRoot) return;
+  
+  // Determine which index file contains this node
+  const indexPath = determineIndexFileForNode(item, workspaceRoot);
+  if (!fs.existsSync(indexPath)) return;
+  
+  const nodeId = item.indexNode.id;
+  if (!nodeId) return;
+  
+  // Queue the update
+  const updateKey = `${indexPath}::${nodeId}`;
+  expandedUpdateQueue.set(updateKey, { indexPath, nodeId, expanded });
+  
+  // Debounce: wait 500ms for more updates before writing
+  if (expandedUpdateTimeout) {
+    clearTimeout(expandedUpdateTimeout);
+  }
+  
+  expandedUpdateTimeout = setTimeout(async () => {
+    await flushExpandedUpdates();
+    expandedUpdateQueue.clear();
+    expandedUpdateTimeout = null;
+  }, 500);
+}
+
+/**
+ * Flush all queued expansion state updates to disk (batched by file)
+ */
+async function flushExpandedUpdates(): Promise<void> {
+  // Group updates by index file
+  const fileUpdates = new Map<string, Array<{ nodeId: string; expanded: boolean }>>();
+  
+  for (const [key, update] of expandedUpdateQueue) {
+    if (!fileUpdates.has(update.indexPath)) {
+      fileUpdates.set(update.indexPath, []);
+    }
+    fileUpdates.get(update.indexPath)!.push({
+      nodeId: update.nodeId,
+      expanded: update.expanded
+    });
+  }
+  
+  // Apply updates to each index file
+  for (const [indexPath, updates] of fileUpdates) {
+    try {
+      await updateIndexFileExpansionState(indexPath, updates);
+      outputChannel.appendLine(`[TreeState] Updated ${updates.length} nodes in ${path.basename(indexPath)}`);
+    } catch (error) {
+      outputChannel.appendLine(`[TreeState] Failed to update ${indexPath}: ${error}`);
+    }
+  }
+}
+
+/**
+ * Update the expansion state in an index file
+ */
+async function updateIndexFileExpansionState(
+  indexPath: string,
+  updates: Array<{ nodeId: string; expanded: boolean }>
+): Promise<void> {
+  // Read index file
+  const content = fs.readFileSync(indexPath, 'utf-8');
+  const indexData = YAML.parse(content);
+  
+  if (!indexData || !indexData.children) {
+    return;
+  }
+  
+  // Apply all updates
+  let changesApplied = 0;
+  for (const update of updates) {
+    if (updateExpandedInTree(indexData.children, update.nodeId, update.expanded)) {
+      changesApplied++;
+    }
+  }
+  
+  if (changesApplied > 0) {
+    // Write back to file
+    fs.writeFileSync(indexPath, YAML.stringify(indexData), 'utf-8');
+  }
+}
+
+/**
+ * Recursively search tree and update expanded property
+ */
+function updateExpandedInTree(
+  children: any[],
+  targetId: string,
+  expanded: boolean
+): boolean {
+  for (const child of children) {
+    if (child.id === targetId) {
+      child.expanded = expanded;
+      return true;
+    }
+    if (child.children && Array.isArray(child.children)) {
+      if (updateExpandedInTree(child.children, targetId, expanded)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Determine which index file contains a given node
+ */
+function determineIndexFileForNode(
+  item: IndexNodeTreeItem,
+  workspaceRoot: string
+): string {
+  const node = item.indexNode as any;
+  
+  // If node has _parent_file, it's an entity/field - use parent file's folder
+  if (node._parent_file) {
+    const parentFilePath = node._parent_file;
+    const folderPath = path.dirname(parentFilePath);
+    const perFolderIndex = path.join(workspaceRoot, folderPath, '.index.codex.yaml');
+    
+    if (fs.existsSync(perFolderIndex)) {
+      return perFolderIndex;
+    }
+  }
+  
+  // If node has _computed_path, use its directory
+  if (node._computed_path) {
+    const folderPath = path.dirname(node._computed_path);
+    const perFolderIndex = path.join(workspaceRoot, folderPath, '.index.codex.yaml');
+    
+    if (fs.existsSync(perFolderIndex)) {
+      return perFolderIndex;
+    }
+  }
+  
+  // Fall back to workspace root index
+  return path.join(workspaceRoot, '.index.codex.yaml');
+}
+
+// ============================================================================
+// Extension Deactivation
+// ============================================================================
 
 /**
  * Extension deactivation
