@@ -20,6 +20,8 @@ export interface WebviewHtmlOptions {
   vscodeThemeKind: 'light' | 'dark';
   author?: string;
   indexTypes?: TypeDefinition[];
+  filePath: string;
+  workspaceRoot: string;
 }
 
 export interface TypeDefinition {
@@ -33,11 +35,18 @@ export interface TypeDefinition {
  * Build the complete HTML for the Writer View webview
  */
 export function buildWebviewHtml(options: WebviewHtmlOptions): string {
-  const { webview, node, prose, initialField, themeSetting, vscodeThemeKind, author, indexTypes } = options;
+  const { webview, node, prose, initialField, themeSetting, vscodeThemeKind, author, indexTypes, filePath, workspaceRoot } = options;
   
   const nonce = getNonce();
   const escapedProse = escapeHtml(prose);
   const authorDisplay = author ? escapeHtml(author) : 'Unknown Author';
+  
+  // Calculate relative path for display
+  const path = require('path');
+  const relativePath = workspaceRoot 
+    ? path.relative(workspaceRoot, filePath)
+    : path.basename(filePath);
+  const fullPath = filePath;
   
   // Build field selector options
   const fieldOptions = buildFieldSelectorOptions(node, initialField);
@@ -78,11 +87,37 @@ ${getWriterViewStyles()}
       <select class="type-selector" id="typeSelector" title="Change entity type">
         ${typeOptions}
       </select>
-      <button class="save-btn" id="saveBtn" title="Save (Ctrl+S)">
-        <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-          <path d="M27.71,9.29l-5-5A1,1,0,0,0,22,4H6A2,2,0,0,0,4,6V26a2,2,0,0,0,2,2H26a2,2,0,0,0,2-2V10A1,1,0,0,0,27.71,9.29ZM12,6h8v4H12Zm8,20H12V18h8Zm2,0V18a2,2,0,0,0-2-2H12a2,2,0,0,0-2,2v8H6V6h4v4a2,2,0,0,0,2,2h8a2,2,0,0,0,2-2V6.41l4,4V26Z"/>
-        </svg>
-      </button>
+      <div class="save-menu-container">
+        <button class="save-menu-btn" id="saveMenuBtn" title="Save options">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <circle cx="8" cy="3" r="1.5"/>
+            <circle cx="8" cy="8" r="1.5"/>
+            <circle cx="8" cy="13" r="1.5"/>
+          </svg>
+        </button>
+        <div class="save-menu-dropdown" id="saveMenuDropdown">
+          <div class="save-menu-header" title="${escapeHtml(fullPath)}">
+            📄 ${escapeHtml(relativePath)}
+          </div>
+          <div class="save-menu-divider"></div>
+          <button class="save-menu-item" data-action="save">
+            <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor">
+              <path d="M27.71,9.29l-5-5A1,1,0,0,0,22,4H6A2,2,0,0,0,4,6V26a2,2,0,0,0,2,2H26a2,2,0,0,0,2-2V10A1,1,0,0,0,27.71,9.29ZM12,6h8v4H12Zm8,20H12V18h8Zm2,0V18a2,2,0,0,0-2-2H12a2,2,0,0,0-2,2v8H6V6h4v4a2,2,0,0,0,2,2h8a2,2,0,0,0,2-2V6.41l4,4V26Z"/>
+            </svg>
+            <span>Save</span>
+            <span class="save-menu-shortcut">Ctrl+S</span>
+          </button>
+          <button class="save-menu-item" data-action="saveAs">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M13 2H7l-1 1H2v2h12V3h-1zM3 6v7c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2V6H3zm2 7V8h6v5H5z"/>
+              <rect x="5" y="8" width="6" height="1" opacity="0.6"/>
+              <rect x="5" y="10" width="6" height="1" opacity="0.6"/>
+              <rect x="5" y="12" width="4" height="1" opacity="0.6"/>
+            </svg>
+            <span>Save As...</span>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
   

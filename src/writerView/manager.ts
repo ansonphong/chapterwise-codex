@@ -4,6 +4,8 @@
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as path from 'path';
+import * as YAML from 'yaml';
 import { 
   CodexNode, 
   CodexDocument, 
@@ -48,6 +50,17 @@ export class WriterViewManager {
    */
   setTreeProvider(treeProvider: CodexTreeProvider): void {
     this.treeProvider = treeProvider;
+  }
+  
+  /**
+   * Get workspace root path
+   */
+  private getWorkspaceRoot(): string {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (workspaceFolders && workspaceFolders.length > 0) {
+      return workspaceFolders[0].uri.fsPath;
+    }
+    return '';
   }
   
   /**
@@ -273,6 +286,9 @@ export class WriterViewManager {
     // Get author display
     const authorDisplay = this.getAuthorDisplay(codexDoc);
     
+    // Get workspace root for relative path display
+    const workspaceRoot = this.getWorkspaceRoot();
+    
     // Set initial HTML with remembered field using the new builder
     panel.webview.html = buildWebviewHtml({
       webview: panel.webview,
@@ -281,7 +297,9 @@ export class WriterViewManager {
       initialField,
       themeSetting: this.getThemeSetting(),
       vscodeThemeKind: this.getVSCodeThemeKind(),
-      author: authorDisplay
+      author: authorDisplay,
+      filePath: documentUri.fsPath,
+      workspaceRoot: workspaceRoot
     });
     
     // Store initial stats and update status bar
@@ -314,6 +332,10 @@ export class WriterViewManager {
             this.updateStatsForPanel(panelKey, panel, saveStats);
             
             panel.webview.postMessage({ type: 'saved' });
+            break;
+          
+          case 'saveAs':
+            await this.handleSaveAs(documentUri);
             break;
           
           case 'typeChanged':
@@ -537,6 +559,9 @@ export class WriterViewManager {
     // Get author display
     const authorDisplay = this.getAuthorDisplay(codexDoc);
     
+    // Get workspace root for relative path display
+    const workspaceRoot = this.getWorkspaceRoot();
+    
     // Set initial HTML with the target field selected using the new builder
     panel.webview.html = buildWebviewHtml({
       webview: panel.webview,
@@ -545,7 +570,9 @@ export class WriterViewManager {
       initialField: targetField,
       themeSetting: this.getThemeSetting(),
       vscodeThemeKind: this.getVSCodeThemeKind(),
-      author: authorDisplay
+      author: authorDisplay,
+      filePath: documentUri.fsPath,
+      workspaceRoot: workspaceRoot
     });
     
     // Store initial stats and update status bar
@@ -578,6 +605,10 @@ export class WriterViewManager {
             this.updateStatsForPanel(panelKey, panel, saveStats);
             
             panel.webview.postMessage({ type: 'saved' });
+            break;
+          
+          case 'saveAs':
+            await this.handleSaveAs(documentUri);
             break;
           
           case 'typeChanged':
@@ -779,6 +810,92 @@ export class WriterViewManager {
       }
     } catch (error) {
       vscode.window.showErrorMessage(`Save failed: ${error}`);
+    }
+  }
+  
+  /**
+   * Handle Save As - create a copy of the current file with a new name
+   */
+  private async handleSaveAs(documentUri: vscode.Uri): Promise<void> {
+    try {
+      const currentPath = documentUri.fsPath;
+      const currentDir = path.dirname(currentPath);
+      const currentExt = path.extname(currentPath);
+      const currentBase = path.basename(currentPath, currentExt);
+      
+      // Suggest new filename
+      const defaultName = `${currentBase}-copy${currentExt}`;
+      
+      // Ask user for new filename
+      const newPath = await vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.file(path.join(currentDir, defaultName)),
+        filters: {
+          'Codex Files': ['yaml', 'yml', 'json', 'codex'],
+          'Markdown Files': ['md']
+        },
+        title: 'Save Entity As...'
+      });
+      
+      if (!newPath) {
+        return; // User cancelled
+      }
+      
+      // Read current file content
+      const content = fs.readFileSync(currentPath, 'utf-8');
+      
+      // Parse and update metadata
+      const isJson = newPath.fsPath.toLowerCase().endsWith('.json');
+      const isYaml = newPath.fsPath.toLowerCase().match(/\.(yaml|yml|codex)$/);
+      
+      if (isYaml || isJson) {
+        let data: any;
+        
+        // Parse based on current file type
+        if (currentPath.toLowerCase().endsWith('.json')) {
+          data = JSON.parse(content);
+        } else {
+          data = YAML.parse(content);
+        }
+        
+        // Update metadata
+        if (!data.metadata) {
+          data.metadata = {};
+        }
+        data.metadata.created = new Date().toISOString();
+        data.metadata.updated = new Date().toISOString();
+        if (data.metadata.extractedFrom) {
+          delete data.metadata.extractedFrom;
+        }
+        
+        // Write new file
+        let newContent: string;
+        if (isJson) {
+          newContent = JSON.stringify(data, null, 2);
+        } else {
+          const doc = new YAML.Document(data);
+          newContent = doc.toString({ lineWidth: 120 });
+        }
+        
+        fs.writeFileSync(newPath.fsPath, newContent, 'utf-8');
+      } else {
+        // For markdown or other files, just copy as-is
+        fs.writeFileSync(newPath.fsPath, content, 'utf-8');
+      }
+      
+      // Show success and ask if user wants to open new file
+      const action = await vscode.window.showInformationMessage(
+        `✓ Saved copy as: ${path.basename(newPath.fsPath)}`,
+        'Open Copy',
+        'Stay Here'
+      );
+      
+      if (action === 'Open Copy') {
+        const doc = await vscode.workspace.openTextDocument(newPath);
+        await vscode.window.showTextDocument(doc);
+      }
+      
+    } catch (error) {
+      vscode.window.showErrorMessage(`Save As failed: ${error}`);
     }
   }
   

@@ -739,11 +739,15 @@ export function getWriterViewStyles(): string {
       justify-content: flex-end;
     }
     
-    .save-btn {
+    .save-menu-container {
+      position: relative;
+    }
+
+    .save-menu-btn {
       width: 32px;
       height: 32px;
       border-radius: 50%;
-      border: 1.5px solid var(--text-muted); /* Grey - default (clean state) */
+      border: 1.5px solid var(--text-muted);
       background: transparent;
       color: var(--text-muted);
       padding: 0;
@@ -751,36 +755,101 @@ export function getWriterViewStyles(): string {
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      transition: border-color 0.2s ease, color 0.2s ease;
+      transition: all 0.15s ease;
     }
 
-    .save-btn .codicon {
-      font-size: 16px;
-      line-height: 0;
-    }
-    
-    .save-btn:hover {
+    .save-menu-btn:hover {
       border-color: var(--accent);
       color: var(--accent);
       background: rgba(88, 166, 255, 0.1);
     }
-    
-    .save-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    
-    /* Blue outline when dirty (has unsaved changes) */
-    .save-btn.dirty {
+
+    .save-menu-btn.dirty {
       border-color: var(--accent);
       color: var(--accent);
     }
-    
-    /* Green outline when just saved (brief flash) */
-    .save-btn.saved-flash {
+
+    .save-menu-btn.saved-flash {
       border-color: var(--success);
       color: var(--success);
       animation: greenFlash 1s ease;
+    }
+
+    .save-menu-btn.active {
+      border-color: var(--accent);
+      background: rgba(88, 166, 255, 0.1);
+    }
+
+    .save-menu-dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 0.5rem;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      min-width: 280px;
+      z-index: 1000;
+      overflow: hidden;
+    }
+
+    .save-menu-dropdown.show {
+      display: block;
+    }
+
+    .save-menu-header {
+      padding: 0.75rem 1rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid var(--border-color);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: default;
+    }
+
+    .save-menu-divider {
+      height: 1px;
+      background: var(--border-color);
+      margin: 0;
+    }
+
+    .save-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: background 0.15s ease;
+      font-size: 0.875rem;
+      text-align: left;
+    }
+
+    .save-menu-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .save-menu-item svg {
+      flex-shrink: 0;
+      opacity: 0.8;
+    }
+
+    .save-menu-item span:first-of-type {
+      flex: 1;
+    }
+
+    .save-menu-shortcut {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
     }
     
     @keyframes greenFlash {

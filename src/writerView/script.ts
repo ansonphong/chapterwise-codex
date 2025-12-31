@@ -9,7 +9,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
   return /* javascript */ `
     const vscode = acquireVsCodeApi();
     const editor = document.getElementById('editor');
-    const saveBtn = document.getElementById('saveBtn');
+    const saveMenuBtn = document.getElementById('saveMenuBtn');
+    const saveMenuDropdown = document.getElementById('saveMenuDropdown');
     const fieldSelector = document.getElementById('fieldSelector');
     const typeSelector = document.getElementById('typeSelector');
     const nodeNameDisplay = document.getElementById('nodeName');
@@ -23,6 +24,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     let currentField = '${initialField}';
     let currentType = '${node.type}';
     let currentEditorMode = '${initialField === '__overview__' ? 'overview' : initialField === '__attributes__' ? 'attributes' : initialField === '__content__' ? 'content' : 'prose'}';
+    let menuOpen = false;
     
     // LOCAL STATE - these are modified instantly, only saved on Save button click
     let localAttributes = ${JSON.stringify(node.attributes || [])};
@@ -156,12 +158,12 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     function updateDirtyIndicator() {
       const anyDirty = isDirty || attributesDirty || contentSectionsDirty;
       if (anyDirty) {
-        saveBtn.classList.add('dirty');
-        saveBtn.classList.remove('saved-flash');
-        saveBtn.title = 'Unsaved changes - Click to save or Ctrl+S';
+        saveMenuBtn.classList.add('dirty');
+        saveMenuBtn.classList.remove('saved-flash');
+        saveMenuBtn.title = 'Unsaved changes - Click to save or Ctrl+S';
       } else {
-        saveBtn.classList.remove('dirty');
-        saveBtn.title = 'All changes saved';
+        saveMenuBtn.classList.remove('dirty');
+        saveMenuBtn.title = 'All changes saved';
       }
     }
     
@@ -179,9 +181,9 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       const anyDirty = isDirty || attributesDirty || contentSectionsDirty;
       if (!anyDirty) return;
       
-      saveBtn.disabled = true;
-      saveBtn.classList.remove('dirty');
-      saveBtn.title = 'Saving...';
+      saveMenuBtn.disabled = true;
+      saveMenuBtn.classList.remove('dirty');
+      saveMenuBtn.title = 'Saving...';
       
       // Save prose if dirty
       if (isDirty) {
@@ -935,8 +937,50 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       }
     });
     
-    // Save button click
-    saveBtn.addEventListener('click', save);
+    // Menu button click - toggle dropdown
+    saveMenuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menuOpen = !menuOpen;
+      if (menuOpen) {
+        saveMenuDropdown.classList.add('show');
+        saveMenuBtn.classList.add('active');
+      } else {
+        saveMenuDropdown.classList.remove('show');
+        saveMenuBtn.classList.remove('active');
+      }
+    });
+    
+    // Close menu when clicking outside
+    document.addEventListener('click', (e) => {
+      if (menuOpen && !saveMenuBtn.contains(e.target) && !saveMenuDropdown.contains(e.target)) {
+        menuOpen = false;
+        saveMenuDropdown.classList.remove('show');
+        saveMenuBtn.classList.remove('active');
+      }
+    });
+    
+    // Handle menu item clicks
+    saveMenuDropdown.addEventListener('click', (e) => {
+      const item = e.target.closest('.save-menu-item');
+      if (!item) return;
+      
+      const action = item.dataset.action;
+      
+      // Close menu
+      menuOpen = false;
+      saveMenuDropdown.classList.remove('show');
+      saveMenuBtn.classList.remove('active');
+      
+      // Execute action
+      switch (action) {
+        case 'save':
+          save();
+          break;
+        case 'saveAs':
+          vscode.postMessage({ type: 'saveAs' });
+          break;
+      }
+    });
     
     // Handle blur (save on focus loss)
     editor.addEventListener('blur', () => {
@@ -969,12 +1013,12 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
         case 'saveComplete':
           // All saves complete - mark everything clean
           markClean();
-          saveBtn.disabled = false;
-          saveBtn.classList.remove('dirty');
-          saveBtn.classList.add('saved-flash');
-          saveBtn.title = 'All changes saved';
+          saveMenuBtn.disabled = false;
+          saveMenuBtn.classList.remove('dirty');
+          saveMenuBtn.classList.add('saved-flash');
+          saveMenuBtn.title = 'All changes saved';
           setTimeout(() => {
-            saveBtn.classList.remove('saved-flash');
+            saveMenuBtn.classList.remove('saved-flash');
           }, 1000);
           break;
         case 'content':
@@ -1030,12 +1074,12 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     // Check if all saves are complete
     function checkAllClean() {
       if (!isDirty && !attributesDirty && !contentSectionsDirty) {
-        saveBtn.disabled = false;
-        saveBtn.classList.remove('dirty');
-        saveBtn.classList.add('saved-flash');
-        saveBtn.title = 'All changes saved';
+        saveMenuBtn.disabled = false;
+        saveMenuBtn.classList.remove('dirty');
+        saveMenuBtn.classList.add('saved-flash');
+        saveMenuBtn.title = 'All changes saved';
         setTimeout(() => {
-          saveBtn.classList.remove('saved-flash');
+          saveMenuBtn.classList.remove('saved-flash');
         }, 1000);
       }
     }
