@@ -648,8 +648,8 @@ function registerCommands(context: vscode.ExtensionContext): void {
         let initialField = '__overview__';  // default to overview
         
         // Count available fields
-        const hasSummary = entityNode.summary !== undefined && entityNode.summary !== null && entityNode.summary !== '';
-        const hasBody = entityNode.body !== undefined && entityNode.body !== null && entityNode.body !== '';
+        const hasSummary = entityNode.availableFields.includes('summary');
+        const hasBody = entityNode.availableFields.includes('body');
         const hasChildren = entityNode.children && entityNode.children.length > 0;
         const hasContentSections = entityNode.contentSections && entityNode.contentSections.length > 0;
         const hasAttributes = entityNode.attributes && entityNode.attributes.length > 0;
