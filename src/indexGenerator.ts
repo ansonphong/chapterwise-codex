@@ -16,6 +16,20 @@ import * as fs from 'fs';
 import YAML from 'yaml';
 import { minimatch } from 'minimatch';
 
+/**
+ * Helper to log to the ChapterWise Codex output channel
+ */
+function log(message: string): void {
+  // Import dynamically to avoid circular dependency
+  const ext = require('./extension');
+  const channel = ext.getOutputChannel();
+  if (channel) {
+    channel.appendLine(message);
+  } else {
+    console.log(message);
+  }
+}
+
 export interface GenerateIndexOptions {
   workspaceRoot: string;
   indexFilePath?: string;
@@ -172,7 +186,7 @@ async function scanWorkspace(
   try {
     walkDir(root);
       } catch (error) {
-    console.error('Error scanning workspace:', error);
+    log(`Error scanning workspace: ${error}`);
       }
 
   return files;
@@ -312,7 +326,7 @@ async function mergePerFolderIndexes(
           applyPerFolderOrders(folder.children, indexData.children);
         }
       } catch (error) {
-        console.warn(`Failed to read per-folder index at ${folderPath}:`, error);
+        log(`Failed to read per-folder index at ${folderPath}: ${error}`);
       }
     }
   }
@@ -328,7 +342,7 @@ async function mergePerFolderIndexes(
         applyPerFolderOrders(rootChildren, indexData.children);
       }
     } catch (error) {
-      console.warn('Failed to read root index.codex.yaml:', error);
+      log(`Failed to read root index.codex.yaml: ${error}`);
     }
   }
 }
@@ -519,7 +533,7 @@ async function resolveIncludes(
   
   // Check depth limit
   if (depth >= MAX_DEPTH) {
-    console.warn(`[resolveIncludes] Max depth ${MAX_DEPTH} reached at ${parentFilePath}`);
+    log(`[resolveIncludes] Max depth ${MAX_DEPTH} reached at ${parentFilePath}`);
     return children;
   }
   
@@ -643,7 +657,7 @@ async function extractEntityChildren(
   
   // Check depth limit
   if (depth > MAX_DEPTH) {
-    console.warn(`[extractEntityChildren] Max depth ${MAX_DEPTH} reached`);
+    log(`[extractEntityChildren] Max depth ${MAX_DEPTH} reached`);
     return [];
   }
   
@@ -788,7 +802,7 @@ async function createFileNode(
       
       baseNode.children = entityChildren;
     } catch (error) {
-      console.error(`[createFileNode] Error processing ${fileName}:`, error);
+      log(`[createFileNode] Error processing ${fileName}: ${error}`);
       // Return base node without children on error
     }
   }
@@ -1047,7 +1061,7 @@ export async function generatePerFolderIndex(
             folderNode.children = subIndexData.children;
           }
         } catch (error) {
-          console.warn(`Failed to merge per-folder index for ${entry.name}:`, error);
+          log(`Failed to merge per-folder index for ${entry.name}: ${error}`);
         }
       }
       
@@ -1136,7 +1150,7 @@ export async function generateFolderHierarchy(
   startFolder: string,
   progress?: IndexGenerationProgress
 ): Promise<void> {
-  console.log(`[IndexGenerator] Generating folder hierarchy for: ${startFolder}`);
+  log(`[IndexGenerator] Generating folder hierarchy for: ${startFolder}`);
   
   const fullStartPath = path.join(workspaceRoot, startFolder);
   
@@ -1161,14 +1175,14 @@ export async function generateFolderHierarchy(
       }
     }
     } catch (error) {
-      console.error(`[IndexGenerator] Error reading folder ${folderPath}:`, error);
+      log(`[IndexGenerator] Error reading folder ${folderPath}: ${error}`);
     }
   }
   
   collectSubfolders(fullStartPath);
   
   const totalFolders = allFolders.length;
-  console.log(`[IndexGenerator] Found ${totalFolders} folders to process`);
+  log(`[IndexGenerator] Found ${totalFolders} folders to process`);
   progress?.report(`Scanning ${totalFolders} folders...`, 0);
   
   // 2. Sort by depth (deepest first)
@@ -1193,7 +1207,7 @@ export async function generateFolderHierarchy(
         `Processing folder ${i + 1}/${totalFolders}: ${folderName}`,
         (100 / totalFolders)
       );
-      console.log(`[IndexGenerator] Generating index for: ${folderPath}`);
+      log(`[IndexGenerator] Generating index for: ${folderPath}`);
       
       await generatePerFolderIndex(
         workspaceRoot,
@@ -1201,15 +1215,15 @@ export async function generateFolderHierarchy(
         progress  // Pass progress through
       );
     } catch (error) {
-      console.error(`[IndexGenerator] Error generating index for ${folderPath}:`, error);
+      log(`[IndexGenerator] Error generating index for ${folderPath}: ${error}`);
       // Continue with other folders even if one fails
     }
   }
   
   // 4. Finally, regenerate top-level .index.codex.yaml to merge everything
   progress?.report('Finalizing index...', 0);
-  console.log(`[IndexGenerator] Regenerating top-level index`);
+  log(`[IndexGenerator] Regenerating top-level index`);
   await generateIndex({ workspaceRoot });
   
-  console.log(`[IndexGenerator] Folder hierarchy generation complete`);
+  log(`[IndexGenerator] Folder hierarchy generation complete`);
 }
