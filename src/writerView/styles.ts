@@ -117,10 +117,9 @@ export function getWriterViewStyles(): string {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      position: sticky;
+      position: sticky; /* Stays fixed at top when scrolling, but also allows absolute positioning for toolbar */
       top: 0;
       z-index: 100;
-      position: relative; /* For toolbar positioning */
     }
     
     .header-left {
