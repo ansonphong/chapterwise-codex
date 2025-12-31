@@ -883,8 +883,9 @@ export function getWriterViewStyles(): string {
     
     /* Overview section header (for prose/summary) */
     .overview-section-header {
-      margin-top: 0.25rem;
+      margin-top: 0;
       margin-bottom: 1rem;
+      padding-top: 0.5rem;
       cursor: pointer;
       transition: color 0.15s ease;
       user-select: none;
