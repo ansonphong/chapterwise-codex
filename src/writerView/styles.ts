@@ -2,6 +2,8 @@
  * CSS styles for Writer View webview
  */
 
+import { getToolbarStyles } from './toolbar';
+
 export function getWriterViewStyles(): string {
   return /* css */ `
     :root {
@@ -118,12 +120,22 @@ export function getWriterViewStyles(): string {
       position: sticky;
       top: 0;
       z-index: 100;
+      position: relative; /* For toolbar positioning */
     }
     
     .header-left {
       display: flex;
       align-items: center;
       gap: 0.75rem;
+      flex: 1; /* Allow it to grow */
+    }
+    
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex: 1; /* Allow it to grow */
+      justify-content: flex-end;
     }
     
     .node-info {
@@ -724,6 +736,8 @@ export function getWriterViewStyles(): string {
       display: flex;
       align-items: center;
       gap: 0.75rem; /* Increased gap for type selector */
+      flex: 1; /* Allow it to grow */
+      justify-content: flex-end;
     }
     
     .save-btn {
@@ -1005,5 +1019,8 @@ export function getWriterViewStyles(): string {
     body.mode-overview #contentEditor:has(.empty-state) {
       display: none !important;
     }
+    
+    /* === CONTEXT TOOLBAR STYLES === */
+    ${getToolbarStyles()}
   `;
 }

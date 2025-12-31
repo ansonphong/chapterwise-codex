@@ -9,6 +9,7 @@ import { getWriterViewStyles } from '../styles';
 import { getWriterViewScript } from '../script';
 import { renderAttributesTable } from './attributesRenderer';
 import { renderContentSections } from './contentRenderer';
+import { buildToolbarHtml, getToolbarContextFromField } from '../toolbar';
 
 export interface WebviewHtmlOptions {
   webview: vscode.Webview;
@@ -41,6 +42,10 @@ export function buildWebviewHtml(options: WebviewHtmlOptions): string {
   // Build field selector options
   const fieldOptions = buildFieldSelectorOptions(node, initialField);
   
+  // Build context toolbar
+  const toolbarContext = getToolbarContextFromField(initialField);
+  const toolbarHtml = buildToolbarHtml(toolbarContext, node);
+  
   // Build type selector options
   const typeOptions = buildTypeSelectorOptions(node, indexTypes || []);
   
@@ -65,6 +70,9 @@ ${getWriterViewStyles()}
         <span class="node-name editable" id="nodeName" tabindex="0" title="Click to edit title">${escapeHtml(node.name)}</span>
         <div class="node-name-edit" id="nodeNameEdit" contenteditable="false" aria-label="Edit title"></div>
       </div>
+    </div>
+    <div class="context-toolbar" id="contextToolbar">
+      ${toolbarHtml}
     </div>
     <div class="header-right">
       <select class="type-selector" id="typeSelector" title="Change entity type">

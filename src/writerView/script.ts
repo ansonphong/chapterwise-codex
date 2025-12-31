@@ -3,6 +3,7 @@
  */
 
 import { CodexNode } from '../codexModel';
+import { getToolbarScript } from './toolbar';
 
 export function getWriterViewScript(node: CodexNode, initialField: string): string {
   return /* javascript */ `
@@ -13,6 +14,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     const typeSelector = document.getElementById('typeSelector');
     const nodeNameDisplay = document.getElementById('nodeName');
     const nodeNameEdit = document.getElementById('nodeNameEdit');
+    
+    ${getToolbarScript(node, initialField)}
     
     let isDirty = false;
     let originalContent = editor.innerText;
@@ -240,6 +243,11 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       
       const newField = e.target.value;
       currentField = newField;
+      
+      // Update toolbar context
+      if (typeof window.updateToolbarForField === 'function') {
+        window.updateToolbarForField(newField);
+      }
       
       // Determine which editor to show
       if (newField === '__overview__') {
@@ -990,6 +998,24 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
           // External request to switch to a specific field
           fieldSelector.value = message.field;
           fieldSelector.dispatchEvent(new Event('change'));
+          break;
+        
+        case 'fieldAdded':
+          // A new field was added - update UI
+          if (message.node) {
+            // Update local node state (for toolbar dropdown)
+            // Note: This is a simplified approach; full refresh would require rebuilding HTML
+            
+            // If we're in overview mode, refresh the view
+            if (currentEditorMode === 'overview') {
+              // Reload the page to show new field options
+              location.reload();
+            } else if (message.addedField) {
+              // Switch to the newly added field
+              fieldSelector.value = message.addedField;
+              fieldSelector.dispatchEvent(new Event('change'));
+            }
+          }
           break;
           
         case 'themeChanged':

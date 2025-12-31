@@ -330,6 +330,10 @@ export class WriterViewManager {
           case 'renameName':
             await this.handleRenameName(documentUri, node, message.name, panel);
             break;
+          
+          case 'addField':
+            await this.handleAddField(documentUri, node, message.fieldType, panel);
+            break;
             
           case 'switchField':
             currentField = message.field;
@@ -898,6 +902,132 @@ export class WriterViewManager {
       }
     } catch (error) {
       vscode.window.showErrorMessage(`Save failed: ${error}`);
+    }
+  }
+  
+  /**
+   * Handle adding a new field to the entity
+   */
+  private async handleAddField(
+    documentUri: vscode.Uri,
+    node: CodexNode,
+    fieldType: string,
+    panel: vscode.WebviewPanel
+  ): Promise<void> {
+    try {
+      const document = await vscode.workspace.openTextDocument(documentUri);
+      const fileName = documentUri.fsPath;
+      const originalText = document.getText();
+      let newDocText: string;
+      let addedField: string | null = null;
+      
+      // Parse the document
+      const codexDoc = isMarkdownFile(fileName)
+        ? parseMarkdownAsCodex(originalText, fileName)
+        : parseCodex(originalText);
+      
+      if (!codexDoc) {
+        vscode.window.showErrorMessage('Unable to parse document for adding field');
+        return;
+      }
+      
+      // Handle different field types
+      switch (fieldType) {
+        case 'summary':
+        case 'body':
+          // Add prose field
+          if (isMarkdownFile(fileName)) {
+            // For markdown files, add to frontmatter (summary) or create body
+            if (fieldType === 'summary') {
+              newDocText = setMarkdownFrontmatterField(originalText, 'summary', '');
+              addedField = 'summary';
+            } else {
+              // Body already exists in markdown, just switch to it
+              addedField = 'body';
+              newDocText = originalText;
+            }
+          } else {
+            // For codex files, add empty prose field
+            newDocText = setNodeProse(codexDoc, node, '', fieldType);
+            addedField = fieldType;
+          }
+          break;
+        
+        case 'attributes':
+          // Initialize empty attributes array if it doesn't exist
+          if (!node.hasAttributes || !node.attributes || node.attributes.length === 0) {
+            newDocText = setNodeAttributes(codexDoc, node, []);
+            node.hasAttributes = true;
+            node.attributes = [];
+            addedField = '__attributes__';
+          } else {
+            newDocText = originalText;
+          }
+          break;
+        
+        case 'content':
+          // Initialize empty content sections array if it doesn't exist
+          if (!node.hasContentSections || !node.contentSections || node.contentSections.length === 0) {
+            newDocText = setNodeContentSections(codexDoc, node, []);
+            node.hasContentSections = true;
+            node.contentSections = [];
+            addedField = '__content__';
+          } else {
+            newDocText = originalText;
+          }
+          break;
+        
+        default:
+          vscode.window.showWarningMessage(`Unknown field type: ${fieldType}`);
+          return;
+      }
+      
+      // Apply the edit if content changed
+      if (newDocText && newDocText !== originalText) {
+        const edit = new vscode.WorkspaceEdit();
+        const fullRange = new vscode.Range(
+          document.positionAt(0),
+          document.positionAt(originalText.length)
+        );
+        edit.replace(documentUri, fullRange, newDocText);
+        
+        const success = await vscode.workspace.applyEdit(edit);
+        if (success) {
+          await document.save();
+          vscode.window.setStatusBarMessage(`✓ ${fieldType} field added`, 2000);
+          
+          // Update node's available fields
+          if (fieldType === 'summary' || fieldType === 'body') {
+            if (!node.availableFields.includes(fieldType)) {
+              node.availableFields.push(fieldType);
+            }
+          }
+          
+          // Send message to webview to refresh and show the new field
+          panel.webview.postMessage({ 
+            type: 'fieldAdded',
+            fieldType: fieldType,
+            addedField: addedField,
+            node: {
+              availableFields: node.availableFields,
+              hasAttributes: node.hasAttributes,
+              hasContentSections: node.hasContentSections
+            }
+          });
+        } else {
+          vscode.window.showErrorMessage('Failed to add field');
+        }
+      } else {
+        // Field already exists, just switch to it
+        if (addedField) {
+          panel.webview.postMessage({ 
+            type: 'switchToField',
+            field: addedField
+          });
+        }
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to add field: ${error}`);
     }
   }
   
