@@ -9,7 +9,6 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     const vscode = acquireVsCodeApi();
     const editor = document.getElementById('editor');
     const saveBtn = document.getElementById('saveBtn');
-    const charCountEl = document.getElementById('charCount');
     const fieldSelector = document.getElementById('fieldSelector');
     const nodeNameDisplay = document.getElementById('nodeName');
     const nodeNameEdit = document.getElementById('nodeNameEdit');
@@ -45,11 +44,9 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       updateSystemThemeAttribute();
     });
     
-    // Update character count
+    // Update counts (no longer needed for display, but keep for compatibility)
     function updateCounts() {
-      const text = editor.innerText;
-      const chars = text.length;
-      charCountEl.textContent = chars + ' chars';
+      // Character count removed - author shown in footer instead
     }
     
     // Mark prose as dirty

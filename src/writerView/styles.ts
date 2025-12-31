@@ -799,6 +799,15 @@ export function getWriterViewStyles(): string {
       justify-content: space-between;
     }
     
+    .footer svg {
+      opacity: 0.7;
+    }
+    
+    #authorDisplay {
+      display: flex;
+      align-items: center;
+    }
+    
     .keyboard-hint {
       display: flex;
       gap: 1rem;
@@ -858,7 +867,7 @@ export function getWriterViewStyles(): string {
       display: block !important;
       width: 100%;
       max-width: 900px;
-      margin: 2rem auto 1.25rem;
+      margin: 2rem auto 0.75rem;
       box-sizing: border-box;
     }
     

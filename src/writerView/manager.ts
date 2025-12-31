@@ -20,7 +20,7 @@ import {
   setNodeContentSections,
   isMarkdownFile
 } from '../codexModel';
-import { CodexTreeItem } from '../treeProvider';
+import { CodexTreeItem, CodexTreeProvider } from '../treeProvider';
 import { WriterPanelStats, calculateStats } from './utils/stats';
 import { buildWebviewHtml } from './html/builder';
 
@@ -31,6 +31,7 @@ export class WriterViewManager {
   private panels: Map<string, vscode.WebviewPanel> = new Map();
   private wordCountStatusBarItem: vscode.StatusBarItem;
   private panelStats: Map<string, WriterPanelStats> = new Map();
+  private treeProvider: CodexTreeProvider | null = null;
   
   constructor(private readonly context: vscode.ExtensionContext) {
     // Create word count status bar item
@@ -39,6 +40,50 @@ export class WriterViewManager {
       200  // Priority (position in status bar)
     );
     context.subscriptions.push(this.wordCountStatusBarItem);
+  }
+  
+  /**
+   * Set the tree provider reference (needed for accessing index document)
+   */
+  setTreeProvider(treeProvider: CodexTreeProvider): void {
+    this.treeProvider = treeProvider;
+  }
+  
+  /**
+   * Format author field (string or array) into display string
+   */
+  private formatAuthor(author: string | string[] | undefined): string {
+    if (!author) {
+      return '';
+    }
+    if (Array.isArray(author)) {
+      return author.join(', ');
+    }
+    return String(author);
+  }
+  
+  /**
+   * Get author from current document or fallback to index document
+   */
+  private getAuthorDisplay(currentDoc: CodexDocument | null): string {
+    // Try current document first
+    if (currentDoc?.metadata?.author) {
+      const authorStr = this.formatAuthor(currentDoc.metadata.author);
+      if (authorStr) {
+        return authorStr;
+      }
+    }
+    
+    // Fallback to index document
+    const indexDoc = this.treeProvider?.getIndexDocument();
+    if (indexDoc?.metadata?.author) {
+      const authorStr = this.formatAuthor(indexDoc.metadata.author);
+      if (authorStr) {
+        return authorStr;
+      }
+    }
+    
+    return 'Unknown Author';
   }
   
   /**
@@ -224,6 +269,9 @@ export class WriterViewManager {
     
     this.panels.set(panelKey, panel);
     
+    // Get author display
+    const authorDisplay = this.getAuthorDisplay(codexDoc);
+    
     // Set initial HTML with remembered field using the new builder
     panel.webview.html = buildWebviewHtml({
       webview: panel.webview,
@@ -231,7 +279,8 @@ export class WriterViewManager {
       prose,
       initialField,
       themeSetting: this.getThemeSetting(),
-      vscodeThemeKind: this.getVSCodeThemeKind()
+      vscodeThemeKind: this.getVSCodeThemeKind(),
+      author: authorDisplay
     });
     
     // Store initial stats and update status bar
@@ -473,6 +522,9 @@ export class WriterViewManager {
     
     this.panels.set(panelKey, panel);
     
+    // Get author display
+    const authorDisplay = this.getAuthorDisplay(codexDoc);
+    
     // Set initial HTML with the target field selected using the new builder
     panel.webview.html = buildWebviewHtml({
       webview: panel.webview,
@@ -480,7 +532,8 @@ export class WriterViewManager {
       prose,
       initialField: targetField,
       themeSetting: this.getThemeSetting(),
-      vscodeThemeKind: this.getVSCodeThemeKind()
+      vscodeThemeKind: this.getVSCodeThemeKind(),
+      author: authorDisplay
     });
     
     // Store initial stats and update status bar

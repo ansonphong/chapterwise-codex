@@ -138,6 +138,10 @@ export function activate(context: vscode.ExtensionContext): void {
     writerViewManager = new WriterViewManager(context);
     outputChannel.appendLine('Writer view manager created');
     
+    // Set tree provider reference for author lookup
+    writerViewManager.setTreeProvider(treeProvider);
+    outputChannel.appendLine('Writer view manager linked to tree provider');
+    
     // Initialize validation system
     initializeValidation(context);
     outputChannel.appendLine('Validation initialized');
