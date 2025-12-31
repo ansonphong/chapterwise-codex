@@ -148,15 +148,17 @@ export function getWriterViewStyles(): string {
     
     .field-selector {
       font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
-      font-size: 0.65rem;
+      font-size: 0.75rem;
       color: var(--accent);
       background: rgba(88, 166, 255, 0.1);
       border: 1px solid rgba(88, 166, 255, 0.3);
-      padding: 0.125rem 0.375rem;
-      border-radius: 3px;
+      padding: 0.375rem 0.75rem;
+      border-radius: 4px;
       cursor: pointer;
       outline: none;
       transition: all 0.15s ease;
+      margin-right: 0.5rem;
+      min-width: 140px;
     }
     
     .field-selector:hover {
