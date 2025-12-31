@@ -6,13 +6,18 @@
 import { CodexNode } from '../../codexModel';
 
 export function getToolbarScript(node: CodexNode, initialField: string): string {
+  // Serialize node data for use in the script
+  const nodeData = {
+    availableFields: node.availableFields,
+    hasAttributes: node.hasAttributes || (node.attributes && node.attributes.length > 0),
+    hasContentSections: node.hasContentSections || (node.contentSections && node.contentSections.length > 0)
+  };
+  
   return /* javascript */ `
     // === CONTEXT TOOLBAR LOGIC ===
     
     const toolbar = document.getElementById('contextToolbar');
-    const addDropdown = document.getElementById('toolbarAddDropdown');
-    const addButton = document.getElementById('toolbar-add');
-    const addMenu = document.getElementById('toolbarAddMenu');
+    const nodeData = ${JSON.stringify(nodeData)};
     
     let currentToolbarContext = getContextFromField('${initialField}');
     
@@ -28,18 +33,145 @@ export function getToolbarScript(node: CodexNode, initialField: string): string 
     }
     
     /**
+     * Build dropdown menu options for +Add button
+     */
+    function buildAddDropdownOptions() {
+      const options = [];
+      
+      // Check which fields already exist
+      const hasSummary = nodeData.availableFields.includes('summary');
+      const hasBody = nodeData.availableFields.includes('body');
+      const hasAttributes = nodeData.hasAttributes;
+      const hasContentSections = nodeData.hasContentSections;
+      
+      // Add Summary option if it doesn't exist
+      if (!hasSummary) {
+        options.push(\`
+          <button class="toolbar-dropdown-item" 
+                  data-field-type="summary" 
+                  role="menuitem"
+                  tabindex="0">
+            <span class="dropdown-item-icon">📝</span>
+            <span class="dropdown-item-label">Summary</span>
+          </button>
+        \`);
+      }
+      
+      // Add Body option if it doesn't exist
+      if (!hasBody) {
+        options.push(\`
+          <button class="toolbar-dropdown-item" 
+                  data-field-type="body" 
+                  role="menuitem"
+                  tabindex="0">
+            <span class="dropdown-item-icon">📄</span>
+            <span class="dropdown-item-label">Body</span>
+          </button>
+        \`);
+      }
+      
+      // Add Attributes option if it doesn't exist
+      if (!hasAttributes) {
+        options.push(\`
+          <button class="toolbar-dropdown-item" 
+                  data-field-type="attributes" 
+                  role="menuitem"
+                  tabindex="0">
+            <span class="dropdown-item-icon">📊</span>
+            <span class="dropdown-item-label">Attributes</span>
+          </button>
+        \`);
+      }
+      
+      // Add Content Sections option if it doesn't exist
+      if (!hasContentSections) {
+        options.push(\`
+          <button class="toolbar-dropdown-item" 
+                  data-field-type="content" 
+                  role="menuitem"
+                  tabindex="0">
+            <span class="dropdown-item-icon">📝</span>
+            <span class="dropdown-item-label">Content Sections</span>
+          </button>
+        \`);
+      }
+      
+      if (options.length === 0) {
+        return '<div class="toolbar-dropdown-empty">All fields exist</div>';
+      }
+      
+      return options.join('');
+    }
+    
+    /**
+     * Build toolbar buttons HTML for a specific context
+     */
+    function buildToolbarButtonsHtml(context) {
+      if (context === 'body' || context === 'summary') {
+        // Prose editing buttons
+        return \`
+          <button class="toolbar-btn" 
+                  id="toolbar-bold" 
+                  data-action="bold"
+                  title="Bold (Ctrl/Cmd+B)"
+                  aria-label="Toggle bold formatting">
+            <span class="toolbar-btn-icon">𝐁</span>
+          </button>
+          <button class="toolbar-btn" 
+                  id="toolbar-italic" 
+                  data-action="italic"
+                  title="Italic (Ctrl/Cmd+I)"
+                  aria-label="Toggle italic formatting">
+            <span class="toolbar-btn-icon">𝐼</span>
+          </button>
+          <button class="toolbar-btn" 
+                  id="toolbar-underline" 
+                  data-action="underline"
+                  title="Underline (Ctrl/Cmd+U)"
+                  aria-label="Toggle underline formatting">
+            <span class="toolbar-btn-icon">U̲</span>
+          </button>
+        \`;
+      } else if (context === 'overview') {
+        // +Add dropdown button
+        return \`
+          <div class="toolbar-dropdown" id="toolbarAddDropdown">
+            <button class="toolbar-btn toolbar-add-btn" 
+                    id="toolbar-add" 
+                    data-action="add"
+                    title="Add new field or section"
+                    aria-label="Add new field or section"
+                    aria-haspopup="true"
+                    aria-expanded="false">
+              <span class="toolbar-btn-label">+ Add</span>
+            </button>
+            <div class="toolbar-dropdown-menu" id="toolbarAddMenu" role="menu">
+              \${buildAddDropdownOptions()}
+            </div>
+          </div>
+        \`;
+      } else {
+        // attributes or content - no toolbar for now
+        return '<!-- No toolbar buttons for this context -->';
+      }
+    }
+    
+    /**
      * Update toolbar visibility and buttons based on context
      */
     function updateToolbarContext(context) {
       currentToolbarContext = context;
       
-      // For now, toolbar HTML is static and context-aware buttons are shown/hidden via CSS
-      // Future: Could dynamically rebuild toolbar HTML here
-      
-      // Update dropdown options if in overview mode
-      if (context === 'overview' && addMenu) {
-        // Refresh dropdown options based on current node state
-        // This would need node state updates from the extension
+      // Rebuild toolbar HTML dynamically
+      if (toolbar) {
+        toolbar.innerHTML = buildToolbarButtonsHtml(context);
+        
+        // Re-initialize event handlers for the new buttons
+        if (context === 'body' || context === 'summary') {
+          initFormattingButtons();
+        } else if (context === 'overview') {
+          initAddDropdown();
+        }
       }
     }
     
@@ -104,6 +236,10 @@ export function getToolbarScript(node: CodexNode, initialField: string): string 
      * Initialize +Add dropdown
      */
     function initAddDropdown() {
+      const addDropdown = document.getElementById('toolbarAddDropdown');
+      const addButton = document.getElementById('toolbar-add');
+      const addMenu = document.getElementById('toolbarAddMenu');
+      
       if (!addButton || !addDropdown || !addMenu) return;
       
       // Toggle dropdown on button click
@@ -187,7 +323,11 @@ export function getToolbarScript(node: CodexNode, initialField: string): string 
      * Open the +Add dropdown
      */
     function openAddDropdown() {
-      if (!addDropdown || !addButton) return;
+      const addDropdown = document.getElementById('toolbarAddDropdown');
+      const addButton = document.getElementById('toolbar-add');
+      const addMenu = document.getElementById('toolbarAddMenu');
+      
+      if (!addDropdown || !addButton || !addMenu) return;
       
       addDropdown.classList.add('active');
       addButton.setAttribute('aria-expanded', 'true');
@@ -203,6 +343,9 @@ export function getToolbarScript(node: CodexNode, initialField: string): string 
      * Close the +Add dropdown
      */
     function closeAddDropdown() {
+      const addDropdown = document.getElementById('toolbarAddDropdown');
+      const addButton = document.getElementById('toolbar-add');
+      
       if (!addDropdown || !addButton) return;
       
       addDropdown.classList.remove('active');
