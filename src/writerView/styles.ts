@@ -158,7 +158,7 @@ export function getWriterViewStyles(): string {
       outline: none;
       transition: all 0.15s ease;
       margin-right: 0.5rem;
-      min-width: 140px;
+      min-width: 100px;
     }
     
     .field-selector:hover {
