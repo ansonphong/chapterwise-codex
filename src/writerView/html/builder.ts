@@ -126,7 +126,7 @@ function buildFieldSelectorOptions(node: CodexNode, initialField: string): strin
   
   // Add overview option for entities with multiple fields
   if (hasMultipleFields) {
-    options.push(`<option value="__overview__" ${initialField === '__overview__' ? 'selected' : ''}>📋 Overview (All Fields)</option>`);
+    options.push(`<option value="__overview__" ${initialField === '__overview__' ? 'selected' : ''}>📋 Overview</option>`);
     options.push('<option disabled>───────────</option>');
   }
   

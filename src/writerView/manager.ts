@@ -29,7 +29,6 @@ import { buildWebviewHtml } from './html/builder';
  */
 export class WriterViewManager {
   private panels: Map<string, vscode.WebviewPanel> = new Map();
-  private lastSelectedField: string = 'body';  // Remember field across node switches
   private wordCountStatusBarItem: vscode.StatusBarItem;
   private panelStats: Map<string, WriterPanelStats> = new Map();
   
@@ -154,34 +153,30 @@ export class WriterViewManager {
       return;
     }
     
-    // Determine initial field based on entity structure (unless user has a remembered preference)
+    // Determine initial field based on entity structure using smart defaults
     let initialField: string;
-    if (this.lastSelectedField && this.lastSelectedField.trim()) {
-      // Use remembered field if available
-      initialField = this.lastSelectedField;
+    
+    // Smart default: overview for multi-field entities, single field otherwise
+    const proseFieldCount = node.availableFields.filter(f => !f.startsWith('__')).length;
+    const hasChildren = node.children && node.children.length > 0;
+    const hasContentSections = node.hasContentSections;
+    const hasAttributes = node.hasAttributes;
+    
+    // Count total fields
+    const fieldCount = proseFieldCount + (hasContentSections ? 1 : 0) + (hasAttributes ? 1 : 0) + (hasChildren ? 1 : 0);
+    
+    // Default to overview if multiple fields, otherwise show the single field
+    if (fieldCount > 1) {
+      initialField = '__overview__';
+    } else if (node.availableFields.includes('summary')) {
+      initialField = 'summary';
+    } else if (node.availableFields.includes('body')) {
+      initialField = 'body';
+    } else if (node.availableFields.length > 0) {
+      initialField = node.availableFields[0];
     } else {
-      // Smart default: overview for multi-field entities, single field otherwise
-      const proseFieldCount = node.availableFields.filter(f => !f.startsWith('__')).length;
-      const hasChildren = node.children && node.children.length > 0;
-      const hasContentSections = node.hasContentSections;
-      const hasAttributes = node.hasAttributes;
-      
-      // Count total fields
-      const fieldCount = proseFieldCount + (hasContentSections ? 1 : 0) + (hasAttributes ? 1 : 0) + (hasChildren ? 1 : 0);
-      
-      // Default to overview if multiple fields, otherwise show the single field
-      if (fieldCount > 1) {
-        initialField = '__overview__';
-      } else if (node.availableFields.includes('summary')) {
-        initialField = 'summary';
-      } else if (node.availableFields.includes('body')) {
-        initialField = 'body';
-      } else if (node.availableFields.length > 0) {
-        initialField = node.availableFields[0];
-      } else {
-        // Single structured field - stay in overview to show it
-        initialField = '__overview__';
-      }
+      // Single structured field - stay in overview to show it
+      initialField = '__overview__';
     }
     
     // Remap special fields to actual prose field for initial content load
@@ -281,7 +276,6 @@ export class WriterViewManager {
             
           case 'switchField':
             currentField = message.field;
-            this.lastSelectedField = message.field;  // Remember across node switches
             
             // Only fetch prose content for regular fields (not attributes/content)
             if (message.field !== '__attributes__' && message.field !== '__content__') {
@@ -527,7 +521,6 @@ export class WriterViewManager {
           
           case 'switchField':
             currentField = message.field;
-            this.lastSelectedField = message.field;
             
             if (message.field !== '__attributes__' && message.field !== '__content__') {
               // Read file directly - DON'T open in VS Code text editor
