@@ -297,7 +297,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
               <span class="attr-name name-field inline-editable" data-index="\${i}" tabindex="0" title="Click to edit name">\${escapeHtml(attr.name || 'Untitled')}</span>
               <span class="attr-name-edit name-field inline-edit-field" data-index="\${i}" contenteditable="false"></span>
             </div>
-            <input type="text" class="attr-value-input" data-index="\${i}" value="\${escapeHtml(String(attr.value || ''))}" placeholder="Value" />
+            <textarea class="attr-value-input" data-index="\${i}" placeholder="Value">\${escapeHtml(String(attr.value || ''))}</textarea>
             <select class="type-select" data-index="\${i}">
               <option value="" \${!attr.dataType && !attr.type ? 'selected' : ''}>auto</option>
               <option value="string" \${attr.dataType === 'string' || attr.type === 'string' ? 'selected' : ''}>string</option>
@@ -314,6 +314,11 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
           </div>
         </div>
       \`).join('');
+      
+      // Auto-resize all attribute value textareas after rendering
+      setTimeout(() => {
+        resizeAllAttributeValues();
+      }, 0);
     }
     
     function escapeHtml(str) {
@@ -415,6 +420,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
         if (localAttributes[index]) {
           localAttributes[index].value = target.value;
           markAttributesDirty();
+          // Auto-resize as user types
+          autoResizeAttributeValue(target);
         }
       } else if (target.classList.contains('type-select')) {
         const card = target.closest('.attr-card');
@@ -514,10 +521,25 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       textarea.style.height = Math.max(100, textarea.scrollHeight) + 'px';
     }
     
+    // Auto-resize attribute value textarea to fit content
+    function autoResizeAttributeValue(textarea) {
+      if (!textarea) return;
+      // Reset height to recalculate
+      textarea.style.height = 'auto';
+      // Set to scrollHeight (content height) with minimum of 40px (single line)
+      textarea.style.height = Math.max(40, textarea.scrollHeight) + 'px';
+    }
+    
     // Resize all visible textareas
     function resizeAllTextareas() {
       const textareas = contentContainer.querySelectorAll('.content-textarea');
       textareas.forEach(textarea => autoResizeTextarea(textarea));
+    }
+    
+    // Resize all attribute value textareas
+    function resizeAllAttributeValues() {
+      const textareas = attributesContainer.querySelectorAll('.attr-value-input');
+      textareas.forEach(textarea => autoResizeAttributeValue(textarea));
     }
     
     // Update toggle all button state

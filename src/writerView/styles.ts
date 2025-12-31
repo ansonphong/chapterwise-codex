@@ -533,6 +533,11 @@ export function getWriterViewStyles(): string {
       border-radius: 3px;
       font-size: 0.875rem;
       transition: all 0.15s ease;
+      font-family: inherit;
+      min-height: 40px;
+      resize: vertical;
+      overflow-y: hidden;
+      box-sizing: border-box;
     }
     
     .attr-value-input:hover {
