@@ -123,7 +123,7 @@ export function getWriterViewStyles(): string {
     .header-left {
       display: flex;
       align-items: center;
-      gap: 1rem;
+      gap: 0.75rem;
     }
     
     .node-info {

@@ -58,6 +58,9 @@ ${getWriterViewStyles()}
 <body>
   <div class="header">
     <div class="header-left">
+      <select class="type-selector" id="typeSelector" title="Change entity type">
+        ${typeOptions}
+      </select>
       <div class="node-name-container">
         <span class="node-name editable" id="nodeName" tabindex="0" title="Click to edit title">${escapeHtml(node.name)}</span>
         <div class="node-name-edit" id="nodeNameEdit" contenteditable="false" aria-label="Edit title"></div>
@@ -66,9 +69,6 @@ ${getWriterViewStyles()}
     <div class="header-right">
       <select class="field-selector" id="fieldSelector">
         ${fieldOptions}
-      </select>
-      <select class="type-selector" id="typeSelector" title="Change entity type">
-        ${typeOptions}
       </select>
       <button class="save-btn" id="saveBtn" title="Save (Ctrl+S)">
         <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
