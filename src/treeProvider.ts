@@ -201,6 +201,15 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
       this.contextValue = 'indexFile';
     }
     
+    // Set resource URI for entities and fields to enable inline actions
+    if (isEntity || isField) {
+      const parentFile = (indexNode as any)._parent_file;
+      if (parentFile && workspaceRoot) {
+        const fullPath = path.join(workspaceRoot, parentFile);
+        this.resourceUri = vscode.Uri.file(fullPath);
+      }
+    }
+    
     // Phase 3: Command - Different behavior based on node kind
     if (isField) {
       // Field - navigate to specific field in writer view

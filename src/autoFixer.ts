@@ -53,7 +53,9 @@ export class CodexAutoFixer {
       if (isJson) {
         content = JSON.parse(text);
       } else {
-        content = YAML.parse(text);
+        // Pre-process YAML to fix common syntax issues before parsing
+        const preprocessedText = this.preprocessYamlSyntax(text);
+        content = YAML.parse(preprocessedText);
       }
 
       if (!content || typeof content !== 'object') {
@@ -822,6 +824,115 @@ export class CodexAutoFixer {
     }
 
     return sanitized || 'attribute';
+  }
+
+  /**
+   * Pre-process YAML text to fix common syntax issues before parsing
+   * This prevents parsing errors from malformed quoted strings
+   */
+  private preprocessYamlSyntax(text: string): string {
+    const lines = text.split('\n');
+    const result: string[] = [];
+    let i = 0;
+    let changesCount = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+      
+      // Check if this line starts a quoted value (single or double quote)
+      const quotedValueMatch = line.match(/^(\s+)(\w+):\s*(['"])(.*)$/);
+      
+      if (quotedValueMatch) {
+        const [, indent, key, quote, firstLineContent] = quotedValueMatch;
+        
+        // Check if the quote closes on the same line
+        const quoteCloses = this.findClosingQuote(firstLineContent, quote);
+        
+        if (quoteCloses === -1) {
+          // Multi-line quoted string - collect all lines until closing quote
+          const quotedLines = [firstLineContent];
+          let j = i + 1;
+          let foundClosing = false;
+          
+          while (j < lines.length && !foundClosing) {
+            const nextLine = lines[j];
+            quotedLines.push(nextLine);
+            
+            const closingPos = this.findClosingQuote(nextLine, quote);
+            if (closingPos !== -1) {
+              foundClosing = true;
+            }
+            j++;
+          }
+          
+          // Join the content and check for problematic patterns
+          const fullContent = quotedLines.join('\n');
+          
+          // Check if content has bold markdown with colons (problematic pattern)
+          if (fullContent.includes('**') && /\*\*[^*]+\*\*:\s/g.test(fullContent)) {
+            // Extract just the text content (remove quotes)
+            let extractedContent = fullContent;
+            
+            // Remove opening quote
+            if (extractedContent.startsWith(quote)) {
+              extractedContent = extractedContent.slice(1);
+            }
+            
+            // Find and remove closing quote
+            const lastQuotePos = extractedContent.lastIndexOf(quote);
+            if (lastQuotePos !== -1) {
+              extractedContent = extractedContent.slice(0, lastQuotePos);
+            }
+            
+            // Clean up the content
+            extractedContent = extractedContent
+              .replace(/\n\s+/g, '\n')  // Normalize indentation
+              .replace(/''/g, "'")       // Fix escaped single quotes
+              .trim();
+            
+            // Convert to block scalar
+            const contentLines = extractedContent.split('\n');
+            result.push(`${indent}${key}: |`);
+            contentLines.forEach(contentLine => {
+              result.push(`${indent}  ${contentLine}`);
+            });
+            
+            changesCount++;
+            i = j; // Skip past all the lines we just processed
+            continue;
+          }
+        }
+      }
+      
+      // If we didn't convert this line, just add it as-is
+      result.push(line);
+      i++;
+    }
+
+    if (changesCount > 0) {
+      this.fixesApplied.push(`Pre-processed ${changesCount} quoted string(s) with potential syntax issues`);
+    }
+
+    return result.join('\n');
+  }
+
+  /**
+   * Find the position of a closing quote, accounting for escaped quotes
+   */
+  private findClosingQuote(text: string, quote: string): number {
+    let i = 0;
+    while (i < text.length) {
+      if (text[i] === quote) {
+        // Check if it's escaped (preceded by another quote in YAML)
+        if (i + 1 < text.length && text[i + 1] === quote) {
+          i += 2; // Skip the escaped quote
+          continue;
+        }
+        return i; // Found unescaped closing quote
+      }
+      i++;
+    }
+    return -1; // No closing quote found
   }
 
   /**

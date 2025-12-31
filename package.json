@@ -170,6 +170,16 @@
         "command": "chapterwiseCodex.resetContext",
         "title": "Reset to Workspace Root",
         "icon": "$(home)"
+      },
+      {
+        "command": "chapterwiseCodex.navigateToEntityInCodeView",
+        "title": "Open in Code View",
+        "icon": "$(code)"
+      },
+      {
+        "command": "chapterwiseCodex.navigateToFieldInCodeView",
+        "title": "Open Field in Code View",
+        "icon": "$(code)"
       }
     ],
     "viewsContainers": {
@@ -311,6 +321,38 @@
           "command": "chapterwiseCodex.autofixFolder",
           "when": "view == chapterwiseCodexNavigator && viewItem == indexFolder",
           "group": "2_edit@3"
+        },
+        {
+          "command": "chapterwiseCodex.navigateToEntity",
+          "when": "view == chapterwiseCodexNavigator && viewItem == indexEntity",
+          "group": "navigation@1"
+        },
+        {
+          "command": "chapterwiseCodex.navigateToEntityInCodeView",
+          "when": "view == chapterwiseCodexNavigator && viewItem == indexEntity",
+          "group": "navigation@2"
+        },
+        {
+          "command": "chapterwiseCodex.navigateToField",
+          "when": "view == chapterwiseCodexNavigator && viewItem == indexField",
+          "group": "navigation@1"
+        },
+        {
+          "command": "chapterwiseCodex.navigateToFieldInCodeView",
+          "when": "view == chapterwiseCodexNavigator && viewItem == indexField",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/inline": [
+        {
+          "command": "chapterwiseCodex.navigateToEntityInCodeView",
+          "when": "view == chapterwiseCodexNavigator && viewItem == indexEntity",
+          "group": "inline"
+        },
+        {
+          "command": "chapterwiseCodex.navigateToFieldInCodeView",
+          "when": "view == chapterwiseCodexNavigator && viewItem == indexField",
+          "group": "inline"
         }
       ],
       "commandPalette": [

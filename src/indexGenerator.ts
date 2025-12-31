@@ -742,6 +742,15 @@ async function extractEntityChildren(
     for (const fieldName of fieldNames) {
       if (child[fieldName] !== undefined) {
         const fieldValue = child[fieldName];
+        
+        // Skip empty arrays for attributes and content
+        if (fieldName === 'attributes' && Array.isArray(fieldValue) && fieldValue.length === 0) {
+          continue;
+        }
+        if (fieldName === 'content' && Array.isArray(fieldValue) && fieldValue.length === 0) {
+          continue;
+        }
+        
         const fieldType = typeof fieldValue === 'string' ? 'string' : 
                          Array.isArray(fieldValue) ? 'array' : 'object';
         

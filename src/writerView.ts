@@ -1457,6 +1457,133 @@ export class WriterViewManager {
     ::-webkit-scrollbar-thumb:hover {
       background: var(--text-muted);
     }
+    
+    /* === OVERVIEW MODE STYLES === */
+    
+    /* Default: Hide editors based on body class */
+    body:not(.mode-prose) .editor-container {
+      display: none;
+    }
+    
+    body:not(.mode-structured) .structured-editor {
+      display: none;
+    }
+    
+    /* Prose mode: Show only prose editor */
+    body.mode-prose .editor-container {
+      display: flex;
+    }
+    
+    /* Structured mode: Show attributes OR content */
+    body.mode-structured .structured-editor.active {
+      display: block;
+    }
+    
+    /* === OVERVIEW MODE === */
+    /* Show all three sections in vertical stack with uniform width */
+    body.mode-overview .editor-container,
+    body.mode-overview .structured-editor {
+      display: block !important;
+      width: 100%;
+      max-width: 900px;
+      margin: 0 auto 2rem;
+      box-sizing: border-box;
+    }
+    
+    /* Make prose editor look like a card */
+    body.mode-overview .editor-container {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 1.5rem;
+      overflow: visible;
+    }
+    
+    /* Add section header to prose editor in overview mode */
+    body.mode-overview .editor-wrapper::before {
+      content: 'Summary';
+      display: block;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+      font-weight: 600;
+    }
+    
+    /* Make attributes/content look like cards with same width */
+    body.mode-overview .structured-editor {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      overflow: hidden;
+      padding: 0;
+    }
+    
+    /* Ensure structured editor containers don't override width */
+    body.mode-overview .structured-editor #attributesContainer,
+    body.mode-overview .structured-editor #contentContainer {
+      width: 100%;
+      box-sizing: border-box;
+    }
+    
+    /* Add headers to structured editors in overview mode */
+    body.mode-overview #attributesEditor .structured-header::before {
+      content: 'Attributes';
+    }
+    
+    body.mode-overview #contentEditor .structured-header::before {
+      content: 'Content Sections';
+    }
+    
+    body.mode-overview .structured-header {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    /* Make content sections collapsible in overview */
+    body.mode-overview .content-section {
+      margin-bottom: 0.5rem;
+    }
+    
+    body.mode-overview .content-section-header {
+      transition: background 0.15s ease;
+    }
+    
+    body.mode-overview .content-section-header:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+    
+    /* Adjust spacing in overview mode */
+    body.mode-overview .editor-wrapper {
+      max-width: 100%;
+    }
+    
+    body.mode-overview #editor {
+      min-height: 150px;
+    }
+    
+    /* Hide "Add" buttons in overview, show them in focused mode */
+    body.mode-overview .add-btn {
+      display: none;
+    }
+    
+    /* Hide empty attributes/content sections in overview mode */
+    body.mode-overview #attributesEditor:has(.empty-state) {
+      display: none !important;
+    }
+    
+    body.mode-overview #contentEditor:has(.empty-state) {
+      display: none !important;
+    }
   </style>
 </head>
 <body>
@@ -1468,6 +1595,17 @@ export class WriterViewManager {
           <select class="field-selector" id="fieldSelector">
             ${(() => {
               const options: string[] = [];
+              
+              // Check if entity has multiple fields to show overview option
+              const hasMultipleFields = node.availableFields.length > 1 || 
+                (node.attributes && node.attributes.length > 0) || 
+                (node.contentSections && node.contentSections.length > 0);
+              
+              // Add overview option for entities with multiple fields
+              if (hasMultipleFields) {
+                options.push(`<option value="__overview__" ${initialField === '__overview__' ? 'selected' : ''}>📋 Overview (All Fields)</option>`);
+                options.push('<option disabled>───────────</option>');
+              }
               
               // Add prose fields
               for (const f of node.availableFields) {
@@ -1568,7 +1706,7 @@ export class WriterViewManager {
     let originalContent = editor.innerText;
     let saveTimeout = null;
     let currentField = '${initialField}';
-    let currentEditorMode = '${initialField === '__attributes__' ? 'attributes' : initialField === '__content__' ? 'content' : 'prose'}';
+    let currentEditorMode = '${initialField === '__overview__' ? 'overview' : initialField === '__attributes__' ? 'attributes' : initialField === '__content__' ? 'content' : 'prose'}';
     
     // LOCAL STATE - these are modified instantly, only saved on Save button click
     let localAttributes = ${JSON.stringify(node.attributes || [])};
@@ -1766,9 +1904,21 @@ export class WriterViewManager {
     
     // Show/hide editors based on field type
     function showEditor(editorType) {
-      proseEditor.style.display = editorType === 'prose' ? 'flex' : 'none';
-      attributesEditor.classList.toggle('active', editorType === 'attributes');
-      contentEditor.classList.toggle('active', editorType === 'content');
+      // Remove all mode classes
+      document.body.classList.remove('mode-prose', 'mode-structured', 'mode-overview');
+      
+      // Add appropriate mode class
+      if (editorType === 'overview') {
+        document.body.classList.add('mode-overview');
+      } else if (editorType === 'attributes' || editorType === 'content') {
+        document.body.classList.add('mode-structured');
+        // Keep active class for structured editor selection
+        attributesEditor.classList.toggle('active', editorType === 'attributes');
+        contentEditor.classList.toggle('active', editorType === 'content');
+      } else {
+        // prose mode
+        document.body.classList.add('mode-prose');
+      }
     }
     
     // Handle field change
@@ -1782,7 +1932,14 @@ export class WriterViewManager {
       currentField = newField;
       
       // Determine which editor to show
-      if (newField === '__attributes__') {
+      if (newField === '__overview__') {
+        showEditor('overview');
+        currentEditorMode = 'overview';
+        // Overview mode shows all existing editors - no rendering needed
+        // Just ensure attributes and content are rendered
+        renderAttributesTable();
+        renderContentSections();
+      } else if (newField === '__attributes__') {
         showEditor('attributes');
         currentEditorMode = 'attributes';
         // Render from local state (no network call needed)
@@ -2130,7 +2287,11 @@ export class WriterViewManager {
     updateCounts();
     
     // Initialize with remembered field/editor mode
-    if (currentEditorMode === 'attributes') {
+    if (currentEditorMode === 'overview') {
+      showEditor('overview');
+      renderAttributesTable();
+      renderContentSections();
+    } else if (currentEditorMode === 'attributes') {
       showEditor('attributes');
       renderAttributesTable();
     } else if (currentEditorMode === 'content') {

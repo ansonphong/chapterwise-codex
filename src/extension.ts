@@ -594,7 +594,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
     )
   );
   
-  // Phase 3: Navigate to Entity command
+  // Phase 3: Navigate to Entity command (opens Writer View)
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'chapterwiseCodex.navigateToEntity',
@@ -627,7 +627,153 @@ function registerCommands(context: vscode.ExtensionContext): void {
           return;
         }
         
-        // Open file in editor
+        // Parse file to create CodexNode
+        const fileContent = fs.readFileSync(filePath, 'utf-8');
+        const codexDoc = parseCodex(fileContent);
+        
+        if (!codexDoc || !codexDoc.rootNode) {
+          vscode.window.showErrorMessage('Failed to parse codex file');
+          return;
+        }
+        
+        // Find the entity node in the parsed document
+        const entityNode = findNodeById(codexDoc.rootNode, entityId);
+        
+        if (!entityNode) {
+          vscode.window.showErrorMessage(`Entity ${entityId} not found in file`);
+          return;
+        }
+        
+        // Determine initial field based on entity structure
+        let initialField = 'body';  // default
+        
+        // Check if entity has multiple fields - if so, show overview
+        const hasChildren = entityNode.children && entityNode.children.length > 0;
+        const hasContentSections = entityNode.contentSections && entityNode.contentSections.length > 0;
+        const hasAttributes = entityNode.attributes && entityNode.attributes.length > 0;
+        const hasMultipleFields = hasChildren || hasContentSections || hasAttributes;
+        
+        if (hasMultipleFields) {
+          initialField = '__overview__';
+        }
+        
+        // Create document URI
+        const documentUri = vscode.Uri.file(filePath);
+        
+        // Open Writer View with determined field
+        await writerViewManager.openWriterViewForField(entityNode, documentUri, initialField);
+      }
+    )
+  );
+  
+  // Phase 3: Navigate to Field command (opens Writer View)
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'chapterwiseCodex.navigateToField',
+      async (treeItem?: IndexNodeTreeItem) => {
+        if (!treeItem) {
+          vscode.window.showErrorMessage('No field selected');
+          return;
+        }
+        
+        const node = treeItem.indexNode as any;
+        const parentFile = node._parent_file;
+        const parentEntity = node._parent_entity;
+        const fieldName = node._field_name;
+        
+        if (!parentFile || !fieldName) {
+          vscode.window.showErrorMessage('Cannot navigate: missing file or field name');
+          return;
+        }
+        
+        const workspaceRoot = treeProvider.getWorkspaceRoot();
+        if (!workspaceRoot) {
+          vscode.window.showErrorMessage('No workspace root found');
+          return;
+        }
+        
+        // Resolve file path
+        const filePath = path.join(workspaceRoot, parentFile);
+        
+        if (!fs.existsSync(filePath)) {
+          vscode.window.showErrorMessage(`File not found: ${parentFile}`);
+          return;
+        }
+        
+        // Parse file to create CodexNode
+        const fileContent = fs.readFileSync(filePath, 'utf-8');
+        const codexDoc = parseCodex(fileContent);
+        
+        if (!codexDoc || !codexDoc.rootNode) {
+          vscode.window.showErrorMessage('Failed to parse codex file');
+          return;
+        }
+        
+        // Find the parent entity node if specified
+        let targetNode: CodexNode | null = null;
+        
+        if (parentEntity) {
+          targetNode = findNodeById(codexDoc.rootNode, parentEntity);
+          if (!targetNode) {
+            vscode.window.showErrorMessage(`Parent entity ${parentEntity} not found in file`);
+            return;
+          }
+        } else {
+          // If no parent entity, use root node
+          targetNode = codexDoc.rootNode;
+        }
+        
+        // Create document URI
+        const documentUri = vscode.Uri.file(filePath);
+        
+        // Map field names to Writer View's special field identifiers
+        let writerViewFieldName = fieldName;
+        if (fieldName === 'attributes') {
+          writerViewFieldName = '__attributes__';
+        } else if (fieldName === 'content') {
+          writerViewFieldName = '__content__';
+        }
+        
+        // Open Writer View with specific field selected
+        await writerViewManager.openWriterViewForField(targetNode, documentUri, writerViewFieldName);
+      }
+    )
+  );
+  
+  // Navigate to Entity in Code View (alternative to Writer View)
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'chapterwiseCodex.navigateToEntityInCodeView',
+      async (treeItem?: IndexNodeTreeItem) => {
+        if (!treeItem) {
+          vscode.window.showErrorMessage('No entity selected');
+          return;
+        }
+        
+        const node = treeItem.indexNode as any;
+        const parentFile = node._parent_file;
+        const entityId = node.id;
+        
+        if (!parentFile || !entityId) {
+          vscode.window.showErrorMessage('Cannot navigate: missing file or entity ID');
+          return;
+        }
+        
+        const workspaceRoot = treeProvider.getWorkspaceRoot();
+        if (!workspaceRoot) {
+          vscode.window.showErrorMessage('No workspace root found');
+          return;
+        }
+        
+        // Resolve file path
+        const filePath = path.join(workspaceRoot, parentFile);
+        
+        if (!fs.existsSync(filePath)) {
+          vscode.window.showErrorMessage(`File not found: ${parentFile}`);
+          return;
+        }
+        
+        // Open file in text editor
         const doc = await vscode.workspace.openTextDocument(filePath);
         const editor = await vscode.window.showTextDocument(doc);
         
@@ -671,10 +817,10 @@ function registerCommands(context: vscode.ExtensionContext): void {
     )
   );
   
-  // Phase 3: Navigate to Field command
+  // Navigate to Field in Code View (alternative to Writer View)
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      'chapterwiseCodex.navigateToField',
+      'chapterwiseCodex.navigateToFieldInCodeView',
       async (treeItem?: IndexNodeTreeItem) => {
         if (!treeItem) {
           vscode.window.showErrorMessage('No field selected');
@@ -705,7 +851,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
           return;
         }
         
-        // Open file in editor
+        // Open file in text editor
         const doc = await vscode.workspace.openTextDocument(filePath);
         const editor = await vscode.window.showTextDocument(doc);
         
@@ -1481,6 +1627,28 @@ function updateStatusBar(): void {
   } else {
     statusBarItem?.hide();
   }
+}
+
+// ============================================================================
+// Navigation Helper Functions
+// ============================================================================
+
+/**
+ * Recursively find a node by ID in the codex tree
+ */
+function findNodeById(node: CodexNode, targetId: string): CodexNode | null {
+  if (node.id === targetId) {
+    return node;
+  }
+  
+  if (node.children) {
+    for (const child of node.children) {
+      const found = findNodeById(child, targetId);
+      if (found) return found;
+    }
+  }
+  
+  return null;
 }
 
 // ============================================================================
