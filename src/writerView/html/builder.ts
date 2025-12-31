@@ -153,16 +153,21 @@ function buildFieldSelectorOptions(node: CodexNode, initialField: string): strin
   // Add prose fields
   for (const f of node.availableFields) {
     if (!f.startsWith('__')) {
-      options.push(`<option value="${f}" ${f === initialField ? 'selected' : ''}>${f}</option>`);
+      // Add emojis for common field types
+      let emoji = '';
+      if (f === 'summary') emoji = '📋 ';
+      else if (f === 'body') emoji = '📄 ';
+      
+      options.push(`<option value="${f}" ${f === initialField ? 'selected' : ''}>${emoji}${f}</option>`);
     }
   }
   
   // Add "new" prose fields if not present
   if (!node.availableFields.includes('body')) {
-    options.push(`<option value="body" ${initialField === 'body' ? 'selected' : ''}>body (new)</option>`);
+    options.push(`<option value="body" ${initialField === 'body' ? 'selected' : ''}>📄 body (new)</option>`);
   }
   if (!node.availableFields.includes('summary')) {
-    options.push(`<option value="summary" ${initialField === 'summary' ? 'selected' : ''}>summary (new)</option>`);
+    options.push(`<option value="summary" ${initialField === 'summary' ? 'selected' : ''}>📋 summary (new)</option>`);
   }
   
   // Add separator and special fields if present (check actual node properties, not availableFields)
