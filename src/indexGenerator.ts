@@ -41,6 +41,13 @@ export interface IndexPatterns {
   exclude: string[];
 }
 
+export interface TypeDefinition {
+  type: string;
+  emoji?: string;
+  color?: string;
+  description?: string;
+}
+
 /**
  * Progress reporting interface for index generation
  */
@@ -176,16 +183,20 @@ export async function generateIndex(
 
   // Step 4: Build hierarchy
   progressReporter?.report('Building hierarchy...', 20);
-  const children = await buildHierarchy(files, workspaceRoot);
+  const { children, detectedTypes } = await buildHierarchy(files, workspaceRoot);
 
-  // Step 5: Apply type styles
+  // Step 5: Merge detected types with existing types from index
+  const existingTypes = indexDef?.types || [];
+  const mergedTypes = mergeTypes(existingTypes, Array.from(detectedTypes), indexDef?.typeStyles);
+
+  // Step 6: Apply type styles
   if (indexDef?.typeStyles) {
     applyTypeStyles(children, indexDef.typeStyles);
   }
 
   progressReporter?.report('Writing index file...', 15);
 
-  // Step 6: Build complete index
+  // Step 7: Build complete index
   const indexData = {
       metadata: {
         formatVersion: '3.0', // Phase 2: Bumped for entity + field extraction
@@ -201,11 +212,12 @@ export async function generateIndex(
     attributes: indexDef?.attributes,
       patterns,
     typeStyles: indexDef?.typeStyles,
+    types: mergedTypes,  // NEW: Add types array
     status: indexDef?.status || 'private',
       children,
     };
 
-  // Step 7: Write .index.codex.yaml
+  // Step 8: Write .index.codex.yaml
   const outputPath = path.join(workspaceRoot, '.index.codex.yaml');
   fs.writeFileSync(outputPath, YAML.stringify(indexData), 'utf-8');
 
@@ -269,15 +281,17 @@ function shouldInclude(fileName: string, includePatterns: string[]): boolean {
   return includePatterns.some((pattern) => minimatch(fileName, pattern));
   }
 
-  /**
+/**
  * Build hierarchical children structure from file list
  * NEW: Supports per-folder .index.codex.yaml merging
+ * Returns children array and detected types
  */
 async function buildHierarchy(
-    files: string[],
+  files: string[],
   root: string
-): Promise<any[]> {
+): Promise<{ children: any[], detectedTypes: Set<string> }> {
   const tree = new Map<string, any>();
+  const detectedTypes = new Set<string>();
 
   for (const file of files) {
     const relative = path.relative(root, file);
@@ -305,6 +319,9 @@ async function buildHierarchy(
     // Add file
     const fileName = parts[parts.length - 1];
     const fileNode = await createFileNode(file, fileName, root);
+    
+    // Collect types from file
+    collectTypes(fileNode, detectedTypes);
 
     if (currentPath) {
       const folder = tree.get(currentPath);
@@ -350,7 +367,60 @@ async function buildHierarchy(
   // Sort children by order then name (after merging)
   sortChildrenRecursive(result);
 
-  return result;
+  return { children: result, detectedTypes };
+}
+
+/**
+ * Recursively collect all entity types from a node tree
+ */
+function collectTypes(node: any, types: Set<string>): void {
+  if (node.type && node.type !== 'folder' && node.type !== 'document' && node.type !== 'index') {
+    types.add(node.type);
+  }
+  
+  if (node.children && Array.isArray(node.children)) {
+    node.children.forEach((child: any) => collectTypes(child, types));
+  }
+}
+
+/**
+ * Merge detected types with existing types from index, applying typeStyles
+ */
+function mergeTypes(
+  existingTypes: TypeDefinition[],
+  detectedTypes: string[],
+  typeStyles: any[]
+): TypeDefinition[] {
+  const typeMap = new Map<string, TypeDefinition>();
+  
+  // Add existing types (preserve manually defined ones)
+  existingTypes.forEach(t => {
+    typeMap.set(t.type, t);
+  });
+  
+  // Add detected types (only if not already defined)
+  detectedTypes.forEach(type => {
+    if (!typeMap.has(type)) {
+      // Check if there's a typeStyle for this type
+      const style = typeStyles?.find(s => s.type === type);
+      
+      typeMap.set(type, {
+        type,
+        emoji: style?.emoji,
+        color: style?.color,
+        description: `Auto-detected ${type}`,
+      });
+    }
+  });
+  
+  // Sort: manually defined first, then detected alphabetically
+  const manual = existingTypes.filter(t => typeMap.has(t.type));
+  const detected = detectedTypes
+    .filter(t => !existingTypes.some(e => e.type === t))
+    .sort()
+    .map(t => typeMap.get(t)!);
+  
+  return [...manual, ...detected];
 }
 
 /**

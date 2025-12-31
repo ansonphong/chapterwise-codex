@@ -15,6 +15,7 @@ import {
   setMarkdownNodeProse,
   setMarkdownFrontmatterField,
   setNodeName,
+  setNodeType,
   getNodeProse,
   setNodeAttributes,
   setNodeContentSections,
@@ -289,6 +290,7 @@ export class WriterViewManager {
     
     // Track current field for this panel
     let currentField = initialField;
+    let currentType = node.type;
     let currentAttributes: CodexAttribute[] = node.attributes || [];
     let currentContentSections: CodexContentSection[] = node.contentSections || [];
     
@@ -304,13 +306,19 @@ export class WriterViewManager {
         switch (message.type) {
           case 'save':
             const fieldToSave = message.field || currentField;
-            await this.handleSave(documentUri, node, message.text, fieldToSave);
+            const typeToSave = message.newType || currentType;
+            await this.handleSave(documentUri, node, message.text, fieldToSave, typeToSave);
             
             // Update stored stats
             const saveStats = calculateStats(message.text, node.name, fieldToSave);
             this.updateStatsForPanel(panelKey, panel, saveStats);
             
             panel.webview.postMessage({ type: 'saved' });
+            break;
+          
+          case 'typeChanged':
+            // Store the new type value (will be saved with next save)
+            currentType = message.newType;
             break;
           
           case 'contentChanged':
@@ -542,6 +550,7 @@ export class WriterViewManager {
     
     // Track current field for this panel
     let currentField = targetField;
+    let currentType = node.type;
     let currentAttributes: CodexAttribute[] = node.attributes || [];
     let currentContentSections: CodexContentSection[] = node.contentSections || [];
     
@@ -557,13 +566,19 @@ export class WriterViewManager {
         switch (message.type) {
           case 'save':
             const fieldToSave = message.field || currentField;
-            await this.handleSave(documentUri, node, message.text, fieldToSave);
+            const typeToSave = message.newType || currentType;
+            await this.handleSave(documentUri, node, message.text, fieldToSave, typeToSave);
             
             // Update stored stats
             const saveStats = calculateStats(message.text, node.name, fieldToSave);
             this.updateStatsForPanel(panelKey, panel, saveStats);
             
             panel.webview.postMessage({ type: 'saved' });
+            break;
+          
+          case 'typeChanged':
+            // Store the new type value (will be saved with next save)
+            currentType = message.newType;
             break;
           
           case 'contentChanged':
@@ -694,7 +709,8 @@ export class WriterViewManager {
     documentUri: vscode.Uri,
     node: CodexNode,
     newText: string,
-    field?: string
+    field?: string,
+    newType?: string
   ): Promise<void> {
     try {
       const document = await vscode.workspace.openTextDocument(documentUri);
@@ -730,6 +746,15 @@ export class WriterViewManager {
         
         // Generate new document text
         newDocText = setNodeProse(codexDoc, node, newText, field);
+      }
+      
+      // Update type if changed
+      if (newType && newType !== node.type) {
+        const codexDocWithType = parseCodex(newDocText);
+        if (codexDocWithType) {
+          newDocText = setNodeType(codexDocWithType, node, newType);
+          node.type = newType; // Update in-memory
+        }
       }
       
       // Apply the edit

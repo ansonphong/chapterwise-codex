@@ -794,6 +794,44 @@ export function setNodeName(
 }
 
 /**
+ * Set the type field for a specific node
+ */
+export function setNodeType(
+  codexDoc: CodexDocument,
+  node: CodexNode,
+  newType: string
+): string {
+  const trimmedType = newType.trim();
+  if (!trimmedType) {
+    return codexDoc.rawText;
+  }
+  
+  try {
+    if (codexDoc.isJson) {
+      const obj = JSON.parse(codexDoc.rawText);
+      let current = obj;
+      
+      for (const segment of node.path) {
+        current = current[segment];
+      }
+      
+      if (current && typeof current === 'object') {
+        current['type'] = trimmedType;
+      }
+      
+      return JSON.stringify(obj, null, 2);
+    } else {
+      const doc = YAML.parseDocument(codexDoc.rawText);
+      const pathKeys = [...node.path.map(p => typeof p === 'number' ? p : String(p)), 'type'];
+      doc.setIn(pathKeys, trimmedType);
+      return doc.toString();
+    }
+  } catch {
+    return codexDoc.rawText;
+  }
+}
+
+/**
  * Get the attributes array for a specific node
  */
 export function getNodeAttributes(codexDoc: CodexDocument, node: CodexNode): CodexAttribute[] {

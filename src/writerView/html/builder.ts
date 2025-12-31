@@ -18,13 +18,21 @@ export interface WebviewHtmlOptions {
   themeSetting: 'light' | 'dark' | 'system' | 'theme';
   vscodeThemeKind: 'light' | 'dark';
   author?: string;
+  indexTypes?: TypeDefinition[];
+}
+
+export interface TypeDefinition {
+  type: string;
+  emoji?: string;
+  color?: string;
+  description?: string;
 }
 
 /**
  * Build the complete HTML for the Writer View webview
  */
 export function buildWebviewHtml(options: WebviewHtmlOptions): string {
-  const { webview, node, prose, initialField, themeSetting, vscodeThemeKind, author } = options;
+  const { webview, node, prose, initialField, themeSetting, vscodeThemeKind, author, indexTypes } = options;
   
   const nonce = getNonce();
   const escapedProse = escapeHtml(prose);
@@ -32,6 +40,9 @@ export function buildWebviewHtml(options: WebviewHtmlOptions): string {
   
   // Build field selector options
   const fieldOptions = buildFieldSelectorOptions(node, initialField);
+  
+  // Build type selector options
+  const typeOptions = buildTypeSelectorOptions(node, indexTypes || []);
   
   return /* html */ `<!DOCTYPE html>
 <html lang="en" data-theme-setting="${themeSetting}" data-vscode-theme="${vscodeThemeKind}">
@@ -47,20 +58,18 @@ ${getWriterViewStyles()}
 <body>
   <div class="header">
     <div class="header-left">
-      <div class="node-info">
-        <div class="node-type-row">
-          <span class="node-type">${escapeHtml(node.type)}</span>
-          <select class="field-selector" id="fieldSelector">
-            ${fieldOptions}
-          </select>
-        </div>
-        <div class="node-name-container">
-          <span class="node-name editable" id="nodeName" tabindex="0" title="Click to edit title">${escapeHtml(node.name)}</span>
-          <div class="node-name-edit" id="nodeNameEdit" contenteditable="false" aria-label="Edit title"></div>
-        </div>
+      <div class="node-name-container">
+        <span class="node-name editable" id="nodeName" tabindex="0" title="Click to edit title">${escapeHtml(node.name)}</span>
+        <div class="node-name-edit" id="nodeNameEdit" contenteditable="false" aria-label="Edit title"></div>
       </div>
+      <select class="field-selector" id="fieldSelector">
+        ${fieldOptions}
+      </select>
     </div>
     <div class="header-right">
+      <select class="type-selector" id="typeSelector" title="Change entity type">
+        ${typeOptions}
+      </select>
       <button class="save-btn" id="saveBtn" title="Save (Ctrl+S)">
         <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
           <path d="M27.71,9.29l-5-5A1,1,0,0,0,22,4H6A2,2,0,0,0,4,6V26a2,2,0,0,0,2,2H26a2,2,0,0,0,2-2V10A1,1,0,0,0,27.71,9.29ZM12,6h8v4H12Zm8,20H12V18h8Zm2,0V18a2,2,0,0,0-2-2H12a2,2,0,0,0-2,2v8H6V6h4v4a2,2,0,0,0,2,2h8a2,2,0,0,0,2-2V6.41l4,4V26Z"/>
@@ -97,7 +106,7 @@ ${getWriterViewStyles()}
   <!-- Content Sections Editor -->
   <div class="structured-editor" id="contentEditor">
     <div class="structured-header">
-      <span class="structured-title overview-section-header-inline" data-field="__content__">Content Sections</span>
+      <span class="structured-title overview-section-header-inline" data-field="__content__">Content</span>
       <div class="header-buttons">
         <button class="toggle-all-btn" id="toggleAllContentBtn">Expand All ▼</button>
         <button class="add-btn" id="addContentBtn">+ Add Section</button>
@@ -170,6 +179,45 @@ function buildFieldSelectorOptions(node: CodexNode, initialField: string): strin
     if (node.hasContentSections && node.contentSections && node.contentSections.length > 0) {
       options.push(`<option value="__content__" ${initialField === '__content__' ? 'selected' : ''}>📝 content sections (${node.contentSections.length})</option>`);
     }
+  }
+  
+  return options.join('');
+}
+
+/**
+ * Build the type selector dropdown options
+ */
+function buildTypeSelectorOptions(node: CodexNode, indexTypes: TypeDefinition[]): string {
+  const options: string[] = [];
+  
+  // Standard types
+  const standardTypes = [
+    { type: 'book', emoji: '📚' },
+    { type: 'chapter', emoji: '📖' },
+    { type: 'act', emoji: '🎭' },
+    { type: 'scene', emoji: '🎬' },
+    { type: 'beat', emoji: '🎵' },
+    { type: 'character', emoji: '👤' },
+    { type: 'concept', emoji: '💡' }
+  ];
+  
+  // Add standard types
+  standardTypes.forEach(({ type, emoji }) => {
+    const selected = node.type === type ? 'selected' : '';
+    options.push(`<option value="${escapeHtml(type)}" ${selected}>${emoji} ${escapeHtml(type)}</option>`);
+  });
+  
+  // Add separator if custom types exist
+  if (indexTypes.length > 0) {
+    options.push('<option disabled>───────────</option>');
+    
+    // Add custom types from index
+    indexTypes.forEach(({ type, emoji, description }) => {
+      const selected = node.type === type ? 'selected' : '';
+      const label = emoji ? `${emoji} ${escapeHtml(type)}` : escapeHtml(type);
+      const title = description ? `title="${escapeHtml(description)}"` : '';
+      options.push(`<option value="${escapeHtml(type)}" ${selected} ${title}>${label}</option>`);
+    });
   }
   
   return options.join('');

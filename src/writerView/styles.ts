@@ -174,6 +174,36 @@ export function getWriterViewStyles(): string {
       color: var(--text-primary);
     }
     
+    .type-selector {
+      font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      background: transparent;
+      border: 1px solid var(--border-color);
+      padding: 0.375rem 0.75rem;
+      border-radius: 4px;
+      cursor: pointer;
+      outline: none;
+      transition: all 0.15s ease;
+      margin-right: 0.5rem;
+      min-width: 120px;
+    }
+    
+    .type-selector:hover {
+      border-color: var(--text-secondary);
+      color: var(--text-primary);
+    }
+    
+    .type-selector:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+    }
+    
+    .type-selector option {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+    }
+    
     .node-name {
       font-size: 1rem;
       font-weight: 600;
@@ -692,7 +722,7 @@ export function getWriterViewStyles(): string {
     .header-right {
       display: flex;
       align-items: center;
-      gap: 1rem;
+      gap: 0.75rem; /* Increased gap for type selector */
     }
     
     .save-btn {

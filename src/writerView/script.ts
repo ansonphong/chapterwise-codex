@@ -10,6 +10,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     const editor = document.getElementById('editor');
     const saveBtn = document.getElementById('saveBtn');
     const fieldSelector = document.getElementById('fieldSelector');
+    const typeSelector = document.getElementById('typeSelector');
     const nodeNameDisplay = document.getElementById('nodeName');
     const nodeNameEdit = document.getElementById('nodeNameEdit');
     
@@ -17,6 +18,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     let originalContent = editor.innerText;
     let saveTimeout = null;
     let currentField = '${initialField}';
+    let currentType = '${node.type}';
     let currentEditorMode = '${initialField === '__overview__' ? 'overview' : initialField === '__attributes__' ? 'attributes' : initialField === '__content__' ? 'content' : 'prose'}';
     
     // LOCAL STATE - these are modified instantly, only saved on Save button click
@@ -183,7 +185,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
         vscode.postMessage({
           type: 'save',
           text: editor.innerText,
-          field: currentField
+          field: currentField,
+          newType: currentType
         });
       }
       
@@ -265,6 +268,23 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
           field: newField
         });
       }
+    });
+    
+    // Handle type change
+    typeSelector.addEventListener('change', (e) => {
+      const newType = e.target.value;
+      
+      // Update current type
+      currentType = newType;
+      
+      // Mark as dirty (doesn't save immediately)
+      markDirty();
+      
+      // Post message to extension to track type change
+      vscode.postMessage({
+        type: 'typeChanged',
+        newType: newType
+      });
     });
     
     // Attributes Editor Handlers - LOCAL STATE ONLY (fast!)
