@@ -95,7 +95,10 @@ ${getWriterViewStyles()}
   <div class="structured-editor" id="contentEditor">
     <div class="structured-header">
       <span class="structured-title">Content Sections</span>
-      <button class="add-btn" id="addContentBtn">+ Add Section</button>
+      <div class="header-buttons">
+        <button class="toggle-all-btn" id="toggleAllContentBtn">Expand All ▼</button>
+        <button class="add-btn" id="addContentBtn">+ Add Section</button>
+      </div>
     </div>
     <div id="contentContainer">
       ${renderContentSections(node.contentSections || [])}

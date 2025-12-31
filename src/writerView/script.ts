@@ -510,6 +510,42 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     // Content Sections Editor Handlers - LOCAL STATE ONLY (fast!)
     const addContentBtn = document.getElementById('addContentBtn');
     const contentContainer = document.getElementById('contentContainer');
+    const toggleAllContentBtn = document.getElementById('toggleAllContentBtn');
+    
+    // Auto-resize textarea to fit content
+    function autoResizeTextarea(textarea) {
+      if (!textarea) return;
+      // Reset height to recalculate
+      textarea.style.height = 'auto';
+      // Set to scrollHeight (content height) with minimum of 100px
+      textarea.style.height = Math.max(100, textarea.scrollHeight) + 'px';
+    }
+    
+    // Resize all visible textareas
+    function resizeAllTextareas() {
+      const textareas = contentContainer.querySelectorAll('.content-textarea');
+      textareas.forEach(textarea => autoResizeTextarea(textarea));
+    }
+    
+    // Update toggle all button state
+    function updateToggleAllButton() {
+      if (!toggleAllContentBtn) return;
+      const sections = contentContainer.querySelectorAll('.content-section');
+      if (sections.length === 0) {
+        toggleAllContentBtn.style.display = 'none';
+        return;
+      }
+      toggleAllContentBtn.style.display = '';
+      
+      const expandedSections = contentContainer.querySelectorAll('.content-section.expanded');
+      const allExpanded = expandedSections.length === sections.length;
+      
+      if (allExpanded) {
+        toggleAllContentBtn.textContent = 'Collapse All ▲';
+      } else {
+        toggleAllContentBtn.textContent = 'Expand All ▼';
+      }
+    }
     
     // Re-render content sections from local state
     function renderContentSections() {
@@ -521,6 +557,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
             <p style="font-size: 0.8rem;">Click "+ Add Section" to create one</p>
           </div>
         \`;
+        updateToggleAllButton();
         return;
       }
       
@@ -546,6 +583,14 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
           </div>
         </div>
       \`).join('');
+      
+      // Auto-resize all textareas after rendering
+      setTimeout(() => {
+        resizeAllTextareas();
+      }, 0);
+      
+      // Update toggle all button state
+      updateToggleAllButton();
     }
     
     addContentBtn.addEventListener('click', () => {
@@ -555,8 +600,37 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       renderContentSections();
       // Expand the new section
       const newSection = contentContainer.querySelector('.content-section:last-child');
-      if (newSection) newSection.classList.add('expanded');
+      if (newSection) {
+        newSection.classList.add('expanded');
+        updateToggleAllButton();
+      }
     });
+    
+    // Toggle all sections expand/collapse
+    if (toggleAllContentBtn) {
+      toggleAllContentBtn.addEventListener('click', () => {
+        const sections = contentContainer.querySelectorAll('.content-section');
+        const expandedSections = contentContainer.querySelectorAll('.content-section.expanded');
+        const allExpanded = expandedSections.length === sections.length;
+        
+        sections.forEach(section => {
+          if (allExpanded) {
+            section.classList.remove('expanded');
+          } else {
+            section.classList.add('expanded');
+          }
+        });
+        
+        // Resize textareas when expanding
+        if (!allExpanded) {
+          setTimeout(() => {
+            resizeAllTextareas();
+          }, 0);
+        }
+        
+        updateToggleAllButton();
+      });
+    }
     
     // Track editing state for content sections
     const editingState = new Map(); // sectionIndex -> { field: 'name'|'key', isEditing: bool, isSubmitting: bool }
@@ -714,7 +788,19 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       const header = e.target.closest('.content-section-header');
       if (header) {
         const section = header.closest('.content-section');
+        const wasExpanded = section.classList.contains('expanded');
         section.classList.toggle('expanded');
+        
+        // Update button state after toggle
+        updateToggleAllButton();
+        
+        // Resize textarea when expanding
+        if (!wasExpanded) {
+          const textarea = section.querySelector('.content-textarea');
+          setTimeout(() => {
+            autoResizeTextarea(textarea);
+          }, 0);
+        }
       }
     });
     
@@ -723,6 +809,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
         const index = parseInt(e.target.dataset.index);
         localContentSections[index].value = e.target.value;
         markContentSectionsDirty();
+        // Auto-resize as user types
+        autoResizeTextarea(e.target);
       }
     });
     

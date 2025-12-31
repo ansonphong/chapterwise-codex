@@ -241,6 +241,12 @@ export function getWriterViewStyles(): string {
       border-bottom: 1px solid var(--border-color);
     }
     
+    .header-buttons {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    
     .structured-title {
       font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
       font-size: 0.75rem;
@@ -263,6 +269,24 @@ export function getWriterViewStyles(): string {
     .add-btn:hover {
       background: rgba(88, 166, 255, 0.2);
       border-color: var(--accent);
+    }
+    
+    .toggle-all-btn {
+      background: rgba(88, 166, 255, 0.05);
+      color: var(--text-secondary);
+      border: 1px solid var(--border-color);
+      padding: 0.375rem 0.75rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    }
+    
+    .toggle-all-btn:hover {
+      background: rgba(88, 166, 255, 0.1);
+      border-color: var(--text-secondary);
+      color: var(--text-primary);
     }
     
     /* Attributes Table */
@@ -646,7 +670,7 @@ export function getWriterViewStyles(): string {
     
     .content-textarea {
       width: 100%;
-      min-height: 200px;
+      min-height: 100px;
       background: var(--bg-primary);
       border: 1px solid var(--border-color);
       color: var(--text-primary);
@@ -657,6 +681,7 @@ export function getWriterViewStyles(): string {
       line-height: 1.6;
       resize: vertical;
       box-sizing: border-box;
+      overflow-y: hidden;
     }
     
     .content-textarea:focus {
