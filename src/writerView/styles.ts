@@ -700,12 +700,6 @@ export function getWriterViewStyles(): string {
       gap: 1rem;
     }
     
-    .word-count {
-      font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
-      font-size: 0.75rem;
-      color: var(--text-muted);
-    }
-    
     .save-btn {
       width: 32px;
       height: 32px;

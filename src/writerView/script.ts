@@ -9,7 +9,6 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     const vscode = acquireVsCodeApi();
     const editor = document.getElementById('editor');
     const saveBtn = document.getElementById('saveBtn');
-    const wordCountEl = document.getElementById('wordCount');
     const charCountEl = document.getElementById('charCount');
     const fieldSelector = document.getElementById('fieldSelector');
     const nodeNameDisplay = document.getElementById('nodeName');
@@ -46,12 +45,10 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       updateSystemThemeAttribute();
     });
     
-    // Update word count
+    // Update character count
     function updateCounts() {
       const text = editor.innerText;
-      const words = text.trim() ? text.trim().split(/\\s+/).length : 0;
       const chars = text.length;
-      wordCountEl.textContent = words + ' words';
       charCountEl.textContent = chars + ' chars';
     }
     
