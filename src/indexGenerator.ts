@@ -83,6 +83,36 @@ function resetAutoFixerPreference(): void {
 }
 
 /**
+ * Scan all codex files and collect those needing auto-fixing
+ * Returns list of file paths with missing IDs
+ */
+async function scanForMissingIds(
+  workspaceRoot: string,
+  files: string[]
+): Promise<string[]> {
+  const filesNeedingFix: string[] = [];
+  
+  for (const file of files) {
+    if (!file.endsWith('.codex.yaml') && !file.endsWith('.codex.json')) {
+      continue;
+    }
+    
+    try {
+      const content = fs.readFileSync(file, 'utf-8');
+      const data = YAML.parse(content);
+      
+      if (hasMissingIds(data)) {
+        filesNeedingFix.push(file);
+      }
+    } catch (error) {
+      // Skip files that can't be parsed
+    }
+  }
+  
+  return filesNeedingFix;
+}
+
+/**
  * Generate complete index from workspace scan
  */
 export async function generateIndex(
@@ -109,7 +139,40 @@ export async function generateIndex(
   progressReporter?.report('Scanning workspace...', 20);
   const files = await scanWorkspace(workspaceRoot, patterns);
 
-  progressReporter?.report(`Found ${files.length} files...`, 30);
+  progressReporter?.report(`Found ${files.length} files...`, 15);
+
+  // Step 3.5: Pre-scan for files needing auto-fixing
+  progressReporter?.report(`Checking for missing IDs...`, 5);
+  const filesNeedingFix = await scanForMissingIds(workspaceRoot, files);
+
+  if (filesNeedingFix.length > 0) {
+    log(`Found ${filesNeedingFix.length} files with missing IDs`);
+    
+    // Show ONE prompt with total count
+    const choice = await vscode.window.showWarningMessage(
+      `Found ${filesNeedingFix.length} files with missing IDs. Run auto-fixer on all?`,
+      'Yes, Fix All',
+      'No, Skip',
+      'Always (remember for session)',
+      'Never (remember for session)'
+    );
+    
+    if (choice === 'Always (remember for session)') {
+      setAutoFixerPreference('always');
+      log(`Auto-fixer set to: always`);
+    } else if (choice === 'Never (remember for session)') {
+      setAutoFixerPreference('never');
+      log(`Auto-fixer set to: never`);
+    } else if (choice === 'Yes, Fix All') {
+      setAutoFixerPreference('always'); // Just for this run
+      log(`Auto-fixer set to: always (this run only)`);
+    } else {
+      setAutoFixerPreference('never'); // Skip for this run
+      log(`Auto-fixer set to: never (this run only)`);
+    }
+  } else {
+    log(`No files need auto-fixing`);
+  }
 
   // Step 4: Build hierarchy
   progressReporter?.report('Building hierarchy...', 20);
@@ -450,7 +513,7 @@ function hasMissingIds(data: any): boolean {
 
 /**
  * Load and parse codex file with auto-fixer integration
- * If file has missing IDs, prompts user and runs auto-fixer
+ * Uses preference set by batch prompt (no individual prompts)
  */
 async function loadAndParseCodexFile(
   filePath: string,
@@ -463,13 +526,11 @@ async function loadAndParseCodexFile(
   if (hasMissingIds(data)) {
     const currentPref = getAutoFixerPreference();
     
-    // If user said "never", skip
-    if (currentPref === 'never') {
-      return data;
-    }
-    
-    // If user said "always", auto-fix without prompt
+    // If preference is set to "always", auto-fix silently
     if (currentPref === 'always') {
+      const relativePath = path.relative(workspaceRoot, filePath);
+      log(`  Auto-fixing: ${relativePath}`);
+      
       const { CodexAutoFixer } = await import('./autoFixer');
       const fixer = new CodexAutoFixer();
       const fixed = fixer.autoFixCodex(data);
@@ -479,32 +540,7 @@ async function loadAndParseCodexFile(
       return fixed;
     }
     
-    // Otherwise, prompt user (first time or "yes"/"no" per file)
-    const relativePath = path.relative(workspaceRoot, filePath);
-    const choice = await vscode.window.showWarningMessage(
-      `File has missing IDs: ${relativePath}\nRun auto-fixer?`,
-      'Yes',
-      'No',
-      'Always',
-      'Never'
-    );
-    
-    if (choice === 'Always') {
-      setAutoFixerPreference('always');
-    } else if (choice === 'Never') {
-      setAutoFixerPreference('never');
-      return data;
-    }
-    
-    if (choice === 'Yes' || choice === 'Always') {
-      const { CodexAutoFixer } = await import('./autoFixer');
-      const fixer = new CodexAutoFixer();
-      const fixed = fixer.autoFixCodex(data);
-      
-      // Save fixed file
-      fs.writeFileSync(filePath, YAML.stringify(fixed), 'utf-8');
-      return fixed;
-    }
+    // Otherwise skip (user said "never" or "no" in batch prompt)
   }
   
   return data;
@@ -1012,6 +1048,13 @@ export async function generatePerFolderIndex(
   // Scan immediate children only (no recursion)
   const entries = fs.readdirSync(fullFolderPath, { withFileTypes: true });
   const children: any[] = [];
+  
+  // Count total files for progress reporting
+  const totalFiles = entries.filter(e => 
+    !e.name.startsWith('.') && 
+    e.name !== '.index.codex.yaml'
+  ).length;
+  let processedFiles = 0;
 
   for (const entry of entries) {
     if (entry.name === '.index.codex.yaml' || entry.name.startsWith('.')) {
@@ -1023,8 +1066,11 @@ export async function generatePerFolderIndex(
       throw new Error('Index generation cancelled by user');
     }
 
-    // Report progress for this file
-    progress?.report(`  → ${entry.name}`, 0);
+    processedFiles++;
+    
+    // Report progress for this file with count
+    const folderName = path.basename(folderPath || 'root');
+    progress?.report(`[${folderName}] ${entry.name} (${processedFiles}/${totalFiles})`, 0);
 
     const childPath = path.join(fullFolderPath, entry.name);
 
