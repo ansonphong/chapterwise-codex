@@ -1096,19 +1096,20 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
    * Get children for index mode
    */
   private getIndexChildren(element?: CodexTreeItemType): CodexTreeItemType[] {
-    if (!this.indexDoc || !this.activeDocument) {
+    if (!this.indexDoc) {
       return [];
     }
     
-    // Get workspace root from the active document itself
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(this.activeDocument.uri);
-    if (!workspaceFolder) {
-      console.log('[ChapterWise Codex] getIndexChildren: No workspace folder');
+    // Use workspaceRoot that was set in setContextFolder (no need for activeDocument)
+    if (!this.workspaceRoot || !this.contextFolder) {
+      log('[TreeProvider] getIndexChildren: Missing workspaceRoot or contextFolder');
       return [];
     }
-    const workspaceRoot = workspaceFolder.uri.fsPath;
+    const workspaceRoot = this.workspaceRoot;
     
-    const uri = this.activeDocument.uri;
+    // Construct URI for index file
+    const indexPath = path.join(workspaceRoot, this.contextFolder, '.index.codex.yaml');
+    const uri = vscode.Uri.file(indexPath);
     
     if (!element) {
       // Root level - show index header + children
