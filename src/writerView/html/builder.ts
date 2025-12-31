@@ -72,7 +72,7 @@ ${getWriterViewStyles()}
   <div class="editor-container" id="proseEditor">
     <div class="editor-wrapper">
       <div class="overview-section-header" data-field="summary" style="display: none;">
-        <span class="overview-section-title">Summary</span>
+        <span class="structured-title">Summary</span>
       </div>
       <div 
         id="editor" 

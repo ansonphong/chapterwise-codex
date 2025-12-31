@@ -888,23 +888,14 @@ export function getWriterViewStyles(): string {
     
     /* Overview section header (for prose/summary) */
     .overview-section-header {
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-muted);
-      font-weight: 600;
       margin-bottom: 0.75rem;
       cursor: pointer;
       transition: color 0.15s ease;
       user-select: none;
     }
     
-    .overview-section-header:hover {
+    .overview-section-header:hover .structured-title {
       color: var(--text-primary);
-    }
-    
-    .overview-section-title {
-      display: inline-block;
     }
     
     /* Show overview section header only in overview mode */
