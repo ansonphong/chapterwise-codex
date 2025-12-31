@@ -201,22 +201,21 @@ function buildTypeSelectorOptions(node: CodexNode, indexTypes: TypeDefinition[])
     { type: 'concept', emoji: '💡' }
   ];
   
-  // Add standard types
-  standardTypes.forEach(({ type, emoji }) => {
+  // Add standard types (without emoji in label - keeps UI clean when closed)
+  standardTypes.forEach(({ type }) => {
     const selected = node.type === type ? 'selected' : '';
-    options.push(`<option value="${escapeHtml(type)}" ${selected}>${emoji} ${escapeHtml(type)}</option>`);
+    options.push(`<option value="${escapeHtml(type)}" ${selected}>${escapeHtml(type)}</option>`);
   });
   
   // Add separator if custom types exist
   if (indexTypes.length > 0) {
     options.push('<option disabled>───────────</option>');
     
-    // Add custom types from index
-    indexTypes.forEach(({ type, emoji, description }) => {
+    // Add custom types from index (without emoji in label)
+    indexTypes.forEach(({ type, description }) => {
       const selected = node.type === type ? 'selected' : '';
-      const label = emoji ? `${emoji} ${escapeHtml(type)}` : escapeHtml(type);
       const title = description ? `title="${escapeHtml(description)}"` : '';
-      options.push(`<option value="${escapeHtml(type)}" ${selected} ${title}>${label}</option>`);
+      options.push(`<option value="${escapeHtml(type)}" ${selected} ${title}>${escapeHtml(type)}</option>`);
     });
   }
   
