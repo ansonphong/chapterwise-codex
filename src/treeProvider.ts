@@ -1061,8 +1061,7 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     if (showFields) {
       // Add prose fields (body, summary, etc.)
       for (const fieldName of node.availableFields) {
-        const preview = fieldName === node.proseField ? node.proseValue : undefined;
-        items.push(new CodexFieldTreeItem(fieldName, 'prose', node, uri, preview));
+        items.push(new CodexFieldTreeItem(fieldName, 'prose', node, uri));
       }
       
       // Add attributes section if present
