@@ -622,13 +622,20 @@ async function resolveIncludes(
             newVisited
           );
           
-          // Merge included entity with its resolved children
-          const includedNode = {
-            ...includedData,
+          // Merge included entity - ONLY navigation metadata, NOT content
+          const includedNode: any = {
+            id: includedData.id || `included-${Date.now()}`,
+            type: includedData.type || 'unknown',
+            name: includedData.name || includedData.title || path.basename(resolvedPath, path.extname(resolvedPath)),
             children: includedChildren,
             _included_from: path.relative(workspaceRoot, resolvedPath),
             _node_kind: 'entity', // Included files become entities in the tree
           };
+          
+          // Optional small metadata
+          if (includedData.title) includedNode.title = includedData.title;
+          if (includedData.tags && Array.isArray(includedData.tags)) includedNode.tags = includedData.tags;
+          if (includedData.order !== undefined) includedNode.order = includedData.order;
           
           resolved.push(includedNode);
         } catch (parseError: any) {
@@ -708,15 +715,21 @@ async function extractEntityChildren(
     // Generate defensive entity ID
     const entityId = child.id || `entity-${child.type}-${depth}-${extracted.length}`;
     
-    // Create entity node
+    // Create entity node - ONLY include navigation metadata, NOT content
     const entityNode: any = {
-      ...child,
       id: entityId,
+      type: child.type,
+      name: child.name || child.title || 'Untitled',
       _node_kind: 'entity',
       _parent_file: parentFilePath,
       _depth: depth,
       children: [], // Will be populated with fields + nested entities
     };
+    
+    // Optional small metadata (useful for navigation/filtering)
+    if (child.title) entityNode.title = child.title;
+    if (child.tags && Array.isArray(child.tags)) entityNode.tags = child.tags;
+    if (child.order !== undefined) entityNode.order = child.order;
     
     if (parentEntityId) {
       entityNode._parent_entity = parentEntityId;
