@@ -872,7 +872,7 @@ export function getWriterViewStyles(): string {
       background: var(--bg-secondary);
       border: 1px solid var(--border-color);
       border-radius: 6px;
-      padding: 1.5rem;
+      padding: 2rem 1.5rem 1.5rem 1.5rem;
       overflow: visible;
     }
     
@@ -887,6 +887,7 @@ export function getWriterViewStyles(): string {
     
     /* Overview section header (for prose/summary) */
     .overview-section-header {
+      margin-top: 0.5rem;
       margin-bottom: 0.75rem;
       cursor: pointer;
       transition: color 0.15s ease;
