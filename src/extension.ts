@@ -1344,11 +1344,11 @@ function registerCommands(context: vscode.ExtensionContext): void {
         
         // EXPLICITLY set context in tree provider
         outputChannel.appendLine(`[setContextFolder] Calling treeProvider.setContextFolder()`);
+        progress.report({ message: 'Loading index into tree view...', increment: 5 });
+        
         await treeProvider.setContextFolder(folderPath, workspaceRoot);
         
-        // Open the index file so user can see it
-        const doc = await vscode.workspace.openTextDocument(indexPath);
-        await vscode.window.showTextDocument(doc);
+        outputChannel.appendLine(`[setContextFolder] Tree view loaded`);
         
         // Update tree view title
         treeView.title = `📋 ${path.basename(uri.fsPath)}`;
