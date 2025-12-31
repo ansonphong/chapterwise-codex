@@ -961,7 +961,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     
     // Handle menu item clicks
     saveMenuDropdown.addEventListener('click', (e) => {
-      const item = e.target.closest('.save-menu-item');
+      const item = e.target.closest('.save-menu-item, .save-menu-footer');
       if (!item) return;
       
       const action = item.dataset.action;

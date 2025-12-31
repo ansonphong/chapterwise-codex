@@ -790,7 +790,8 @@ export function getWriterViewStyles(): string {
       border: 1px solid var(--border-color);
       border-radius: 6px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-      max-width: 150px;
+      min-width: 180px;
+      max-width: 220px;
       z-index: 1000;
       overflow: hidden;
     }
