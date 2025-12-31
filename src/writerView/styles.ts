@@ -858,7 +858,7 @@ export function getWriterViewStyles(): string {
       display: block !important;
       width: 100%;
       max-width: 900px;
-      margin: 2rem auto 2rem;
+      margin: 2rem auto 1.25rem;
       box-sizing: border-box;
     }
     
