@@ -2,14 +2,920 @@
  * JavaScript code for Writer View webview
  */
 
-import { CodexNode, CodexAttribute, CodexContentSection } from '../codexModel';
+import { CodexNode } from '../codexModel';
 
 export function getWriterViewScript(node: CodexNode, initialField: string): string {
-  // Serialize the data for the script
-  const attributesJson = JSON.stringify(node.attributes || []);
-  const contentSectionsJson = JSON.stringify(node.contentSections || []);
-  
   return /* javascript */ `
-$(cat /tmp/script_extract.txt)
+    const vscode = acquireVsCodeApi();
+    const editor = document.getElementById('editor');
+    const saveBtn = document.getElementById('saveBtn');
+    const wordCountEl = document.getElementById('wordCount');
+    const charCountEl = document.getElementById('charCount');
+    const fieldSelector = document.getElementById('fieldSelector');
+    const nodeNameDisplay = document.getElementById('nodeName');
+    const nodeNameEdit = document.getElementById('nodeNameEdit');
+    
+    let isDirty = false;
+    let originalContent = editor.innerText;
+    let saveTimeout = null;
+    let currentField = '${initialField}';
+    let currentEditorMode = '${initialField === '__overview__' ? 'overview' : initialField === '__attributes__' ? 'attributes' : initialField === '__content__' ? 'content' : 'prose'}';
+    
+    // LOCAL STATE - these are modified instantly, only saved on Save button click
+    let localAttributes = ${JSON.stringify(node.attributes || [])};
+    let localContentSections = ${JSON.stringify(node.contentSections || [])};
+    let attributesDirty = false;
+    let contentSectionsDirty = false;
+    
+    // Detect system theme for JavaScript access
+    function detectSystemTheme() {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    
+    // Update data attribute for system theme (enhances CSS)
+    function updateSystemThemeAttribute() {
+      const systemTheme = detectSystemTheme();
+      document.documentElement.setAttribute('data-detected-system', systemTheme);
+    }
+    
+    // Initialize system theme detection
+    updateSystemThemeAttribute();
+    
+    // Listen for system theme changes
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      updateSystemThemeAttribute();
+    });
+    
+    // Update word count
+    function updateCounts() {
+      const text = editor.innerText;
+      const words = text.trim() ? text.trim().split(/\\s+/).length : 0;
+      const chars = text.length;
+      wordCountEl.textContent = words + ' words';
+      charCountEl.textContent = chars + ' chars';
+    }
+    
+    // Mark prose as dirty
+    function markDirty() {
+      isDirty = true;
+      updateDirtyIndicator();
+    }
+    
+    function markAttributesDirty() {
+      attributesDirty = true;
+      updateDirtyIndicator();
+    }
+    
+    function markContentSectionsDirty() {
+      contentSectionsDirty = true;
+      updateDirtyIndicator();
+    }
+    
+    // ----- Inline title editing -----
+    let isEditingName = false;
+    let isSubmittingName = false;
+    
+    function enterNameEdit() {
+      if (!nodeNameDisplay || !nodeNameEdit || isSubmittingName) return;
+      if (isEditingName) return;
+      isEditingName = true;
+      nodeNameEdit.textContent = nodeNameDisplay.textContent.trim();
+      nodeNameDisplay.classList.add('editing-hidden');
+      nodeNameEdit.classList.add('editing-active');
+      nodeNameEdit.contentEditable = 'true';
+      nodeNameEdit.focus();
+      // Select all text
+      const range = document.createRange();
+      range.selectNodeContents(nodeNameEdit);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    
+    function exitNameEdit() {
+      if (!nodeNameDisplay || !nodeNameEdit) return;
+      isEditingName = false;
+      nodeNameEdit.contentEditable = 'false';
+      nodeNameEdit.classList.remove('editing-active');
+      nodeNameDisplay.classList.remove('editing-hidden');
+    }
+    
+    function submitNameEdit() {
+      if (!nodeNameDisplay || !nodeNameEdit) return;
+      if (isSubmittingName) return;
+      
+      const newName = nodeNameEdit.textContent.trim();
+      const currentName = nodeNameDisplay.textContent.trim();
+      
+      exitNameEdit();
+      
+      if (!newName || newName === currentName) {
+        nodeNameEdit.textContent = currentName;
+        return;
+      }
+      
+      isSubmittingName = true;
+      vscode.postMessage({
+        type: 'renameName',
+        name: newName
+      });
+      
+      // Slight delay to avoid double submits from blur + enter
+      setTimeout(() => {
+        isSubmittingName = false;
+      }, 0);
+    }
+    
+    if (nodeNameDisplay && nodeNameEdit) {
+      nodeNameDisplay.addEventListener('click', enterNameEdit);
+      nodeNameDisplay.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          enterNameEdit();
+        }
+      });
+      
+      nodeNameEdit.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          submitNameEdit();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          nodeNameEdit.textContent = nodeNameDisplay.textContent.trim();
+          exitNameEdit();
+        }
+      });
+      
+      nodeNameEdit.addEventListener('blur', () => {
+        if (isEditingName) {
+          submitNameEdit();
+        }
+      });
+    }
+    // ----- End inline title editing -----
+    
+    function updateDirtyIndicator() {
+      const anyDirty = isDirty || attributesDirty || contentSectionsDirty;
+      if (anyDirty) {
+        saveBtn.classList.add('dirty');
+        saveBtn.classList.remove('saved-flash');
+        saveBtn.title = 'Unsaved changes - Click to save or Ctrl+S';
+      } else {
+        saveBtn.classList.remove('dirty');
+        saveBtn.title = 'All changes saved';
+      }
+    }
+    
+    // Mark as clean
+    function markClean() {
+      isDirty = false;
+      attributesDirty = false;
+      contentSectionsDirty = false;
+      updateDirtyIndicator();
+      originalContent = editor.innerText;
+    }
+    
+    // Save function - saves ALL pending changes
+    function save() {
+      const anyDirty = isDirty || attributesDirty || contentSectionsDirty;
+      if (!anyDirty) return;
+      
+      saveBtn.disabled = true;
+      saveBtn.classList.remove('dirty');
+      saveBtn.title = 'Saving...';
+      
+      // Save prose if dirty
+      if (isDirty) {
+        vscode.postMessage({
+          type: 'save',
+          text: editor.innerText,
+          field: currentField
+        });
+      }
+      
+      // Save attributes if dirty
+      if (attributesDirty) {
+        vscode.postMessage({
+          type: 'saveAttributes',
+          attributes: localAttributes
+        });
+      }
+      
+      // Save content sections if dirty
+      if (contentSectionsDirty) {
+        vscode.postMessage({
+          type: 'saveContentSections',
+          sections: localContentSections
+        });
+      }
+    }
+    
+    // Editor containers
+    const proseEditor = document.getElementById('proseEditor');
+    const attributesEditor = document.getElementById('attributesEditor');
+    const contentEditor = document.getElementById('contentEditor');
+    
+    // Show/hide editors based on field type
+    function showEditor(editorType) {
+      // Remove all mode classes
+      document.body.classList.remove('mode-prose', 'mode-structured', 'mode-overview');
+      
+      // Add appropriate mode class
+      if (editorType === 'overview') {
+        document.body.classList.add('mode-overview');
+      } else if (editorType === 'attributes' || editorType === 'content') {
+        document.body.classList.add('mode-structured');
+        // Keep active class for structured editor selection
+        attributesEditor.classList.toggle('active', editorType === 'attributes');
+        contentEditor.classList.toggle('active', editorType === 'content');
+      } else {
+        // prose mode
+        document.body.classList.add('mode-prose');
+      }
+    }
+    
+    // Handle field change
+    fieldSelector.addEventListener('change', (e) => {
+      // Save current content first if dirty
+      if (isDirty) {
+        save();
+      }
+      
+      const newField = e.target.value;
+      currentField = newField;
+      
+      // Determine which editor to show
+      if (newField === '__overview__') {
+        showEditor('overview');
+        currentEditorMode = 'overview';
+        // Overview mode shows all existing editors - no rendering needed
+        // Just ensure attributes and content are rendered
+        renderAttributesTable();
+        renderContentSections();
+      } else if (newField === '__attributes__') {
+        showEditor('attributes');
+        currentEditorMode = 'attributes';
+        // Render from local state (no network call needed)
+        renderAttributesTable();
+      } else if (newField === '__content__') {
+        showEditor('content');
+        currentEditorMode = 'content';
+        // Render from local state (no network call needed)
+        renderContentSections();
+      } else {
+        showEditor('prose');
+        currentEditorMode = 'prose';
+        // Request content for the new field (prose still needs fetch)
+        vscode.postMessage({
+          type: 'switchField',
+          field: newField
+        });
+      }
+    });
+    
+    // Attributes Editor Handlers - LOCAL STATE ONLY (fast!)
+    const addAttrBtn = document.getElementById('addAttrBtn');
+    const attributesContainer = document.getElementById('attributesContainer');
+    
+    // Re-render attributes from local state (card-based layout)
+    function renderAttributesTable() {
+      if (localAttributes.length === 0) {
+        attributesContainer.innerHTML = \`
+          <div class="empty-state">
+            <div class="empty-state-icon">📊</div>
+            <p>No attributes yet</p>
+            <p style="font-size: 0.8rem;">Click "+ Add Attribute" to create one</p>
+          </div>
+        \`;
+        return;
+      }
+      
+      attributesContainer.innerHTML = localAttributes.map((attr, i) => \`
+        <div class="attr-card" data-index="\${i}">
+          <div class="attr-card-content">
+            <div class="attr-title">
+              <span class="attr-name name-field inline-editable" data-index="\${i}" tabindex="0" title="Click to edit name">\${escapeHtml(attr.name || 'Untitled')}</span>
+              <span class="attr-name-edit name-field inline-edit-field" data-index="\${i}" contenteditable="false"></span>
+              <span class="key-badge" data-index="\${i}">\${escapeHtml(attr.key || '')}</span>
+            </div>
+            <input type="text" class="attr-value-input" data-index="\${i}" value="\${escapeHtml(String(attr.value || ''))}" placeholder="Value" />
+            <select class="type-select" data-index="\${i}">
+              <option value="" \${!attr.dataType && !attr.type ? 'selected' : ''}>auto</option>
+              <option value="string" \${attr.dataType === 'string' || attr.type === 'string' ? 'selected' : ''}>string</option>
+              <option value="int" \${attr.dataType === 'int' || attr.type === 'int' ? 'selected' : ''}>int</option>
+              <option value="float" \${attr.dataType === 'float' || attr.type === 'float' ? 'selected' : ''}>float</option>
+              <option value="bool" \${attr.dataType === 'bool' || attr.type === 'bool' ? 'selected' : ''}>bool</option>
+            </select>
+            <div class="dropdown-menu">
+              <button class="menu-btn" title="More options">⋮</button>
+              <div class="menu-dropdown">
+                <button class="menu-item delete-item" data-index="\${i}">🗑 Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      \`).join('');
+    }
+    
+    function escapeHtml(str) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    
+    // Track editing state for attributes
+    const attrEditingState = new Map(); // index -> { isEditing: bool, isSubmitting: bool }
+    
+    function enterAttrEdit(index) {
+      const key = \`attr-\${index}\`;
+      if (attrEditingState.get(key)?.isEditing || attrEditingState.get(key)?.isSubmitting) return;
+      
+      const displaySpan = attributesContainer.querySelector(\`.attr-name[data-index="\${index}"]\`);
+      const editSpan = attributesContainer.querySelector(\`.attr-name-edit[data-index="\${index}"]\`);
+      
+      if (!displaySpan || !editSpan) return;
+      
+      attrEditingState.set(key, { isEditing: true, isSubmitting: false });
+      editSpan.textContent = displaySpan.textContent.trim();
+      displaySpan.classList.add('editing-hidden');
+      editSpan.classList.add('editing-active');
+      editSpan.contentEditable = 'true';
+      editSpan.focus();
+      
+      // Select all text
+      const range = document.createRange();
+      range.selectNodeContents(editSpan);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    
+    function exitAttrEdit(index) {
+      const key = \`attr-\${index}\`;
+      const displaySpan = attributesContainer.querySelector(\`.attr-name[data-index="\${index}"]\`);
+      const editSpan = attributesContainer.querySelector(\`.attr-name-edit[data-index="\${index}"]\`);
+      
+      if (!displaySpan || !editSpan) return;
+      
+      const state = attrEditingState.get(key);
+      if (state) state.isEditing = false;
+      
+      editSpan.contentEditable = 'false';
+      editSpan.classList.remove('editing-active');
+      displaySpan.classList.remove('editing-hidden');
+    }
+    
+    function submitAttrEdit(index) {
+      const key = \`attr-\${index}\`;
+      const state = attrEditingState.get(key);
+      if (state?.isSubmitting) return;
+      
+      const displaySpan = attributesContainer.querySelector(\`.attr-name[data-index="\${index}"]\`);
+      const editSpan = attributesContainer.querySelector(\`.attr-name-edit[data-index="\${index}"]\`);
+      
+      if (!displaySpan || !editSpan) return;
+      
+      const newValue = editSpan.textContent.trim();
+      const currentValue = displaySpan.textContent.trim();
+      
+      exitAttrEdit(index);
+      
+      if (!newValue || newValue === currentValue) {
+        editSpan.textContent = currentValue;
+        return;
+      }
+      
+      if (state) state.isSubmitting = true;
+      
+      // Update local state
+      localAttributes[index].name = newValue;
+      
+      // Auto-generate key from name
+      const sanitizedKey = sanitizeKey(newValue);
+      localAttributes[index].key = sanitizedKey;
+      
+      // Update key display
+      const keySpan = attributesContainer.querySelector(\`.attr-key[data-index="\${index}"]\`);
+      if (keySpan) {
+        keySpan.textContent = sanitizedKey;
+      }
+      
+      markAttributesDirty();
+      
+      // Update display
+      displaySpan.textContent = newValue;
+      
+      if (state) state.isSubmitting = false;
+    }
+    
+    addAttrBtn.addEventListener('click', () => {
+      // Add to local state instantly
+      localAttributes.push({ key: '', name: 'Untitled', value: '', dataType: undefined });
+      markAttributesDirty();
+      renderAttributesTable();
+    });
+    
+    attributesContainer.addEventListener('input', (e) => {
+      const target = e.target;
+      if (target.classList.contains('attr-value-input')) {
+        const card = target.closest('.attr-card');
+        const index = parseInt(card.dataset.index);
+        // Update local state instantly (no network call!)
+        if (localAttributes[index]) {
+          localAttributes[index].value = target.value;
+          markAttributesDirty();
+        }
+      } else if (target.classList.contains('type-select')) {
+        const card = target.closest('.attr-card');
+        const index = parseInt(card.dataset.index);
+        // Update local state instantly
+        if (localAttributes[index]) {
+          localAttributes[index].dataType = target.value || undefined;
+          markAttributesDirty();
+        }
+      }
+    });
+    
+    attributesContainer.addEventListener('click', (e) => {
+      // Handle inline editing clicks
+      const nameSpan = e.target.closest('.attr-name.editable');
+      if (nameSpan) {
+        e.stopPropagation();
+        e.preventDefault();
+        const index = parseInt(nameSpan.dataset.index);
+        enterAttrEdit(index);
+        return;
+      }
+      
+      // Handle menu button click
+      const menuBtn = e.target.closest('.menu-btn');
+      if (menuBtn) {
+        e.stopPropagation();
+        e.preventDefault();
+        const menu = menuBtn.closest('.dropdown-menu');
+        // Close all other menus
+        attributesContainer.querySelectorAll('.dropdown-menu.active').forEach(m => {
+          if (m !== menu) m.classList.remove('active');
+        });
+        // Toggle this menu
+        menu.classList.toggle('active');
+        return;
+      }
+      
+      // Handle delete menu item click
+      const deleteItem = e.target.closest('.delete-item');
+      if (deleteItem) {
+        e.stopPropagation();
+        e.preventDefault();
+        const index = parseInt(deleteItem.dataset.index);
+        // Remove from local state instantly (no confirm - it doesn't work in webviews)
+        localAttributes.splice(index, 1);
+        markAttributesDirty();
+        renderAttributesTable();
+        return;
+      }
+      
+      // Close any open menus when clicking elsewhere
+      attributesContainer.querySelectorAll('.dropdown-menu.active').forEach(m => {
+        m.classList.remove('active');
+      });
+    });
+    
+    attributesContainer.addEventListener('keydown', (e) => {
+      const editSpan = e.target.closest('.attr-name-edit');
+      if (!editSpan) return;
+      
+      const index = parseInt(editSpan.dataset.index);
+      
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitAttrEdit(index);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        const displaySpan = attributesContainer.querySelector(\`.attr-name[data-index="\${index}"]\`);
+        editSpan.textContent = displaySpan.textContent.trim();
+        exitAttrEdit(index);
+      }
+    });
+    
+    attributesContainer.addEventListener('blur', (e) => {
+      const editSpan = e.target.closest('.attr-name-edit');
+      if (!editSpan) return;
+      
+      const index = parseInt(editSpan.dataset.index);
+      const key = \`attr-\${index}\`;
+      if (attrEditingState.get(key)?.isEditing) {
+        submitAttrEdit(index);
+      }
+    }, true);
+    
+    // Content Sections Editor Handlers - LOCAL STATE ONLY (fast!)
+    const addContentBtn = document.getElementById('addContentBtn');
+    const contentContainer = document.getElementById('contentContainer');
+    
+    // Re-render content sections from local state
+    function renderContentSections() {
+      if (localContentSections.length === 0) {
+        contentContainer.innerHTML = \`
+          <div class="empty-state">
+            <div class="empty-state-icon">📝</div>
+            <p>No content sections yet</p>
+            <p style="font-size: 0.8rem;">Click "+ Add Section" to create one</p>
+          </div>
+        \`;
+        return;
+      }
+      
+      contentContainer.innerHTML = localContentSections.map((section, i) => \`
+        <div class="content-section" data-index="\${i}">
+          <div class="content-section-header">
+            <div class="content-section-title">
+              <span class="content-section-toggle">▶</span>
+              <span class="content-section-name name-field inline-editable" data-index="\${i}" tabindex="0" title="Click to edit name">\${escapeHtml(section.name || 'Untitled')}</span>
+              <span class="content-section-name-edit name-field inline-edit-field" data-index="\${i}" contenteditable="false"></span>
+              <span class="content-section-key key-badge inline-editable" data-index="\${i}" tabindex="0" title="Click to edit key">\${escapeHtml(section.key || '')}</span>
+              <span class="content-section-key-edit inline-edit-field" data-index="\${i}" contenteditable="false"></span>
+            </div>
+            <div class="dropdown-menu">
+              <button class="menu-btn" title="More options">⋮</button>
+              <div class="menu-dropdown">
+                <button class="menu-item delete-item" data-index="\${i}">🗑 Delete</button>
+              </div>
+            </div>
+          </div>
+          <div class="content-section-body">
+            <textarea class="content-textarea" data-index="\${i}">\${escapeHtml(section.value || '')}</textarea>
+          </div>
+        </div>
+      \`).join('');
+    }
+    
+    addContentBtn.addEventListener('click', () => {
+      // Add to local state instantly
+      localContentSections.push({ key: '', name: '', value: '' });
+      markContentSectionsDirty();
+      renderContentSections();
+      // Expand the new section
+      const newSection = contentContainer.querySelector('.content-section:last-child');
+      if (newSection) newSection.classList.add('expanded');
+    });
+    
+    // Track editing state for content sections
+    const editingState = new Map(); // sectionIndex -> { field: 'name'|'key', isEditing: bool, isSubmitting: bool }
+    
+    function enterContentSectionEdit(index, field) {
+      const key = \`\${index}-\${field}\`;
+      if (editingState.get(key)?.isEditing || editingState.get(key)?.isSubmitting) return;
+      
+      const displaySpan = contentContainer.querySelector(\`.content-section-\${field}[data-index="\${index}"]\`);
+      const editSpan = contentContainer.querySelector(\`.content-section-\${field}-edit[data-index="\${index}"]\`);
+      
+      if (!displaySpan || !editSpan) return;
+      
+      editingState.set(key, { field, isEditing: true, isSubmitting: false });
+      editSpan.textContent = displaySpan.textContent.trim();
+      displaySpan.classList.add('editing-hidden');
+      editSpan.classList.add('editing-active');
+      editSpan.contentEditable = 'true';
+      editSpan.focus();
+      
+      // Select all text
+      const range = document.createRange();
+      range.selectNodeContents(editSpan);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    
+    function exitContentSectionEdit(index, field) {
+      const key = \`\${index}-\${field}\`;
+      const displaySpan = contentContainer.querySelector(\`.content-section-\${field}[data-index="\${index}"]\`);
+      const editSpan = contentContainer.querySelector(\`.content-section-\${field}-edit[data-index="\${index}"]\`);
+      
+      if (!displaySpan || !editSpan) return;
+      
+      const state = editingState.get(key);
+      if (state) state.isEditing = false;
+      
+      editSpan.contentEditable = 'false';
+      editSpan.classList.remove('editing-active');
+      displaySpan.classList.remove('editing-hidden');
+    }
+    
+    function sanitizeKey(name) {
+      return name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')  // Replace non-alphanumeric with underscore
+        .replace(/^_+|_+$/g, '')       // Remove leading/trailing underscores
+        .replace(/_+/g, '_');          // Replace multiple underscores with single
+    }
+    
+    function submitContentSectionEdit(index, field) {
+      const key = \`\${index}-\${field}\`;
+      const state = editingState.get(key);
+      if (state?.isSubmitting) return;
+      
+      const displaySpan = contentContainer.querySelector(\`.content-section-\${field}[data-index="\${index}"]\`);
+      const editSpan = contentContainer.querySelector(\`.content-section-\${field}-edit[data-index="\${index}"]\`);
+      
+      if (!displaySpan || !editSpan) return;
+      
+      const newValue = editSpan.textContent.trim();
+      const currentValue = displaySpan.textContent.trim();
+      
+      exitContentSectionEdit(index, field);
+      
+      if (!newValue || newValue === currentValue) {
+        editSpan.textContent = currentValue;
+        return;
+      }
+      
+      if (state) state.isSubmitting = true;
+      
+      // Update local state
+      localContentSections[index][field] = newValue;
+      
+      // Auto-generate key from name
+      if (field === 'name') {
+        const sanitizedKey = sanitizeKey(newValue);
+        localContentSections[index].key = sanitizedKey;
+        
+        // Update key display
+        const keyDisplaySpan = contentContainer.querySelector(\`.content-section-key[data-index="\${index}"]\`);
+        if (keyDisplaySpan) {
+          keyDisplaySpan.textContent = sanitizedKey;
+        }
+      }
+      
+      markContentSectionsDirty();
+      
+      // Update display
+      displaySpan.textContent = newValue;
+      
+      if (state) state.isSubmitting = false;
+    }
+    
+    contentContainer.addEventListener('click', (e) => {
+      // Don't toggle if clicking on any editable elements or their edit spans
+      const nameSpan = e.target.closest('.content-section-name.editable, .content-section-name-edit');
+      const keySpan = e.target.closest('.content-section-key.editable, .content-section-key-edit');
+      
+      // Handle inline editing clicks
+      if (nameSpan && nameSpan.classList.contains('editable')) {
+        e.stopPropagation();
+        e.preventDefault();
+        const index = parseInt(nameSpan.dataset.index);
+        enterContentSectionEdit(index, 'name');
+        return;
+      } else if (keySpan && keySpan.classList.contains('editable')) {
+        e.stopPropagation();
+        e.preventDefault();
+        const index = parseInt(keySpan.dataset.index);
+        enterContentSectionEdit(index, 'key');
+        return;
+      } else if (nameSpan || keySpan) {
+        // Clicked on edit span while editing - don't toggle
+        e.stopPropagation();
+        return;
+      }
+      
+      // Handle menu button click
+      const menuBtn = e.target.closest('.menu-btn');
+      if (menuBtn) {
+        e.stopPropagation();
+        e.preventDefault();
+        const menu = menuBtn.closest('.dropdown-menu');
+        // Close all other menus
+        contentContainer.querySelectorAll('.dropdown-menu.active').forEach(m => {
+          if (m !== menu) m.classList.remove('active');
+        });
+        // Toggle this menu
+        menu.classList.toggle('active');
+        return;
+      }
+      
+      // Handle delete menu item click
+      const deleteItem = e.target.closest('.delete-item');
+      if (deleteItem) {
+        e.stopPropagation();
+        e.preventDefault();
+        const index = parseInt(deleteItem.dataset.index);
+        // Remove from local state instantly (no confirm - it doesn't work in webviews)
+        localContentSections.splice(index, 1);
+        markContentSectionsDirty();
+        renderContentSections();
+        return;
+      }
+      
+      // Close any open menus when clicking elsewhere
+      contentContainer.querySelectorAll('.dropdown-menu.active').forEach(m => {
+        m.classList.remove('active');
+      });
+      
+      // Only toggle if clicking directly on the header (not on interactive elements)
+      const header = e.target.closest('.content-section-header');
+      if (header) {
+        const section = header.closest('.content-section');
+        section.classList.toggle('expanded');
+      }
+    });
+    
+    contentContainer.addEventListener('input', (e) => {
+      if (e.target.classList.contains('content-textarea')) {
+        const index = parseInt(e.target.dataset.index);
+        localContentSections[index].value = e.target.value;
+        markContentSectionsDirty();
+      }
+    });
+    
+    contentContainer.addEventListener('keydown', (e) => {
+      const editSpan = e.target.closest('.content-section-name-edit, .content-section-key-edit');
+      if (!editSpan) return;
+      
+      const index = parseInt(editSpan.dataset.index);
+      const field = editSpan.classList.contains('content-section-name-edit') ? 'name' : 'key';
+      
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitContentSectionEdit(index, field);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        const displaySpan = contentContainer.querySelector(\`.content-section-\${field}[data-index="\${index}"]\`);
+        editSpan.textContent = displaySpan.textContent.trim();
+        exitContentSectionEdit(index, field);
+      }
+    });
+    
+    contentContainer.addEventListener('blur', (e) => {
+      const editSpan = e.target.closest('.content-section-name-edit, .content-section-key-edit');
+      if (!editSpan) return;
+      
+      const index = parseInt(editSpan.dataset.index);
+      const field = editSpan.classList.contains('content-section-name-edit') ? 'name' : 'key';
+      
+      const key = \`\${index}-\${field}\`;
+      if (editingState.get(key)?.isEditing) {
+        submitContentSectionEdit(index, field);
+      }
+    }, true);
+    
+    // Close menus when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.dropdown-menu')) {
+        contentContainer.querySelectorAll('.dropdown-menu.active').forEach(m => {
+          m.classList.remove('active');
+        });
+        attributesContainer.querySelectorAll('.dropdown-menu.active').forEach(m => {
+          m.classList.remove('active');
+        });
+      }
+    });
+    
+    // Throttle content change messages to avoid flooding
+    let contentChangeTimeout = null;
+    
+    // Handle content changes
+    function handleEditorChange() {
+      markDirty();
+      updateCounts();
+      
+      // Send content update to extension (throttled)
+      if (contentChangeTimeout) {
+        clearTimeout(contentChangeTimeout);
+      }
+      contentChangeTimeout = setTimeout(() => {
+        vscode.postMessage({
+          type: 'contentChanged',
+          text: editor.innerText,
+          field: currentField
+        });
+      }, 500); // Send every 500ms max
+      
+      // Auto-save after 2 seconds of inactivity
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+      }
+      saveTimeout = setTimeout(() => {
+        if (isDirty) {
+          save();
+        }
+      }, 2000);
+    }
+    
+    editor.addEventListener('input', handleEditorChange);
+    editor.addEventListener('beforeinput', handleEditorChange);
+    
+    // Handle keyboard shortcuts
+    editor.addEventListener('keydown', (e) => {
+      // Ctrl/Cmd + S to save
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        save();
+      }
+    });
+    
+    // Save button click
+    saveBtn.addEventListener('click', save);
+    
+    // Handle blur (save on focus loss)
+    editor.addEventListener('blur', () => {
+      if (isDirty) {
+        save();
+      }
+    });
+    
+    // Handle messages from extension
+    window.addEventListener('message', (event) => {
+      const message = event.data;
+      switch (message.type) {
+        case 'saved':
+          // Only mark prose as clean; attributes/content have their own tracking
+          isDirty = false;
+          checkAllClean();
+          break;
+        case 'nameUpdated':
+          if (nodeNameDisplay && nodeNameEdit) {
+            nodeNameDisplay.textContent = message.name;
+            nodeNameEdit.textContent = message.name;
+            exitNameEdit();
+          }
+          break;
+        case 'nameUpdateError':
+          if (message.error) {
+            alert(message.error);
+          }
+          break;
+        case 'saveComplete':
+          // All saves complete - mark everything clean
+          markClean();
+          saveBtn.disabled = false;
+          saveBtn.classList.remove('dirty');
+          saveBtn.classList.add('saved-flash');
+          saveBtn.title = 'All changes saved';
+          setTimeout(() => {
+            saveBtn.classList.remove('saved-flash');
+          }, 1000);
+          break;
+        case 'content':
+          if (!isDirty) {
+            editor.innerText = message.text;
+            updateCounts();
+          }
+          break;
+        case 'fieldContent':
+          // Switched to a new field
+          editor.innerText = message.text || '';
+          currentField = message.field;
+          originalContent = editor.innerText;
+          isDirty = false;
+          updateDirtyIndicator();
+          updateCounts();
+          editor.focus();
+          break;
+          
+        case 'switchToField':
+          // External request to switch to a specific field
+          fieldSelector.value = message.field;
+          fieldSelector.dispatchEvent(new Event('change'));
+          break;
+          
+        case 'themeChanged':
+          // Update theme setting
+          document.documentElement.setAttribute('data-theme-setting', message.themeSetting);
+          document.documentElement.setAttribute('data-vscode-theme', message.vscodeTheme);
+          updateSystemThemeAttribute();
+          break;
+      }
+    });
+    
+    // Check if all saves are complete
+    function checkAllClean() {
+      if (!isDirty && !attributesDirty && !contentSectionsDirty) {
+        saveBtn.disabled = false;
+        saveBtn.classList.remove('dirty');
+        saveBtn.classList.add('saved-flash');
+        saveBtn.title = 'All changes saved';
+        setTimeout(() => {
+          saveBtn.classList.remove('saved-flash');
+        }, 1000);
+      }
+    }
+    
+    // Initial counts
+    updateCounts();
+    
+    // Initialize with remembered field/editor mode
+    if (currentEditorMode === 'overview') {
+      showEditor('overview');
+      renderAttributesTable();
+      renderContentSections();
+    } else if (currentEditorMode === 'attributes') {
+      showEditor('attributes');
+      renderAttributesTable();
+    } else if (currentEditorMode === 'content') {
+      showEditor('content');
+      renderContentSections();
+    } else {
+      showEditor('prose');
+      editor.focus();
+    }
   `;
 }
