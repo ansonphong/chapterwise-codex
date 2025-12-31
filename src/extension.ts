@@ -15,7 +15,7 @@ import { runExplodeCodex, disposeExplodeCodex } from './explodeCodex';
 import { runImplodeCodex, disposeImplodeCodex } from './implodeCodex';
 import { runUpdateWordCount, disposeWordCount } from './wordCount';
 import { runGenerateTags, disposeTagGenerator } from './tagGenerator';
-import { runGenerateIndex, runRegenerateIndex, generateFolderHierarchy } from './indexGenerator';
+import { runGenerateIndex, runRegenerateIndex, generateFolderHierarchy, IndexGenerationProgress } from './indexGenerator';
 import { runCreateIndexFile } from './indexBoilerplate';
 import { runConvertToMarkdown, runConvertToCodex, disposeConvertFormat } from './convertFormat';
 import { countFilesInIndex as countIndexFiles } from './indexParser';
@@ -575,6 +575,209 @@ function registerCommands(context: vscode.ExtensionContext): void {
     )
   );
   
+  // Phase 3: Navigate to Entity command
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'chapterwiseCodex.navigateToEntity',
+      async (treeItem?: IndexNodeTreeItem) => {
+        if (!treeItem) {
+          vscode.window.showErrorMessage('No entity selected');
+          return;
+        }
+        
+        const node = treeItem.indexNode as any;
+        const parentFile = node._parent_file;
+        const entityId = node.id;
+        
+        if (!parentFile || !entityId) {
+          vscode.window.showErrorMessage('Cannot navigate: missing file or entity ID');
+          return;
+        }
+        
+        const workspaceRoot = treeProvider.getWorkspaceRoot();
+        if (!workspaceRoot) {
+          vscode.window.showErrorMessage('No workspace root found');
+          return;
+        }
+        
+        // Resolve file path
+        const filePath = path.join(workspaceRoot, parentFile);
+        
+        if (!fs.existsSync(filePath)) {
+          vscode.window.showErrorMessage(`File not found: ${parentFile}`);
+          return;
+        }
+        
+        // Open file in editor
+        const doc = await vscode.workspace.openTextDocument(filePath);
+        const editor = await vscode.window.showTextDocument(doc);
+        
+        // Find entity in file by ID
+        const text = doc.getText();
+        const lines = text.split('\n');
+        let entityLineStart = -1;
+        
+        // Helper function to escape special regex characters
+        const escapeRegExp = (str: string): string => {
+          return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        };
+        
+        // Try multiple patterns to find the entity ID
+        const idPatterns = [
+          new RegExp(`^\\s*id:\\s*${escapeRegExp(entityId)}\\s*$`, 'i'),           // YAML: id: value
+          new RegExp(`^\\s*id:\\s*["']${escapeRegExp(entityId)}["']\\s*$`, 'i'),  // YAML: id: "value" or id: 'value'
+          new RegExp(`^\\s*["']id["']:\\s*["']${escapeRegExp(entityId)}["']`, 'i'), // JSON: "id": "value"
+        ];
+        
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (idPatterns.some(pattern => pattern.test(line))) {
+            entityLineStart = i;
+            break;
+          }
+        }
+        
+        if (entityLineStart >= 0) {
+          // Scroll to entity
+          const position = new vscode.Position(entityLineStart, 0);
+          editor.selection = new vscode.Selection(position, position);
+          editor.revealRange(
+            new vscode.Range(position, position),
+            vscode.TextEditorRevealType.InCenter
+          );
+        } else {
+          vscode.window.showWarningMessage(`Entity ${entityId} not found in file`);
+        }
+      }
+    )
+  );
+  
+  // Phase 3: Navigate to Field command
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'chapterwiseCodex.navigateToField',
+      async (treeItem?: IndexNodeTreeItem) => {
+        if (!treeItem) {
+          vscode.window.showErrorMessage('No field selected');
+          return;
+        }
+        
+        const node = treeItem.indexNode as any;
+        const parentFile = node._parent_file;
+        const parentEntity = node._parent_entity;
+        const fieldName = node._field_name;
+        
+        if (!parentFile || !fieldName) {
+          vscode.window.showErrorMessage('Cannot navigate: missing file or field name');
+          return;
+        }
+        
+        const workspaceRoot = treeProvider.getWorkspaceRoot();
+        if (!workspaceRoot) {
+          vscode.window.showErrorMessage('No workspace root found');
+          return;
+        }
+        
+        // Resolve file path
+        const filePath = path.join(workspaceRoot, parentFile);
+        
+        if (!fs.existsSync(filePath)) {
+          vscode.window.showErrorMessage(`File not found: ${parentFile}`);
+          return;
+        }
+        
+        // Open file in editor
+        const doc = await vscode.workspace.openTextDocument(filePath);
+        const editor = await vscode.window.showTextDocument(doc);
+        
+        // Find entity first (if specified), then field within it
+        const text = doc.getText();
+        const lines = text.split('\n');
+        let fieldLineStart = -1;
+        let entityLineStart = -1;
+        
+        // Helper function to escape special regex characters
+        const escapeRegExp = (str: string): string => {
+          return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        };
+        
+        // If parent entity specified, find it first
+        if (parentEntity) {
+          const idPatterns = [
+            new RegExp(`^\\s*id:\\s*${escapeRegExp(parentEntity)}\\s*$`, 'i'),
+            new RegExp(`^\\s*id:\\s*["']${escapeRegExp(parentEntity)}["']\\s*$`, 'i'),
+            new RegExp(`^\\s*["']id["']:\\s*["']${escapeRegExp(parentEntity)}["']`, 'i'),
+          ];
+          
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (idPatterns.some(pattern => pattern.test(line))) {
+              entityLineStart = i;
+              break;
+            }
+          }
+        }
+        
+        // Find field within entity or file
+        const fieldPatterns = [
+          new RegExp(`^\\s*${escapeRegExp(fieldName)}:\\s*`, 'i'),           // YAML: field:
+          new RegExp(`^\\s*["']${escapeRegExp(fieldName)}["']:\\s*`, 'i'),  // JSON: "field":
+        ];
+        
+        const searchStart = entityLineStart >= 0 ? entityLineStart : 0;
+        for (let i = searchStart; i < lines.length; i++) {
+          const line = lines[i];
+          if (fieldPatterns.some(pattern => pattern.test(line))) {
+            fieldLineStart = i;
+            break;
+          }
+        }
+        
+        if (fieldLineStart >= 0) {
+          // Scroll to field
+          const position = new vscode.Position(fieldLineStart, 0);
+          editor.selection = new vscode.Selection(position, position);
+          editor.revealRange(
+            new vscode.Range(position, position),
+            vscode.TextEditorRevealType.InCenter
+          );
+        } else {
+          vscode.window.showWarningMessage(`Field ${fieldName} not found in file`);
+        }
+      }
+    )
+  );
+  
+  // Phase 3: Show Error command (for missing/error nodes)
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'chapterwiseCodex.showError',
+      async (treeItem?: IndexNodeTreeItem) => {
+        if (!treeItem) {
+          return;
+        }
+        
+        const node = treeItem.indexNode as any;
+        const nodeKind = node._node_kind;
+        
+        if (nodeKind === 'error') {
+          const errorMsg = node._error_message || 'Unknown error';
+          const originalInclude = node._original_include;
+          vscode.window.showErrorMessage(
+            `Error: ${errorMsg}${originalInclude ? `\nInclude: ${originalInclude}` : ''}`,
+            'OK'
+          );
+        } else if (nodeKind === 'missing') {
+          const originalInclude = node._original_include || node._computed_path;
+          vscode.window.showWarningMessage(
+            `Missing File: ${originalInclude}\n\nThe included file could not be found.`,
+            'OK'
+          );
+        }
+      }
+    )
+  );
+  
   // Convert to Markdown command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.convertToMarkdown', async () => {
@@ -1115,11 +1318,29 @@ function registerCommands(context: vscode.ExtensionContext): void {
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
         title: `Setting context to: ${path.basename(uri.fsPath)}...`,
-        cancellable: false,
-      }, async () => {
-        // Always regenerate index hierarchy recursively
+        cancellable: true,  // ← Change to true
+      }, async (progress, token) => {  // ← Add token parameter
         outputChannel.appendLine(`[setContextFolder] Regenerating index hierarchy for: ${folderPath}`);
-        await generateFolderHierarchy(workspaceRoot, folderPath);
+        
+        // Create progress reporter with cancellation
+        const progressReporter: IndexGenerationProgress = {
+          report: (message: string, increment?: number) => {
+            progress.report({ message, increment });
+          },
+          token
+        };
+        
+        try {
+          // Always regenerate index hierarchy recursively
+          await generateFolderHierarchy(workspaceRoot, folderPath, progressReporter);
+        } catch (error: any) {
+          if (error.message?.includes('cancelled')) {
+            outputChannel.appendLine('[setContextFolder] Cancelled by user');
+            vscode.window.showInformationMessage('Index generation cancelled');
+            return;  // Exit early
+          }
+          throw error;  // Re-throw other errors
+        }
         
         // EXPLICITLY set context in tree provider
         outputChannel.appendLine(`[setContextFolder] Calling treeProvider.setContextFolder()`);

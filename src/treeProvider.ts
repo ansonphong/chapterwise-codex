@@ -131,7 +131,7 @@ export class CodexFieldTreeItem extends vscode.TreeItem {
 }
 
 /**
- * Tree item representing a node in the index hierarchy
+ * Tree item representing a node in the index hierarchy (Phase 3: Enhanced)
  */
 export class IndexNodeTreeItem extends vscode.TreeItem {
   constructor(
@@ -144,30 +144,43 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
   ) {
     const displayName = indexNode.title || indexNode.name;
     
-    // Determine file type for non-folder items
-    const filename = indexNode._filename || '';
-    const isCodexYaml = !isFolder && filename.endsWith('.codex.yaml');
-    const isMarkdown = !isFolder && filename.endsWith('.md');
+    // Phase 3: Use discriminator to determine node kind
+    const nodeKind = (indexNode as any)._node_kind;
+    const isFile = nodeKind === 'file';
+    const isEntity = nodeKind === 'entity';
+    const isField = nodeKind === 'field';
+    const isMissing = nodeKind === 'missing';
+    const isError = nodeKind === 'error';
     
-    // Determine collapsible state based on type
+    // Determine collapsible state based on node kind
     let collapsibleState: vscode.TreeItemCollapsibleState;
-    if (isFolder) {
+    if (isFolder || nodeKind === 'folder') {
       // Folders expand based on their expanded property
       collapsibleState = indexNode.expanded !== false
         ? vscode.TreeItemCollapsibleState.Expanded
         : vscode.TreeItemCollapsibleState.Collapsed;
-    } else if (isCodexYaml) {
-      // .codex.yaml files are expandable to show their structure
+    } else if (hasChildren && !isField) {
+      // Files and entities with children are expandable
+      // Fields are never expandable (leaf nodes)
       collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
     } else {
-      // .md and other files are not expandable
+      // No children or is a field - not expandable
       collapsibleState = vscode.TreeItemCollapsibleState.None;
     }
     
     super(displayName, collapsibleState);
     
-    // Set description (show type)
-    this.description = indexNode.type;
+    // Set description (show type or field info)
+    if (isField) {
+      const fieldType = (indexNode as any)._field_type;
+      this.description = `field: ${fieldType || 'unknown'}`;
+    } else if (isMissing) {
+      this.description = 'missing';
+    } else if (isError) {
+      this.description = 'error';
+    } else {
+      this.description = indexNode.type;
+    }
     
     // Set tooltip
     this.tooltip = this.createTooltip();
@@ -176,45 +189,173 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
     this.iconPath = this.getIcon();
     
     // Set context value for menu contributions
-    this.contextValue = isFolder ? 'indexFolder' : 'indexFile';
+    if (isMissing || isError) {
+      this.contextValue = 'indexError';
+    } else if (isField) {
+      this.contextValue = 'indexField';
+    } else if (isEntity) {
+      this.contextValue = 'indexEntity';
+    } else if (isFolder) {
+      this.contextValue = 'indexFolder';
+    } else {
+      this.contextValue = 'indexFile';
+    }
     
-    // Command: For both .md and .codex.yaml files (click to open in writer view)
-    if (isMarkdown) {
-      // .md files open in Codex writer view (body editor)
+    // Phase 3: Command - Different behavior based on node kind
+    if (isField) {
+      // Field - navigate to specific field in writer view
       this.command = {
-        command: 'chapterwiseCodex.openIndexFileInWriterView',
-        title: '', // Empty title to avoid redundant tooltip
+        command: 'chapterwiseCodex.navigateToField',
+        title: '',
         arguments: [this],
       };
-    } else if (isCodexYaml) {
-      // .codex.yaml files also open in Codex writer view
+    } else if (isEntity) {
+      // Entity - navigate to entity in writer view
       this.command = {
-        command: 'chapterwiseCodex.openIndexFileInWriterView',
-        title: '', // Empty title to avoid redundant tooltip
+        command: 'chapterwiseCodex.navigateToEntity',
+        title: '',
         arguments: [this],
       };
+    } else if (isFile) {
+      // File - open in writer view
+      this.command = {
+        command: 'chapterwiseCodex.openIndexFileInWriterView',
+        title: '',
+        arguments: [this],
+      };
+    } else if (isMissing || isError) {
+      // Missing/Error - show error message
+      this.command = {
+        command: 'chapterwiseCodex.showError',
+        title: '',
+        arguments: [this],
+      };
+    } else {
+      // Legacy: .md and .codex.yaml files (backward compatibility)
+      const filename = indexNode._filename || '';
+      if (filename.endsWith('.md') || filename.endsWith('.codex.yaml')) {
+        this.command = {
+          command: 'chapterwiseCodex.openIndexFileInWriterView',
+          title: '',
+          arguments: [this],
+        };
+      }
     }
   }
   
   private createTooltip(): vscode.MarkdownString {
     const md = new vscode.MarkdownString();
+    const node = this.indexNode as any;
     md.appendMarkdown(`**${this.indexNode.title || this.indexNode.name}**\n\n`);
-    md.appendMarkdown(`- Type: \`${this.indexNode.type}\`\n`);
-    md.appendMarkdown(`- ID: \`${this.indexNode.id}\`\n`);
     
-    if (this.indexNode._computed_path) {
-      md.appendMarkdown(`- Path: \`${this.indexNode._computed_path}\`\n`);
+    // Phase 3: Enhanced tooltip based on node kind
+    const nodeKind = node._node_kind;
+    
+    if (nodeKind === 'error') {
+      md.appendMarkdown(`⚠️ **Error**\n\n`);
+      if (node._error_message) {
+        md.appendMarkdown(`\`\`\`\n${node._error_message}\n\`\`\`\n`);
+      }
+      if (node._original_include) {
+        md.appendMarkdown(`\nInclude: \`${node._original_include}\`\n`);
+      }
+    } else if (nodeKind === 'missing') {
+      md.appendMarkdown(`⚠️ **Missing File**\n\n`);
+      if (node._original_include) {
+        md.appendMarkdown(`Include: \`${node._original_include}\`\n`);
+      }
+      if (node._computed_path) {
+        md.appendMarkdown(`Expected path: \`${node._computed_path}\`\n`);
+      }
+    } else if (nodeKind === 'field') {
+      md.appendMarkdown(`- Field: \`${node._field_name}\`\n`);
+      md.appendMarkdown(`- Type: \`${node._field_type}\`\n`);
+      if (node._parent_entity) {
+        md.appendMarkdown(`- Parent: \`${node._parent_entity}\`\n`);
+      }
+      if (node._parent_file) {
+        md.appendMarkdown(`- File: \`${node._parent_file}\`\n`);
+      }
+    } else if (nodeKind === 'entity') {
+      md.appendMarkdown(`- Type: \`${this.indexNode.type}\`\n`);
+      md.appendMarkdown(`- ID: \`${this.indexNode.id}\`\n`);
+      if (node._depth !== undefined) {
+        md.appendMarkdown(`- Depth: \`${node._depth}\`\n`);
+      }
+      if (node._parent_file) {
+        md.appendMarkdown(`- File: \`${node._parent_file}\`\n`);
+      }
+      if (node._parent_entity) {
+        md.appendMarkdown(`- Parent Entity: \`${node._parent_entity}\`\n`);
+      }
+    } else {
+      // Default (file, folder)
+      md.appendMarkdown(`- Type: \`${this.indexNode.type}\`\n`);
+      md.appendMarkdown(`- ID: \`${this.indexNode.id}\`\n`);
+      if (this.indexNode._computed_path) {
+        md.appendMarkdown(`- Path: \`${this.indexNode._computed_path}\`\n`);
+      }
     }
     
     return md;
   }
   
   private getIcon(): vscode.ThemeIcon {
-    if (this.isFolder) {
+    const node = this.indexNode as any;
+    const nodeKind = node._node_kind;
+    
+    // Phase 3: Handle special state icons first
+    if (nodeKind === 'missing') {
+      return new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'));
+    }
+    
+    if (nodeKind === 'error') {
+      return new vscode.ThemeIcon('error', new vscode.ThemeColor('editorError.foreground'));
+    }
+    
+    // Folder icons
+    if (this.isFolder || nodeKind === 'folder') {
       return new vscode.ThemeIcon('folder', new vscode.ThemeColor('symbolIcon.folderForeground'));
     }
     
-    // Map types to icons (reuse from CodexTreeItem)
+    // Phase 3: Field icons (by field name)
+    if (nodeKind === 'field') {
+      const fieldIconMap: Record<string, [string, string]> = {
+        summary: ['symbol-key', 'symbolIcon.keyForeground'],
+        body: ['symbol-text', 'symbolIcon.textForeground'],
+        attributes: ['symbol-property', 'symbolIcon.propertyForeground'],
+        content: ['symbol-snippet', 'symbolIcon.snippetForeground'],
+      };
+      
+      const fieldName = node._field_name;
+      const config = fieldIconMap[fieldName] || ['symbol-misc', 'symbolIcon.fieldForeground'];
+      return new vscode.ThemeIcon(config[0], new vscode.ThemeColor(config[1]));
+    }
+    
+    // Phase 3: Entity icons (by type or ID)
+    if (nodeKind === 'entity') {
+      const entityIconMap: Record<string, [string, string]> = {
+        module: ['symbol-module', 'symbolIcon.moduleForeground'],
+        character: ['person', 'symbolIcon.variableForeground'],
+        location: ['globe', 'symbolIcon.namespaceForeground'],
+        scene: ['symbol-event', 'symbolIcon.eventForeground'],
+        concept: ['lightbulb', 'symbolIcon.keyForeground'],
+        faction: ['organization', 'symbolIcon.interfaceForeground'],
+        item: ['package', 'symbolIcon.fieldForeground'],
+        'powers-abilities': ['zap', 'symbolIcon.fieldForeground'],
+        'origin-story': ['history', 'symbolIcon.keyForeground'],
+        relationships: ['organization', 'symbolIcon.referenceForeground'],
+        philosophy: ['mortar-board', 'symbolIcon.textForeground'],
+        goals: ['target', 'symbolIcon.eventForeground'],
+      };
+      
+      // Try ID first (for specific modules), then type
+      const key = this.indexNode.id?.toLowerCase() || this.indexNode.type?.toLowerCase() || 'module';
+      const config = entityIconMap[key] || entityIconMap.module;
+      return new vscode.ThemeIcon(config[0], new vscode.ThemeColor(config[1]));
+    }
+    
+    // File icons (by type)
     const iconMap: Record<string, [string, string]> = {
       book: ['book', 'symbolIcon.classForeground'],
       script: ['book', 'symbolIcon.classForeground'],
@@ -222,11 +363,12 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
       character: ['person', 'symbolIcon.variableForeground'],
       location: ['globe', 'symbolIcon.namespaceForeground'],
       scene: ['symbol-event', 'symbolIcon.eventForeground'],
+      concept: ['lightbulb', 'symbolIcon.keyForeground'],
       codex: ['file-code', 'symbolIcon.classForeground'],
       markdown: ['markdown', 'symbolIcon.stringForeground'],
     };
     
-    const config = iconMap[this.indexNode.type.toLowerCase()];
+    const config = iconMap[this.indexNode.type?.toLowerCase()];
     if (config) {
       return new vscode.ThemeIcon(config[0], new vscode.ThemeColor(config[1]));
     }
@@ -974,27 +1116,33 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     
     // Index node expansion
     if (element instanceof IndexNodeTreeItem) {
-      const isFolder = element.indexNode.type === 'folder';
+      const node = element.indexNode as any;
+      const nodeKind = node._node_kind;
+      const isFolder = element.indexNode.type === 'folder' || nodeKind === 'folder';
       
-      if (isFolder) {
-        // Folder node - return its children from the index
-        if (!element.indexNode.children) {
+      // Phase 3: Entities and files with children show them directly from the index
+      if (nodeKind === 'entity' || nodeKind === 'file' || isFolder) {
+        if (!element.indexNode.children || element.indexNode.children.length === 0) {
           return [];
         }
         
+        // Return children from the index (already includes entities and fields from Phase 2)
         return element.indexNode.children.map(child =>
           this.createIndexTreeItem(child, workspaceRoot, uri)
         );
       }
       
-      // File node - check if it's a .codex.yaml file
-      const filename = element.indexNode._filename || '';
-      if (filename.endsWith('.codex.yaml')) {
-        // Load and show the file's internal structure
-        return this.getCodexFileStructure(element, workspaceRoot);
+      // Legacy: For backward compatibility with old indexes (pre-Phase 2)
+      // File node without _node_kind - check if it's a .codex.yaml file
+      if (!nodeKind) {
+        const filename = element.indexNode._filename || '';
+        if (filename.endsWith('.codex.yaml')) {
+          // Load and show the file's internal structure (old behavior)
+          return this.getCodexFileStructure(element, workspaceRoot);
+        }
       }
       
-      // .md files and other types don't expand
+      // Fields and other nodes don't expand
       return [];
     }
     
