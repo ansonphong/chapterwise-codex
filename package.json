@@ -111,6 +111,26 @@
         "title": "ChapterWise Codex: Convert Markdown to Codex"
       },
       {
+        "command": "chapterwiseCodex.git.setupWizard",
+        "title": "ChapterWise: Git Setup Wizard (Recommended for Beginners)",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "chapterwiseCodex.git.initRepository",
+        "title": "ChapterWise: Initialize Git Repository",
+        "icon": "$(repo-create)"
+      },
+      {
+        "command": "chapterwiseCodex.git.ensureGitIgnore",
+        "title": "ChapterWise: Create/Update .gitignore for Writing Projects",
+        "icon": "$(file-add)"
+      },
+      {
+        "command": "chapterwiseCodex.git.setupLFS",
+        "title": "ChapterWise: Setup Git LFS for Large Files",
+        "icon": "$(database)"
+      },
+      {
         "command": "chapterwiseCodex.addChildNode",
         "title": "Add Child Node",
         "icon": "$(add)"
@@ -366,6 +386,22 @@
         },
         {
           "command": "chapterwiseCodex.regenerateIndex",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "chapterwiseCodex.git.setupWizard",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "chapterwiseCodex.git.initRepository",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "chapterwiseCodex.git.ensureGitIgnore",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "chapterwiseCodex.git.setupLFS",
           "when": "workspaceFolderCount > 0"
         }
       ]

@@ -21,6 +21,8 @@ import { runCreateIndexFile } from './indexBoilerplate';
 import { runConvertToMarkdown, runConvertToCodex, disposeConvertFormat } from './convertFormat';
 import { countFilesInIndex as countIndexFiles } from './indexParser';
 import { CodexDragAndDropController } from './dragDropController';
+import { initializeGitRepository, ensureGitIgnore, setupGitLFS, disposeGitSetup } from './gitSetup';
+import { runGitSetupWizard } from './gitSetup/wizard';
 
 /**
  * Notification Helper - Show transient messages that auto-dismiss
@@ -968,6 +970,36 @@ function registerCommands(context: vscode.ExtensionContext): void {
     })
   );
   
+  // === GIT SETUP COMMANDS ===
+  
+  // Git Setup Wizard command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chapterwiseCodex.git.setupWizard', async () => {
+      await runGitSetupWizard();
+    })
+  );
+  
+  // Initialize Git Repository command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chapterwiseCodex.git.initRepository', async () => {
+      await initializeGitRepository();
+    })
+  );
+  
+  // Ensure Git Ignore command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chapterwiseCodex.git.ensureGitIgnore', async () => {
+      await ensureGitIgnore();
+    })
+  );
+  
+  // Setup Git LFS command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chapterwiseCodex.git.setupLFS', async () => {
+      await setupGitLFS();
+    })
+  );
+  
   // === NEW NAVIGATOR COMMANDS ===
   
   // Add child node command
@@ -1827,6 +1859,7 @@ export function deactivate(): void {
   disposeWordCount();
   disposeTagGenerator();
   disposeConvertFormat();
+  disposeGitSetup();
   outputChannel?.appendLine('ChapterWise Codex extension deactivated');
   outputChannel?.dispose();
 }
