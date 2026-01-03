@@ -1,6 +1,6 @@
 /**
  * Implode Codex - Merge Included Files Back Into Parent
- * 
+ *
  * Resolves include directives in a codex file, reading the referenced files
  * and merging their content back into the parent document. This is the
  * inverse of the Explode operation.
@@ -66,7 +66,7 @@ export class CodexImploder {
 
       const fileContent = fs.readFileSync(inputPath, 'utf-8');
       const isJson = inputPath.toLowerCase().endsWith('.json');
-      
+
       let codexData: Record<string, unknown>;
       if (isJson) {
         codexData = JSON.parse(fileContent);
@@ -129,12 +129,12 @@ export class CodexImploder {
       }
       const metadata = codexData.metadata as Record<string, unknown>;
       metadata.updated = new Date().toISOString();
-      
+
       // Remove exploded metadata since we're imploding
       if ('exploded' in metadata) {
         delete metadata.exploded;
       }
-      
+
       // Add imploded metadata
       metadata.imploded = {
         timestamp: new Date().toISOString(),
@@ -203,7 +203,7 @@ export class CodexImploder {
       if ('include' in child && typeof child.include === 'string') {
         // This is an include directive
         const includePath = child.include as string;
-        
+
         try {
           const resolvedContent = await this.resolveInclude(includePath, parentDir, options);
           if (resolvedContent) {
@@ -267,7 +267,7 @@ export class CodexImploder {
     // Read and parse the file
     const content = fs.readFileSync(fullPath, 'utf-8');
     const isJson = fullPath.toLowerCase().endsWith('.json');
-    
+
     let includedData: Record<string, unknown>;
     try {
       if (isJson) {
@@ -284,7 +284,7 @@ export class CodexImploder {
     this.mergedFiles.push(fullPath);
     console.log(`[Implode] Resolved include: ${includePath} -> ${fullPath}`);
 
-    // Extract the entity data, removing metadata that's specific to standalone files
+    // Extract the node data, removing metadata that's specific to standalone files
     const entityData = this.extractEntityData(includedData);
 
     // Handle recursive includes if the included file has children with includes
@@ -301,7 +301,7 @@ export class CodexImploder {
   }
 
   /**
-   * Extract entity data from included file, removing standalone metadata
+   * Extract node data from included file, removing standalone metadata
    */
   private extractEntityData(includedData: Record<string, unknown>): Record<string, unknown> {
     const entityData: Record<string, unknown> = {};
@@ -329,7 +329,7 @@ export class CodexImploder {
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
           this.deletedFiles.push(filePath);
-          
+
           // Track parent folder for potential cleanup
           const folder = path.dirname(filePath);
           foldersToCheck.add(folder);
@@ -342,7 +342,7 @@ export class CodexImploder {
     // Delete empty folders if requested
     if (deleteEmptyFolders) {
       // Sort by depth (deepest first) to handle nested empty folders
-      const sortedFolders = Array.from(foldersToCheck).sort((a, b) => 
+      const sortedFolders = Array.from(foldersToCheck).sort((a, b) =>
         b.split(path.sep).length - a.split(path.sep).length
       );
 
@@ -509,7 +509,7 @@ export async function runImplodeCodex(): Promise<void> {
     channel.appendLine(`\nIncludes found in ${editor.document.fileName}:`);
     includePaths.forEach((p, i) => channel.appendLine(`  ${i + 1}. ${p}`));
     channel.show();
-    
+
     // Ask again after showing
     const continueAfterShow = await vscode.window.showInformationMessage(
       `Found ${includeCount} include directive${includeCount > 1 ? 's' : ''}. Continue with implode?`,
@@ -568,11 +568,11 @@ export async function runImplodeCodex(): Promise<void> {
       'Yes, Delete Empty Folders',
       'No, Keep Folders'
     );
-    
+
     if (!folderChoice) {
       return; // User cancelled
     }
-    
+
     deleteEmptyFolders = folderChoice.includes('Yes');
   }
 
@@ -648,7 +648,7 @@ export async function runImplodeCodex(): Promise<void> {
     } else {
       channel.appendLine(`✅ Success! Merged ${result.mergedCount} includes`);
     }
-    
+
     if (result.mergedFiles.length > 0) {
       channel.appendLine(options.dryRun ? `\nWould merge files:` : `\nMerged files:`);
       result.mergedFiles.forEach((f, i) => {
@@ -679,7 +679,7 @@ export async function runImplodeCodex(): Promise<void> {
     let successMsg = options.dryRun
       ? `[DRY RUN] Would merge ${result.mergedCount} includes`
       : `✅ Merged ${result.mergedCount} includes into the codex file`;
-    
+
     if (!options.dryRun && result.deletedFiles.length > 0) {
       successMsg += ` (deleted ${result.deletedFiles.length} source files)`;
     }

@@ -54,13 +54,13 @@ async function restoreLastContext(context: vscode.ExtensionContext): Promise<voi
   try {
     const savedContextPath = context.workspaceState.get<string>('chapterwiseCodex.lastContextPath');
     const savedContextType = context.workspaceState.get<string>('chapterwiseCodex.lastContextType');
-    
+
     if (!savedContextPath || !savedContextType) {
       return; // No saved context
     }
-    
+
     outputChannel.appendLine(`[restoreLastContext] Attempting to restore context: ${savedContextPath}`);
-    
+
     // Verify the path still exists
     if (!fs.existsSync(savedContextPath)) {
       outputChannel.appendLine(`[restoreLastContext] Saved context path no longer exists: ${savedContextPath}`);
@@ -69,7 +69,7 @@ async function restoreLastContext(context: vscode.ExtensionContext): Promise<voi
       await context.workspaceState.update('chapterwiseCodex.lastContextType', undefined);
       return;
     }
-    
+
     // Verify it's in a workspace
     const uri = vscode.Uri.file(savedContextPath);
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
@@ -77,7 +77,7 @@ async function restoreLastContext(context: vscode.ExtensionContext): Promise<voi
       outputChannel.appendLine(`[restoreLastContext] Saved context is not in a workspace`);
       return;
     }
-    
+
     // Restore the context by calling the appropriate command
     if (savedContextType === 'folder') {
       outputChannel.appendLine(`[restoreLastContext] Restoring folder context: ${savedContextPath}`);
@@ -103,51 +103,51 @@ export function activate(context: vscode.ExtensionContext): void {
   // Create output channel for logs
   outputChannel = vscode.window.createOutputChannel('ChapterWise Codex');
   context.subscriptions.push(outputChannel);
-  
+
   outputChannel.appendLine('ChapterWise Codex extension activating...');
-  
+
   try {
     // Create tree provider first
     const { CodexTreeProvider } = require('./treeProvider');
     const tp = new CodexTreeProvider();
     treeProvider = tp;
     outputChannel.appendLine('Tree provider created');
-    
+
     // Initialize drag & drop controller (needs tree provider)
     const dragController = new CodexDragAndDropController(treeProvider);
     outputChannel.appendLine('Drag & drop controller created');
-    
+
     // Initialize tree view with both tree provider and drag controller
     const { treeView: tv } = createCodexTreeView(context, treeProvider, dragController);
     treeView = tv;
     outputChannel.appendLine('Tree view created with drag & drop support');
-    
+
     // Phase 5: Register expansion state handlers
     treeView.onDidCollapseElement(async (event) => {
       if (event.element instanceof IndexNodeTreeItem) {
         await updateNodeExpandedState(event.element, false);
       }
     });
-    
+
     treeView.onDidExpandElement(async (event) => {
       if (event.element instanceof IndexNodeTreeItem) {
         await updateNodeExpandedState(event.element, true);
       }
     });
     outputChannel.appendLine('Tree expansion state handlers registered');
-    
+
     // Initialize Writer View manager
     writerViewManager = new WriterViewManager(context);
     outputChannel.appendLine('Writer view manager created');
-    
+
     // Set tree provider reference for author lookup
     writerViewManager.setTreeProvider(treeProvider);
     outputChannel.appendLine('Writer view manager linked to tree provider');
-    
+
     // Initialize validation system
     initializeValidation(context);
     outputChannel.appendLine('Validation initialized');
-    
+
     // Create status bar item
     statusBarItem = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Right,
@@ -155,11 +155,11 @@ export function activate(context: vscode.ExtensionContext): void {
     );
     statusBarItem.command = 'chapterwiseCodex.openNavigator';
     context.subscriptions.push(statusBarItem);
-    
+
     // Register commands
     registerCommands(context);
     outputChannel.appendLine('Commands registered');
-    
+
     // Update status bar based on active editor
     updateStatusBar();
     context.subscriptions.push(
@@ -168,15 +168,15 @@ export function activate(context: vscode.ExtensionContext): void {
         // Don't auto-switch context - user must explicitly set context
       })
     );
-    
+
     // Don't auto-set context on activation - user must explicitly choose context
-    
+
     // Auto-discover index.codex.yaml in top-level folders
     autoDiscoverIndexFiles();
-    
+
     // Restore last context if it was saved
     restoreLastContext(context);
-    
+
     console.log('ChapterWise Codex extension activated successfully!');
   } catch (error) {
     console.error('ChapterWise Codex activation failed:', error);
@@ -193,18 +193,18 @@ async function autoDiscoverIndexFiles(): Promise<void> {
   if (!workspaceFolders || workspaceFolders.length === 0) {
     return;
   }
-  
+
   const workspaceRoot = workspaceFolders[0].uri.fsPath;
-  
+
   try {
     // Scan top-level directories only
     const entries = fs.readdirSync(workspaceRoot, { withFileTypes: true });
-    
+
     for (const entry of entries) {
       if (entry.isDirectory() && !entry.name.startsWith('.')) {
         const folderPath = path.join(workspaceRoot, entry.name);
         const indexPath = path.join(folderPath, 'index.codex.yaml');
-        
+
         // Check for index.codex.yaml (without dot prefix)
         if (fs.existsSync(indexPath)) {
           console.log(`[ChapterWise Codex] Found index at top level: ${entry.name}/index.codex.yaml`);
@@ -213,7 +213,7 @@ async function autoDiscoverIndexFiles(): Promise<void> {
         }
       }
     }
-    
+
     // Also check for workspace root index
     const rootIndexPath = path.join(workspaceRoot, '.index.codex.yaml');
     if (fs.existsSync(rootIndexPath)) {
@@ -243,7 +243,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     })
   );
-  
+
   // Refresh tree command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.refresh', () => {
@@ -251,17 +251,17 @@ function registerCommands(context: vscode.ExtensionContext): void {
       treeProvider.refresh();
     })
   );
-  
+
   // Filter by type command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.filterByType', async () => {
       const types = treeProvider.getTypes();
-      
+
       if (types.length === 0) {
         vscode.window.showInformationMessage('No node types found in the current document');
         return;
       }
-      
+
       const currentFilter = treeProvider.getFilter();
       const items = [
         {
@@ -275,15 +275,15 @@ function registerCommands(context: vscode.ExtensionContext): void {
           value: type,
         })),
       ];
-      
+
       const selected = await vscode.window.showQuickPick(items, {
         placeHolder: 'Filter nodes by type',
         title: 'Codex Node Filter',
       });
-      
+
       if (selected !== undefined) {
         treeProvider.setFilter(selected.value);
-        
+
         if (selected.value) {
           vscode.window.setStatusBarMessage(`Filtering: ${selected.value}`, 2000);
         } else {
@@ -292,7 +292,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     })
   );
-  
+
   // Open Writer View command
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -308,7 +308,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     )
   );
-  
+
   // Go to YAML command
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -317,12 +317,12 @@ function registerCommands(context: vscode.ExtensionContext): void {
         if (!treeItem) {
           return;
         }
-        
+
         const document = treeProvider.getActiveTextDocument();
         if (!document) {
           return;
         }
-        
+
         // Navigate to the node's line in the source file
         const lineNumber = treeItem.codexNode.lineNumber;
         if (lineNumber !== undefined) {
@@ -340,7 +340,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     )
   );
-  
+
   // Copy ID command
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -350,7 +350,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
           vscode.window.showInformationMessage('No ID to copy');
           return;
         }
-        
+
         await vscode.env.clipboard.writeText(treeItem.codexNode.id);
         vscode.window.setStatusBarMessage(
           `Copied: ${treeItem.codexNode.id}`,
@@ -359,7 +359,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     )
   );
-  
+
   // Toggle field display command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.toggleFields', async () => {
@@ -371,7 +371,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       );
     })
   );
-  
+
   // Open Writer View for a specific field
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -380,7 +380,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
         if (!fieldItem) {
           return;
         }
-        
+
         // Determine which field to open
         let targetField: string;
         if (fieldItem.fieldType === 'attributes') {
@@ -391,12 +391,12 @@ function registerCommands(context: vscode.ExtensionContext): void {
           // Extract field name (remove any count suffix like "body" from "body (123 words)")
           targetField = fieldItem.fieldName.split(' ')[0].toLowerCase();
         }
-        
+
         await writerViewManager.openWriterViewForField(fieldItem.parentNode, fieldItem.documentUri, targetField);
       }
     )
   );
-  
+
   // Auto-Fix command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.autoFix', async () => {
@@ -405,7 +405,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       treeProvider.refresh();
     })
   );
-  
+
   // Auto-Fix with ID regeneration command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.autoFixRegenIds', async () => {
@@ -414,7 +414,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       treeProvider.refresh();
     })
   );
-  
+
   // Explode Codex command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.explodeCodex', async () => {
@@ -423,7 +423,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       treeProvider.refresh();
     })
   );
-  
+
   // Implode Codex command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.implodeCodex', async () => {
@@ -432,7 +432,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       treeProvider.refresh();
     })
   );
-  
+
   // Update Word Count command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.updateWordCount', async () => {
@@ -441,7 +441,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       treeProvider.refresh();
     })
   );
-  
+
   // Generate Tags command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.generateTags', async () => {
@@ -450,28 +450,28 @@ function registerCommands(context: vscode.ExtensionContext): void {
       treeProvider.refresh();
     })
   );
-  
+
   // Generate Index command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.generateIndex', async () => {
       await runGenerateIndex();
     })
   );
-  
+
   // Regenerate Index command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.regenerateIndex', async () => {
       await runRegenerateIndex();
     })
   );
-  
+
   // Create Index File command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.createIndexFile', async () => {
       await runCreateIndexFile();
     })
   );
-  
+
   // Open Index File command
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -480,15 +480,15 @@ function registerCommands(context: vscode.ExtensionContext): void {
         if (!treeItem) {
           return;
         }
-        
+
         const filePath = treeItem.getFilePath();
-        
+
         // Check if file exists
         try {
           const uri = vscode.Uri.file(filePath);
           const doc = await vscode.workspace.openTextDocument(uri);
           await vscode.window.showTextDocument(doc);
-          
+
           // Don't change context - let user keep their current context
         } catch (error) {
           vscode.window.showErrorMessage(
@@ -499,7 +499,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     )
   );
-  
+
   // Open Index File in Writer View command (for .md Codex Lite files)
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -509,17 +509,17 @@ function registerCommands(context: vscode.ExtensionContext): void {
           outputChannel.appendLine('openIndexFileInWriterView: No treeItem provided');
           return;
         }
-        
+
         outputChannel.appendLine('='.repeat(80));
         outputChannel.appendLine(`openIndexFileInWriterView called for: ${treeItem.indexNode.name}`);
         outputChannel.appendLine(`Call stack: ${new Error().stack}`);
         outputChannel.appendLine(`TreeItem workspaceRoot: ${treeItem.workspaceRoot}`);
         outputChannel.appendLine(`TreeItem _computed_path: ${treeItem.indexNode._computed_path}`);
         outputChannel.appendLine(`TreeItem _filename: ${treeItem.indexNode._filename}`);
-        
+
         const filePath = treeItem.getFilePath();
         outputChannel.appendLine(`File path: ${filePath}`);
-        
+
         try {
           // Check if file exists first
           if (!fs.existsSync(filePath)) {
@@ -528,19 +528,19 @@ function registerCommands(context: vscode.ExtensionContext): void {
             vscode.window.showErrorMessage(errorMsg);
             return;
           }
-          
+
           outputChannel.appendLine(`File exists, reading file...`);
           // Read file directly - DON'T open in VS Code text editor
           // We only want to open it in the writer view
           const uri = vscode.Uri.file(filePath);
           const text = fs.readFileSync(filePath, 'utf-8');
           outputChannel.appendLine(`File read successfully, length: ${text.length}`);
-          
+
           // Determine file type and parse accordingly
           const fileName = path.basename(filePath);
           const isMarkdown = fileName.endsWith('.md');
           const isCodexYaml = fileName.endsWith('.codex.yaml');
-          
+
           let codexDoc;
           if (isMarkdown) {
             outputChannel.appendLine(`Parsing as Codex Lite (markdown), text length: ${text.length}`);
@@ -553,7 +553,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
             vscode.window.showErrorMessage(`Unsupported file type: ${fileName}`);
             return;
           }
-          
+
           if (!codexDoc || !codexDoc.rootNode) {
             outputChannel.appendLine(`Failed to parse as Codex, falling back to text editor`);
             // Fallback to regular text editor if parsing fails
@@ -562,7 +562,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
             // Don't change context - user must explicitly set it
             return;
           }
-          
+
           outputChannel.appendLine(`Parsed successfully, root node:`);
           outputChannel.appendLine(`  name: ${codexDoc.rootNode.name}`);
           outputChannel.appendLine(`  type: ${codexDoc.rootNode.type}`);
@@ -570,7 +570,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
           outputChannel.appendLine(`  proseValue length: ${codexDoc.rootNode.proseValue?.length || 0}`);
           outputChannel.appendLine(`  proseValue preview: ${codexDoc.rootNode.proseValue?.substring(0, 100) || 'EMPTY'}`);
           outputChannel.appendLine(`  availableFields: ${codexDoc.rootNode.availableFields.join(', ')}`);
-          
+
           // Create a temporary CodexTreeItem for the root node
           const hasChildren = codexDoc.rootNode.children && codexDoc.rootNode.children.length > 0;
           const tempTreeItem = new CodexTreeItem(
@@ -580,14 +580,14 @@ function registerCommands(context: vscode.ExtensionContext): void {
             false, // Don't expand
             true   // Show fields (body, etc.)
           );
-          
+
           outputChannel.appendLine(`Created temp tree item, opening writer view...`);
-          
+
           // Open in writer view
           await writerViewManager.openWriterView(tempTreeItem);
-          
+
           outputChannel.appendLine(`Writer view opened successfully`);
-          
+
           // Don't change context - let user keep their current index context
         } catch (error) {
           const errorMsg = `Failed to open file in Codex Editor: ${path.basename(filePath)}`;
@@ -599,86 +599,86 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     )
   );
-  
-  // Phase 3: Navigate to Entity command (opens Writer View)
+
+  // Phase 3: Navigate to Node command (opens Writer View)
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'chapterwiseCodex.navigateToEntity',
       async (treeItem?: IndexNodeTreeItem) => {
         if (!treeItem) {
-          vscode.window.showErrorMessage('No entity selected');
+          vscode.window.showErrorMessage('No node selected');
           return;
         }
-        
+
         const node = treeItem.indexNode as any;
         const parentFile = node._parent_file;
         const entityId = node.id;
-        
+
         if (!parentFile || !entityId) {
-          vscode.window.showErrorMessage('Cannot navigate: missing file or entity ID');
+          vscode.window.showErrorMessage('Cannot navigate: missing file or node ID');
           return;
         }
-        
+
         const workspaceRoot = treeProvider.getWorkspaceRoot();
         if (!workspaceRoot) {
           vscode.window.showErrorMessage('No workspace root found');
           return;
         }
-        
+
         // Resolve file path
         const filePath = path.join(workspaceRoot, parentFile);
-        
+
         if (!fs.existsSync(filePath)) {
           vscode.window.showErrorMessage(`File not found: ${parentFile}`);
           return;
         }
-        
+
         // Parse file to create CodexNode
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const codexDoc = parseCodex(fileContent);
-        
+
         if (!codexDoc || !codexDoc.rootNode) {
           vscode.window.showErrorMessage('Failed to parse codex file');
           return;
         }
-        
-        // Find the entity node in the parsed document
+
+        // Find the node in the parsed document
         const entityNode = findNodeById(codexDoc.rootNode, entityId);
-        
+
         if (!entityNode) {
-          vscode.window.showErrorMessage(`Entity ${entityId} not found in file`);
+          vscode.window.showErrorMessage(`Node ${entityId} not found in file`);
           return;
         }
-        
-        // Determine initial field based on entity structure
+
+        // Determine initial field based on node structure
         let initialField = '__overview__';  // default to overview
-        
+
         // Count available fields
         const hasSummary = entityNode.availableFields.includes('summary');
         const hasBody = entityNode.availableFields.includes('body');
         const hasChildren = entityNode.children && entityNode.children.length > 0;
         const hasContentSections = entityNode.contentSections && entityNode.contentSections.length > 0;
         const hasAttributes = entityNode.attributes && entityNode.attributes.length > 0;
-        
+
         // Count total fields
         const fieldCount = [hasSummary, hasBody, hasContentSections, hasAttributes, hasChildren].filter(Boolean).length;
-        
+
         // Only show single field if there's literally just one field
         if (fieldCount === 1) {
           if (hasSummary) initialField = 'summary';
           else if (hasBody) initialField = 'body';
           // Otherwise stay in overview mode for single structured field
         }
-        
+
         // Create document URI
         const documentUri = vscode.Uri.file(filePath);
-        
+
         // Open Writer View with determined field
         await writerViewManager.openWriterViewForField(entityNode, documentUri, initialField);
       }
     )
   );
-  
+
   // Phase 3: Navigate to Field command (opens Writer View)
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -688,57 +688,57 @@ function registerCommands(context: vscode.ExtensionContext): void {
           vscode.window.showErrorMessage('No field selected');
           return;
         }
-        
+
         const node = treeItem.indexNode as any;
         const parentFile = node._parent_file;
         const parentEntity = node._parent_entity;
         const fieldName = node._field_name;
-        
+
         if (!parentFile || !fieldName) {
           vscode.window.showErrorMessage('Cannot navigate: missing file or field name');
           return;
         }
-        
+
         const workspaceRoot = treeProvider.getWorkspaceRoot();
         if (!workspaceRoot) {
           vscode.window.showErrorMessage('No workspace root found');
           return;
         }
-        
+
         // Resolve file path
         const filePath = path.join(workspaceRoot, parentFile);
-        
+
         if (!fs.existsSync(filePath)) {
           vscode.window.showErrorMessage(`File not found: ${parentFile}`);
           return;
         }
-        
+
         // Parse file to create CodexNode
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const codexDoc = parseCodex(fileContent);
-        
+
         if (!codexDoc || !codexDoc.rootNode) {
           vscode.window.showErrorMessage('Failed to parse codex file');
           return;
         }
-        
-        // Find the parent entity node if specified
+
+        // Find the parent node if specified
         let targetNode: CodexNode | null = null;
-        
+
         if (parentEntity) {
           targetNode = findNodeById(codexDoc.rootNode, parentEntity);
           if (!targetNode) {
-            vscode.window.showErrorMessage(`Parent entity ${parentEntity} not found in file`);
+            vscode.window.showErrorMessage(`Parent node ${parentEntity} not found in file`);
             return;
           }
         } else {
-          // If no parent entity, use root node
+          // If no parent node, use root node
           targetNode = codexDoc.rootNode;
         }
-        
+
         // Create document URI
         const documentUri = vscode.Uri.file(filePath);
-        
+
         // Map field names to Writer View's special field identifiers
         let writerViewFieldName = fieldName;
         if (fieldName === 'attributes') {
@@ -746,67 +746,67 @@ function registerCommands(context: vscode.ExtensionContext): void {
         } else if (fieldName === 'content') {
           writerViewFieldName = '__content__';
         }
-        
+
         // Open Writer View with specific field selected
         await writerViewManager.openWriterViewForField(targetNode, documentUri, writerViewFieldName);
       }
     )
   );
-  
-  // Navigate to Entity in Code View (alternative to Writer View)
+
+  // Navigate to Node in Code View (alternative to Writer View)
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'chapterwiseCodex.navigateToEntityInCodeView',
       async (treeItem?: IndexNodeTreeItem) => {
         if (!treeItem) {
-          vscode.window.showErrorMessage('No entity selected');
+          vscode.window.showErrorMessage('No node selected');
           return;
         }
-        
+
         const node = treeItem.indexNode as any;
         const parentFile = node._parent_file;
         const entityId = node.id;
-        
+
         if (!parentFile || !entityId) {
-          vscode.window.showErrorMessage('Cannot navigate: missing file or entity ID');
+          vscode.window.showErrorMessage('Cannot navigate: missing file or node ID');
           return;
         }
-        
+
         const workspaceRoot = treeProvider.getWorkspaceRoot();
         if (!workspaceRoot) {
           vscode.window.showErrorMessage('No workspace root found');
           return;
         }
-        
+
         // Resolve file path
         const filePath = path.join(workspaceRoot, parentFile);
-        
+
         if (!fs.existsSync(filePath)) {
           vscode.window.showErrorMessage(`File not found: ${parentFile}`);
           return;
         }
-        
+
         // Open file in text editor
         const doc = await vscode.workspace.openTextDocument(filePath);
         const editor = await vscode.window.showTextDocument(doc);
-        
-        // Find entity in file by ID
+
+        // Find node in file by ID
         const text = doc.getText();
         const lines = text.split('\n');
         let entityLineStart = -1;
-        
+
         // Helper function to escape special regex characters
         const escapeRegExp = (str: string): string => {
           return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         };
-        
-        // Try multiple patterns to find the entity ID
+
+        // Try multiple patterns to find the node ID
         const idPatterns = [
           new RegExp(`^\\s*id:\\s*${escapeRegExp(entityId)}\\s*$`, 'i'),           // YAML: id: value
           new RegExp(`^\\s*id:\\s*["']${escapeRegExp(entityId)}["']\\s*$`, 'i'),  // YAML: id: "value" or id: 'value'
           new RegExp(`^\\s*["']id["']:\\s*["']${escapeRegExp(entityId)}["']`, 'i'), // JSON: "id": "value"
         ];
-        
+
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
           if (idPatterns.some(pattern => pattern.test(line))) {
@@ -814,9 +814,9 @@ function registerCommands(context: vscode.ExtensionContext): void {
             break;
           }
         }
-        
+
         if (entityLineStart >= 0) {
-          // Scroll to entity
+          // Scroll to node
           const position = new vscode.Position(entityLineStart, 0);
           editor.selection = new vscode.Selection(position, position);
           editor.revealRange(
@@ -824,12 +824,12 @@ function registerCommands(context: vscode.ExtensionContext): void {
             vscode.TextEditorRevealType.InCenter
           );
         } else {
-          vscode.window.showWarningMessage(`Entity ${entityId} not found in file`);
+          vscode.window.showWarningMessage(`Node ${entityId} not found in file`);
         }
       }
     )
   );
-  
+
   // Navigate to Field in Code View (alternative to Writer View)
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -839,54 +839,54 @@ function registerCommands(context: vscode.ExtensionContext): void {
           vscode.window.showErrorMessage('No field selected');
           return;
         }
-        
+
         const node = treeItem.indexNode as any;
         const parentFile = node._parent_file;
         const parentEntity = node._parent_entity;
         const fieldName = node._field_name;
-        
+
         if (!parentFile || !fieldName) {
           vscode.window.showErrorMessage('Cannot navigate: missing file or field name');
           return;
         }
-        
+
         const workspaceRoot = treeProvider.getWorkspaceRoot();
         if (!workspaceRoot) {
           vscode.window.showErrorMessage('No workspace root found');
           return;
         }
-        
+
         // Resolve file path
         const filePath = path.join(workspaceRoot, parentFile);
-        
+
         if (!fs.existsSync(filePath)) {
           vscode.window.showErrorMessage(`File not found: ${parentFile}`);
           return;
         }
-        
+
         // Open file in text editor
         const doc = await vscode.workspace.openTextDocument(filePath);
         const editor = await vscode.window.showTextDocument(doc);
-        
-        // Find entity first (if specified), then field within it
+
+        // Find node first (if specified), then field within it
         const text = doc.getText();
         const lines = text.split('\n');
         let fieldLineStart = -1;
         let entityLineStart = -1;
-        
+
         // Helper function to escape special regex characters
         const escapeRegExp = (str: string): string => {
           return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         };
-        
-        // If parent entity specified, find it first
+
+        // If parent node specified, find it first
         if (parentEntity) {
           const idPatterns = [
             new RegExp(`^\\s*id:\\s*${escapeRegExp(parentEntity)}\\s*$`, 'i'),
             new RegExp(`^\\s*id:\\s*["']${escapeRegExp(parentEntity)}["']\\s*$`, 'i'),
             new RegExp(`^\\s*["']id["']:\\s*["']${escapeRegExp(parentEntity)}["']`, 'i'),
           ];
-          
+
           for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             if (idPatterns.some(pattern => pattern.test(line))) {
@@ -895,13 +895,13 @@ function registerCommands(context: vscode.ExtensionContext): void {
             }
           }
         }
-        
-        // Find field within entity or file
+
+        // Find field within node or file
         const fieldPatterns = [
           new RegExp(`^\\s*${escapeRegExp(fieldName)}:\\s*`, 'i'),           // YAML: field:
           new RegExp(`^\\s*["']${escapeRegExp(fieldName)}["']:\\s*`, 'i'),  // JSON: "field":
         ];
-        
+
         const searchStart = entityLineStart >= 0 ? entityLineStart : 0;
         for (let i = searchStart; i < lines.length; i++) {
           const line = lines[i];
@@ -910,7 +910,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
             break;
           }
         }
-        
+
         if (fieldLineStart >= 0) {
           // Scroll to field
           const position = new vscode.Position(fieldLineStart, 0);
@@ -925,7 +925,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     )
   );
-  
+
   // Phase 3: Show Error command (for missing/error nodes)
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -934,10 +934,10 @@ function registerCommands(context: vscode.ExtensionContext): void {
         if (!treeItem) {
           return;
         }
-        
+
         const node = treeItem.indexNode as any;
         const nodeKind = node._node_kind;
-        
+
         if (nodeKind === 'error') {
           const errorMsg = node._error_message || 'Unknown error';
           const originalInclude = node._original_include;
@@ -955,53 +955,53 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     )
   );
-  
+
   // Convert to Markdown command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.convertToMarkdown', async () => {
       await runConvertToMarkdown();
     })
   );
-  
+
   // Convert Markdown to Codex command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.convertToCodex', async () => {
       await runConvertToCodex();
     })
   );
-  
+
   // === GIT SETUP COMMANDS ===
-  
+
   // Git Setup Wizard command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.git.setupWizard', async () => {
       await runGitSetupWizard();
     })
   );
-  
+
   // Initialize Git Repository command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.git.initRepository', async () => {
       await initializeGitRepository();
     })
   );
-  
+
   // Ensure Git Ignore command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.git.ensureGitIgnore', async () => {
       await ensureGitIgnore();
     })
   );
-  
+
   // Setup Git LFS command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.git.setupLFS', async () => {
       await setupGitLFS();
     })
   );
-  
+
   // === NEW NAVIGATOR COMMANDS ===
-  
+
   // Add child node command
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -1011,36 +1011,36 @@ function registerCommands(context: vscode.ExtensionContext): void {
           vscode.window.showInformationMessage('Select a node to add a child to');
           return;
         }
-        
+
         const document = treeProvider.getActiveTextDocument();
         if (!document) {
           vscode.window.showErrorMessage('No active document');
           return;
         }
-        
+
         // Import modules
         const { getStructureEditor } = await import('./structureEditor');
         const { getSettingsManager } = await import('./settingsManager');
         const { getFileOrganizer } = await import('./fileOrganizer');
-        
+
         const editor = getStructureEditor();
         const settings = await getSettingsManager().getSettings(document.uri);
-        
+
         // Prompt for node data
         const name = await vscode.window.showInputBox({
           prompt: 'Enter node name',
           placeHolder: 'e.g., Scene 1, Chapter 2'
         });
-        
+
         if (!name) return;
-        
+
         const type = await vscode.window.showInputBox({
           prompt: 'Enter node type',
           placeHolder: 'e.g., scene, chapter, character'
         });
-        
+
         if (!type) return;
-        
+
         // Ask for mode if configured
         let mode = settings.defaultChildMode;
         if (mode === 'ask') {
@@ -1053,13 +1053,13 @@ function registerCommands(context: vscode.ExtensionContext): void {
           );
           mode = choice?.value || 'inline';
         }
-        
+
         if (mode === 'separate-file') {
           // Create as separate file in INDEX mode
           const organizer = getFileOrganizer();
           const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
           if (!workspaceFolder) return;
-          
+
           // Determine parent path from tree item
           // For now, create in workspace root
           const result = await organizer.createNodeFile(
@@ -1068,15 +1068,15 @@ function registerCommands(context: vscode.ExtensionContext): void {
             { name, type, proseField: 'body', proseValue: '' },
             settings
           );
-          
+
           if (result.success && result.fileUri) {
             // Regenerate index
             const { generateIndex } = await import('./indexGenerator');
             await generateIndex({ workspaceRoot: workspaceFolder.uri.fsPath });
-            
+
             // Open new file
             await vscode.window.showTextDocument(result.fileUri);
-            
+
             // Refresh tree
             treeProvider.refresh();
           }
@@ -1089,7 +1089,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
             { name, type, proseField: 'body', proseValue: '' },
             settings
           );
-          
+
           if (success) {
             // Refresh tree
             treeProvider.setActiveDocument(document);
@@ -1099,7 +1099,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     )
   );
-  
+
   // Add sibling node command
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -1109,35 +1109,35 @@ function registerCommands(context: vscode.ExtensionContext): void {
           vscode.window.showInformationMessage('Select a node to add a sibling to');
           return;
         }
-        
+
         const document = treeProvider.getActiveTextDocument();
         if (!document) {
           vscode.window.showErrorMessage('No active document');
           return;
         }
-        
+
         const { getStructureEditor } = await import('./structureEditor');
         const { getSettingsManager } = await import('./settingsManager');
-        
+
         const editor = getStructureEditor();
         const settings = await getSettingsManager().getSettings(document.uri);
-        
+
         // Prompt for node data
         const name = await vscode.window.showInputBox({
           prompt: 'Enter node name',
           placeHolder: 'e.g., Scene 2, Chapter 3'
         });
-        
+
         if (!name) return;
-        
+
         const type = await vscode.window.showInputBox({
           prompt: 'Enter node type',
           value: treeItem.codexNode.type, // Default to same type as sibling
           placeHolder: 'e.g., scene, chapter'
         });
-        
+
         if (!type) return;
-        
+
         // Add as sibling after
         const success = await editor.addNodeInDocument(
           document,
@@ -1146,7 +1146,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
           { name, type, proseField: 'body', proseValue: '' },
           settings
         );
-        
+
         if (success) {
           treeProvider.setActiveDocument(document);
           showTransientMessage(`✓ Added sibling: ${name}`, 3000);
@@ -1154,30 +1154,30 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     )
   );
-  
+
   // Remove node command
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'chapterwiseCodex.removeNode',
       async (treeItem?: CodexTreeItem) => {
         if (!treeItem) return;
-        
+
         const document = treeProvider.getActiveTextDocument();
         if (!document) return;
-        
+
         const { getStructureEditor } = await import('./structureEditor');
         const { getSettingsManager } = await import('./settingsManager');
-        
+
         const editor = getStructureEditor();
         const settings = await getSettingsManager().getSettings(document.uri);
-        
+
         const success = await editor.removeNodeFromDocument(
           document,
           treeItem.codexNode,
           false,
           settings
         );
-        
+
         if (success) {
           treeProvider.setActiveDocument(document);
           showTransientMessage(`✓ Removed: ${treeItem.codexNode.name}`, 3000);
@@ -1185,30 +1185,30 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     )
   );
-  
+
   // Delete node permanently command
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'chapterwiseCodex.deleteNodePermanently',
       async (treeItem?: CodexTreeItem) => {
         if (!treeItem) return;
-        
+
         const document = treeProvider.getActiveTextDocument();
         if (!document) return;
-        
+
         const { getStructureEditor } = await import('./structureEditor');
         const { getSettingsManager } = await import('./settingsManager');
-        
+
         const editor = getStructureEditor();
         const settings = await getSettingsManager().getSettings(document.uri);
-        
+
         const success = await editor.removeNodeFromDocument(
           document,
           treeItem.codexNode,
           true,
           settings
         );
-        
+
         if (success) {
           treeProvider.setActiveDocument(document);
           showTransientMessage(`✓ Deleted: ${treeItem.codexNode.name}`, 3000);
@@ -1216,56 +1216,56 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     )
   );
-  
+
   // Rename node command
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'chapterwiseCodex.renameNode',
       async (treeItem?: CodexTreeItem) => {
         if (!treeItem) return;
-        
+
         const newName = await vscode.window.showInputBox({
           prompt: 'Enter new name',
           value: treeItem.codexNode.name,
           placeHolder: 'New node name'
         });
-        
+
         if (!newName) return;
-        
+
         // TODO: Implement rename in structureEditor
         vscode.window.showInformationMessage(`Rename functionality coming soon!`);
       }
     )
   );
-  
+
   // Move node up command
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'chapterwiseCodex.moveNodeUp',
       async (treeItem?: CodexTreeItem | IndexNodeTreeItem) => {
         if (!treeItem) return;
-        
+
         // Only works in INDEX mode with IndexNodeTreeItem
         if (!(treeItem instanceof IndexNodeTreeItem)) {
           vscode.window.showInformationMessage('Move up/down only works in Index mode');
           return;
         }
-        
+
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
         if (!workspaceFolder) {
           vscode.window.showErrorMessage('No workspace folder found');
           return;
         }
-        
+
         const workspaceRoot = workspaceFolder.uri.fsPath;
         const filePath = treeItem.getFilePath();
         const relativePath = path.relative(workspaceRoot, filePath);
-        
+
         const { getStructureEditor } = await import('./structureEditor');
         const editor = getStructureEditor();
-        
+
         const result = await editor.moveFileUp(workspaceRoot, relativePath);
-        
+
         if (result.success) {
           showTransientMessage(result.message || '✓ Moved up', 3000);
           treeProvider.refresh();
@@ -1275,35 +1275,35 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     )
   );
-  
+
   // Move node down command
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'chapterwiseCodex.moveNodeDown',
       async (treeItem?: CodexTreeItem | IndexNodeTreeItem) => {
         if (!treeItem) return;
-        
+
         // Only works in INDEX mode with IndexNodeTreeItem
         if (!(treeItem instanceof IndexNodeTreeItem)) {
           vscode.window.showInformationMessage('Move up/down only works in Index mode');
           return;
         }
-        
+
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
         if (!workspaceFolder) {
           vscode.window.showErrorMessage('No workspace folder found');
           return;
         }
-        
+
         const workspaceRoot = workspaceFolder.uri.fsPath;
         const filePath = treeItem.getFilePath();
         const relativePath = path.relative(workspaceRoot, filePath);
-        
+
         const { getStructureEditor } = await import('./structureEditor');
         const editor = getStructureEditor();
-        
+
         const result = await editor.moveFileDown(workspaceRoot, relativePath);
-        
+
         if (result.success) {
           showTransientMessage(result.message || '✓ Moved down', 3000);
           treeProvider.refresh();
@@ -1313,37 +1313,37 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     )
   );
-  
+
   // Change color command
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'chapterwiseCodex.changeColor',
       async (treeItem?: CodexTreeItem) => {
         if (!treeItem) return;
-        
+
         const document = treeProvider.getActiveTextDocument();
         if (!document) return;
-        
+
         const { getColorManager } = await import('./colorManager');
         const colorManager = getColorManager();
-        
+
         const success = await colorManager.changeColor(treeItem.codexNode, document);
-        
+
         if (success) {
           treeProvider.setActiveDocument(document);
         }
       }
     )
   );
-  
+
   // Switch to INDEX mode command
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.switchToIndexMode', async () => {
       treeProvider.setNavigationMode('index');
-      
+
       // Set context for button highlighting
       await vscode.commands.executeCommand('setContext', 'codexNavigatorMode', 'index');
-      
+
       // Auto-open .index.codex.yaml if it exists
       const workspaceRoot = vscode.workspace.workspaceFolders?.[0];
       if (workspaceRoot) {
@@ -1355,8 +1355,8 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     })
   );
-  
-  
+
+
   // Autofix Folder command (renormalize order values)
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.autofixFolder', async (item: any) => {
@@ -1364,16 +1364,16 @@ function registerCommands(context: vscode.ExtensionContext): void {
         vscode.window.showErrorMessage('No folder selected');
         return;
       }
-      
+
       const workspaceFolders = vscode.workspace.workspaceFolders;
       if (!workspaceFolders || workspaceFolders.length === 0) {
         vscode.window.showErrorMessage('No workspace folder found');
         return;
       }
-      
+
       const workspaceRoot = workspaceFolders[0].uri.fsPath;
       const folderPath = item.indexNode._computed_path || item.indexNode.name;
-      
+
       outputChannel.appendLine('='.repeat(80));
       outputChannel.appendLine(`[autofixFolder] Starting autofix for folder`);
       outputChannel.appendLine(`  Workspace root: ${workspaceRoot}`);
@@ -1382,7 +1382,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       outputChannel.appendLine(`  Index node type: ${item.indexNode.type}`);
       outputChannel.appendLine(`  _computed_path: ${item.indexNode._computed_path}`);
       outputChannel.appendLine(`  _filename: ${item.indexNode._filename}`);
-      
+
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
         title: `Autofixing folder: ${item.indexNode.name}...`,
@@ -1391,82 +1391,82 @@ function registerCommands(context: vscode.ExtensionContext): void {
         const { getStructureEditor } = await import('./structureEditor');
         const { CodexAutoFixer } = await import('./autoFixer');
         const editor = getStructureEditor();
-        
+
         // 1. Renormalize order values in the index
         progress.report({ message: 'Renormalizing order values...', increment: 10 });
         outputChannel.appendLine(`[autofixFolder] Step 1: Renormalizing order values...`);
-        
+
         const result = await editor.autofixFolderOrder(workspaceRoot, folderPath);
-        
+
         outputChannel.appendLine(`[autofixFolder] Result: ${JSON.stringify(result, null, 2)}`);
-        
+
         if (!result.success) {
           outputChannel.appendLine(`[autofixFolder] FAILED: ${result.message}`);
           vscode.window.showErrorMessage(`Autofix failed: ${result.message}`);
           return;
         }
-        
+
         outputChannel.appendLine(`[autofixFolder] SUCCESS: ${result.message}`);
-        
+
         // 2. Run autofix on all .codex.yaml files in folder
         progress.report({ message: 'Finding Codex files...', increment: 10 });
         outputChannel.appendLine(`[autofixFolder] Step 2: Running autofix on all .codex.yaml files...`);
-        
+
         const folderFullPath = path.join(workspaceRoot, folderPath);
         outputChannel.appendLine(`[autofixFolder] Scanning folder: ${folderFullPath}`);
-        
+
         if (!fs.existsSync(folderFullPath)) {
           outputChannel.appendLine(`[autofixFolder] WARNING: Folder does not exist: ${folderFullPath}`);
           vscode.window.showWarningMessage(`Folder not found: ${folderPath}`);
           return;
         }
-        
+
         // Find all .codex.yaml files in the folder (not recursive)
         const files = fs.readdirSync(folderFullPath)
           .filter(file => file.endsWith('.codex.yaml'))
           .map(file => path.join(folderFullPath, file));
-        
+
         outputChannel.appendLine(`[autofixFolder] Found ${files.length} .codex.yaml files`);
-        
+
         if (files.length === 0) {
           outputChannel.appendLine(`[autofixFolder] No .codex.yaml files found in folder`);
           treeProvider.refresh();
           showTransientMessage(`✅ Autofix complete: ${result.message} (no files to fix)`, 4000);
           return;
         }
-        
+
         // Auto-fix each file
         const fixer = new CodexAutoFixer();
         let fixedCount = 0;
         let totalFixes = 0;
-        
+
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
           const fileName = path.basename(file);
-          
-          progress.report({ 
-            message: `Fixing ${fileName} (${i + 1}/${files.length})...`, 
-            increment: 70 / files.length 
+
+          progress.report({
+            message: `Fixing ${fileName} (${i + 1}/${files.length})...`,
+            increment: 70 / files.length
           });
-          
+
           outputChannel.appendLine(`[autofixFolder] Processing: ${fileName}`);
-          
+
           try {
             // Read file
             const content = fs.readFileSync(file, 'utf-8');
-            
+
             // Run autofix
             const fixResult = fixer.autoFixCodex(content, false);
-            
+
             if (fixResult.success && fixResult.fixesApplied.length > 0) {
               // Write fixed content back
               fs.writeFileSync(file, fixResult.fixedText, 'utf-8');
-              
+
               outputChannel.appendLine(`[autofixFolder]   ✓ ${fileName}: Applied ${fixResult.fixesApplied.length} fixes`);
               fixResult.fixesApplied.forEach(fix => {
                 outputChannel.appendLine(`[autofixFolder]     - ${fix}`);
               });
-              
+
               fixedCount++;
               totalFixes += fixResult.fixesApplied.length;
             } else if (fixResult.success) {
@@ -1478,27 +1478,27 @@ function registerCommands(context: vscode.ExtensionContext): void {
             outputChannel.appendLine(`[autofixFolder]   ✗ ${fileName}: Exception - ${error}`);
           }
         }
-        
+
         progress.report({ message: 'Refreshing tree...', increment: 10 });
-        
+
         // 3. Refresh tree
         treeProvider.refresh();
-        
+
         // Show success message with summary
         const summary = `✅ Autofix complete for "${item.indexNode.name}":\n` +
                        `• ${result.message}\n` +
                        `• Fixed ${fixedCount}/${files.length} files (${totalFixes} total fixes)`;
-        
+
         outputChannel.appendLine(`[autofixFolder] Complete: ${fixedCount}/${files.length} files fixed, ${totalFixes} total fixes`);
-        
+
         vscode.window.showInformationMessage(summary);
       });
-      
+
       outputChannel.appendLine(`[autofixFolder] Complete`);
       outputChannel.appendLine('='.repeat(80));
     })
   );
-  
+
   // Set Context Folder command (scope navigator to a specific folder)
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.setContextFolder', async (uri: vscode.Uri) => {
@@ -1506,30 +1506,30 @@ function registerCommands(context: vscode.ExtensionContext): void {
         vscode.window.showErrorMessage('No folder selected');
         return;
       }
-      
+
       // Find the workspace folder that contains this URI
       const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
       if (!workspaceFolder) {
         vscode.window.showErrorMessage('Could not determine workspace folder for selected path');
         return;
       }
-      
+
       const workspaceRoot = workspaceFolder.uri.fsPath;
       const folderPath = path.relative(workspaceRoot, uri.fsPath);
-      
+
       outputChannel.appendLine(`[setContextFolder] Called for folder: ${folderPath}`);
       outputChannel.appendLine(`[setContextFolder] Workspace root: ${workspaceRoot}`);
-      
+
       // Generate index if needed (always regenerate)
       const indexPath = path.join(uri.fsPath, '.index.codex.yaml');
-      
+
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
         title: `Setting context to: ${path.basename(uri.fsPath)}...`,
         cancellable: true,  // ← Change to true
       }, async (progress, token) => {  // ← Add token parameter
         outputChannel.appendLine(`[setContextFolder] Regenerating index hierarchy for: ${folderPath}`);
-        
+
         // Create progress reporter with cancellation
         const progressReporter: IndexGenerationProgress = {
           report: (message: string, increment?: number) => {
@@ -1537,7 +1537,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
           },
           token
         };
-        
+
         try {
           // Always regenerate index hierarchy recursively
           await generateFolderHierarchy(workspaceRoot, folderPath, progressReporter);
@@ -1549,29 +1549,29 @@ function registerCommands(context: vscode.ExtensionContext): void {
           }
           throw error;  // Re-throw other errors
         }
-        
+
         // EXPLICITLY set context in tree provider
         outputChannel.appendLine(`[setContextFolder] Calling treeProvider.setContextFolder()`);
         progress.report({ message: 'Loading index into tree view...', increment: 5 });
-        
+
         await treeProvider.setContextFolder(folderPath, workspaceRoot);
-        
+
         outputChannel.appendLine(`[setContextFolder] Tree view loaded`);
-        
+
         // Update tree view title
         treeView.title = `📋 ${path.basename(uri.fsPath)}`;
-        
+
         // Save context for next session
         await context.workspaceState.update('chapterwiseCodex.lastContextPath', uri.fsPath);
         await context.workspaceState.update('chapterwiseCodex.lastContextType', 'folder');
         outputChannel.appendLine(`[setContextFolder] Context saved to workspace state`);
       });
-      
+
       outputChannel.appendLine(`[setContextFolder] Complete - Viewing: ${path.basename(uri.fsPath)}`);
       showTransientMessage(`📋 Viewing: ${path.basename(uri.fsPath)}`, 3000);
     })
   );
-  
+
   // Set Context File command (for individual .codex.yaml files)
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.setContextFile', async (uri?: vscode.Uri) => {
@@ -1579,33 +1579,33 @@ function registerCommands(context: vscode.ExtensionContext): void {
         vscode.window.showErrorMessage('No file selected');
         return;
       }
-      
+
       outputChannel.appendLine(`[setContextFile] Called for file: ${uri.fsPath}`);
-      
+
       // Find workspace root
       const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
       if (!workspaceFolder) {
         vscode.window.showErrorMessage('Could not determine workspace folder');
         return;
       }
-      
+
       try {
         // Open the file
         const doc = await vscode.workspace.openTextDocument(uri.fsPath);
         await vscode.window.showTextDocument(doc);
-        
+
         // EXPLICITLY set context - this is an explicit user action
         outputChannel.appendLine(`[setContextFile] Calling treeProvider.setActiveDocument(explicit=true)`);
         treeProvider.setActiveDocument(doc, true);
-        
+
         // Update tree view title
         treeView.title = `📄 ${path.basename(uri.fsPath, '.codex.yaml')}`;
-        
+
         // Save context for next session
         await context.workspaceState.update('chapterwiseCodex.lastContextPath', uri.fsPath);
         await context.workspaceState.update('chapterwiseCodex.lastContextType', 'file');
         outputChannel.appendLine(`[setContextFile] Context saved to workspace state`);
-        
+
         outputChannel.appendLine(`[setContextFile] Complete - Viewing: ${path.basename(uri.fsPath)}`);
         showTransientMessage(`📄 Viewing: ${path.basename(uri.fsPath)}`, 3000);
       } catch (error) {
@@ -1614,7 +1614,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       }
     })
   );
-  
+
   // Reset Context command (return to workspace root)
   context.subscriptions.push(
     vscode.commands.registerCommand('chapterwiseCodex.resetContext', async () => {
@@ -1623,23 +1623,23 @@ function registerCommands(context: vscode.ExtensionContext): void {
         vscode.window.showErrorMessage('No workspace folder found');
         return;
       }
-      
+
       const workspaceRoot = workspaceFolders[0].uri.fsPath;
-      
+
       // Clear context folder
       await treeProvider.setContextFolder(null, workspaceRoot);
-      
+
       // Reset tree view title
       treeView.title = 'ChapterWise Codex';
-      
+
       // Clear saved context state
       await context.workspaceState.update('chapterwiseCodex.lastContextPath', undefined);
       await context.workspaceState.update('chapterwiseCodex.lastContextType', undefined);
       outputChannel.appendLine(`[resetContext] Context cleared from workspace state`);
-      
+
       // Stay in INDEX mode but show workspace root
       treeProvider.refresh();
-      
+
       vscode.window.showInformationMessage('📋 Reset to workspace root');
     })
   );
@@ -1650,19 +1650,19 @@ function registerCommands(context: vscode.ExtensionContext): void {
  */
 function updateStatusBar(): void {
   const editor = vscode.window.activeTextEditor;
-  
+
   if (editor && isCodexFile(editor.document.fileName)) {
     if (treeProvider?.isInIndexMode()) {
       const indexDoc = treeProvider.getIndexDocument();
       const fileCount = indexDoc ? countIndexFiles(indexDoc.children) : 0;
-      
+
       statusBarItem.text = `$(list-tree) Index: ${fileCount} files`;
       statusBarItem.tooltip = `ChapterWise Index\n${fileCount} files in project\nClick to open Navigator`;
     } else {
     const codexDoc = treeProvider?.getCodexDocument();
     const nodeCount = codexDoc?.allNodes.length ?? 0;
     const typeCount = codexDoc?.types.size ?? 0;
-    
+
     statusBarItem.text = `$(book) Codex: ${nodeCount} nodes`;
     statusBarItem.tooltip = `ChapterWise Codex\n${nodeCount} nodes, ${typeCount} types\nClick to open Navigator`;
     }
@@ -1683,14 +1683,14 @@ function findNodeById(node: CodexNode, targetId: string): CodexNode | null {
   if (node.id === targetId) {
     return node;
   }
-  
+
   if (node.children) {
     for (const child of node.children) {
       const found = findNodeById(child, targetId);
       if (found) return found;
     }
   }
-  
+
   return null;
 }
 
@@ -1707,23 +1707,23 @@ async function updateNodeExpandedState(
 ): Promise<void> {
   const workspaceRoot = treeProvider.getWorkspaceRoot();
   if (!workspaceRoot) return;
-  
+
   // Determine which index file contains this node
   const indexPath = determineIndexFileForNode(item, workspaceRoot);
   if (!fs.existsSync(indexPath)) return;
-  
+
   const nodeId = item.indexNode.id;
   if (!nodeId) return;
-  
+
   // Queue the update
   const updateKey = `${indexPath}::${nodeId}`;
   expandedUpdateQueue.set(updateKey, { indexPath, nodeId, expanded });
-  
+
   // Debounce: wait 500ms for more updates before writing
   if (expandedUpdateTimeout) {
     clearTimeout(expandedUpdateTimeout);
   }
-  
+
   expandedUpdateTimeout = setTimeout(async () => {
     await flushExpandedUpdates();
     expandedUpdateQueue.clear();
@@ -1737,7 +1737,7 @@ async function updateNodeExpandedState(
 async function flushExpandedUpdates(): Promise<void> {
   // Group updates by index file
   const fileUpdates = new Map<string, Array<{ nodeId: string; expanded: boolean }>>();
-  
+
   for (const [key, update] of expandedUpdateQueue) {
     if (!fileUpdates.has(update.indexPath)) {
       fileUpdates.set(update.indexPath, []);
@@ -1747,7 +1747,7 @@ async function flushExpandedUpdates(): Promise<void> {
       expanded: update.expanded
     });
   }
-  
+
   // Apply updates to each index file
   for (const [indexPath, updates] of fileUpdates) {
     try {
@@ -1769,11 +1769,11 @@ async function updateIndexFileExpansionState(
   // Read index file
   const content = fs.readFileSync(indexPath, 'utf-8');
   const indexData = YAML.parse(content);
-  
+
   if (!indexData || !indexData.children) {
     return;
   }
-  
+
   // Apply all updates
   let changesApplied = 0;
   for (const update of updates) {
@@ -1781,7 +1781,7 @@ async function updateIndexFileExpansionState(
       changesApplied++;
     }
   }
-  
+
   if (changesApplied > 0) {
     // Write back to file
     fs.writeFileSync(indexPath, YAML.stringify(indexData), 'utf-8');
@@ -1818,28 +1818,28 @@ function determineIndexFileForNode(
   workspaceRoot: string
 ): string {
   const node = item.indexNode as any;
-  
-  // If node has _parent_file, it's an entity/field - use parent file's folder
+
+  // If node has _parent_file, it's a node/field - use parent file's folder
   if (node._parent_file) {
     const parentFilePath = node._parent_file;
     const folderPath = path.dirname(parentFilePath);
     const perFolderIndex = path.join(workspaceRoot, folderPath, '.index.codex.yaml');
-    
+
     if (fs.existsSync(perFolderIndex)) {
       return perFolderIndex;
     }
   }
-  
+
   // If node has _computed_path, use its directory
   if (node._computed_path) {
     const folderPath = path.dirname(node._computed_path);
     const perFolderIndex = path.join(workspaceRoot, folderPath, '.index.codex.yaml');
-    
+
     if (fs.existsSync(perFolderIndex)) {
       return perFolderIndex;
     }
   }
-  
+
   // Fall back to workspace root index
   return path.join(workspaceRoot, '.index.codex.yaml');
 }

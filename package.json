@@ -192,7 +192,7 @@
         "icon": "$(home)"
       },
       {
-        "command": "chapterwiseCodex.navigateToEntityInCodeView",
+        "command": "chapterwiseCodex.navigateToNodeInCodeView",
         "title": "Open in Code View",
         "icon": "$(code)"
       },
@@ -343,13 +343,13 @@
           "group": "2_edit@3"
         },
         {
-          "command": "chapterwiseCodex.navigateToEntity",
-          "when": "view == chapterwiseCodexNavigator && viewItem == indexEntity",
+          "command": "chapterwiseCodex.navigateToNode",
+          "when": "view == chapterwiseCodexNavigator && viewItem == indexNode",
           "group": "navigation@1"
         },
         {
-          "command": "chapterwiseCodex.navigateToEntityInCodeView",
-          "when": "view == chapterwiseCodexNavigator && viewItem == indexEntity",
+          "command": "chapterwiseCodex.navigateToNodeInCodeView",
+          "when": "view == chapterwiseCodexNavigator && viewItem == indexNode",
           "group": "navigation@2"
         },
         {
@@ -365,8 +365,8 @@
       ],
       "view/item/inline": [
         {
-          "command": "chapterwiseCodex.navigateToEntityInCodeView",
-          "when": "view == chapterwiseCodexNavigator && viewItem == indexEntity",
+          "command": "chapterwiseCodex.navigateToNodeInCodeView",
+          "when": "view == chapterwiseCodexNavigator && viewItem == indexNode",
           "group": "inline"
         },
         {

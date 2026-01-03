@@ -1,9 +1,9 @@
 /**
  * Word Count - Update word_count attributes in Codex files
- * 
+ *
  * Recursively traverses a codex file and its children, counts words in body
- * fields, and updates the word_count attribute on each entity.
- * 
+ * fields, and updates the word_count attribute on each node.
+ *
  * Based on the Python script: 11-LIVES-CODEX/scripts/word_count.py
  */
 
@@ -25,8 +25,8 @@ export interface WordCountOptions {
  */
 export interface WordCountResult {
   success: boolean;
-  entitiesUpdated: number;    // Number of entities with word counts updated
-  totalWords: number;         // Total words across all entities
+  entitiesUpdated: number;    // Number of nodes with word counts updated
+  totalWords: number;         // Total words across all nodes
   filesModified: string[];    // List of files that were modified
   errors: string[];
 }
@@ -170,7 +170,7 @@ export class WordCounter {
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
       const isJson = filePath.toLowerCase().endsWith('.json');
-      
+
       let data: Record<string, unknown>;
       if (isJson) {
         data = JSON.parse(content);
@@ -299,7 +299,7 @@ export class WordCounter {
       // Write back to file
       const newContent = this.serializeMarkdown(frontmatter, body);
       fs.writeFileSync(filePath, newContent, 'utf-8');
-      
+
       return true;
     } catch (e) {
       this.errors.push(`Failed to update markdown file "${filePath}": ${e}`);
@@ -334,7 +334,7 @@ export class WordCounter {
       if (isMarkdownFile(inputPath)) {
         // Handle Codex Lite (Markdown) format
         const wasModified = this.updateWordCountInMarkdown(inputPath);
-        
+
         if (wasModified) {
           this.filesModified.push(inputPath);
         }
@@ -351,7 +351,7 @@ export class WordCounter {
       // Handle full Codex format files
       const fileContent = fs.readFileSync(inputPath, 'utf-8');
       const isJson = inputPath.toLowerCase().endsWith('.json');
-      
+
       let codexData: Record<string, unknown>;
       if (isJson) {
         codexData = JSON.parse(fileContent);
@@ -395,7 +395,7 @@ export class WordCounter {
   }
 
   /**
-   * Get count of entities with body fields from a codex document text
+   * Get count of nodes with body fields from a codex document text
    */
   static getBodyCount(documentText: string): number {
     try {
@@ -543,7 +543,7 @@ export async function runUpdateWordCount(): Promise<void> {
 
   if (result.success) {
     channel.appendLine(`✅ Success!`);
-    channel.appendLine(`  Entities updated: ${result.entitiesUpdated}`);
+    channel.appendLine(`  Nodes updated: ${result.entitiesUpdated}`);
     channel.appendLine(`  Total words: ${result.totalWords.toLocaleString()}`);
 
     if (result.filesModified.length > 0) {
@@ -560,7 +560,7 @@ export async function runUpdateWordCount(): Promise<void> {
 
     // Show success message
     const message = result.entitiesUpdated > 0
-      ? `✅ Updated word counts for ${result.entitiesUpdated} entities (${result.totalWords.toLocaleString()} total words)`
+      ? `✅ Updated word counts for ${result.entitiesUpdated} nodes (${result.totalWords.toLocaleString()} total words)`
       : `No changes needed (${result.totalWords.toLocaleString()} total words)`;
 
     const action = await vscode.window.showInformationMessage(

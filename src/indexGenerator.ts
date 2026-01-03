@@ -1,8 +1,8 @@
 /**
  * Index Generator - Fractal Cascade Architecture
- * 
+ *
  * Scans workspace and generates .index.codex.yaml with full project hierarchy
- * 
+ *
  * NEW: Per-folder indexes
  * - Each folder can have its own .index.codex.yaml
  * - Per-folder indexes define order for immediate children
@@ -61,7 +61,7 @@ export interface IndexGenerationProgress {
 // ============================================================================
 
 /**
- * Maximum depth for recursive include resolution and entity extraction
+ * Maximum depth for recursive include resolution and node extraction
  * Prevents infinite loops and stack overflow
  */
 const MAX_DEPTH = 8;
@@ -98,16 +98,16 @@ async function scanForMissingIds(
   files: string[]
 ): Promise<string[]> {
   const filesNeedingFix: string[] = [];
-  
+
   for (const file of files) {
     if (!file.endsWith('.codex.yaml') && !file.endsWith('.codex.json')) {
       continue;
     }
-    
+
     try {
       const content = fs.readFileSync(file, 'utf-8');
       const data = YAML.parse(content);
-      
+
       if (hasMissingIds(data)) {
         filesNeedingFix.push(file);
       }
@@ -115,7 +115,7 @@ async function scanForMissingIds(
       // Skip files that can't be parsed
     }
   }
-  
+
   return filesNeedingFix;
 }
 
@@ -154,7 +154,7 @@ export async function generateIndex(
 
   if (filesNeedingFix.length > 0) {
     log(`Found ${filesNeedingFix.length} files with missing IDs`);
-    
+
     // Show ONE prompt with total count
     const choice = await vscode.window.showWarningMessage(
       `Found ${filesNeedingFix.length} files with missing IDs. Run auto-fixer on all?`,
@@ -163,7 +163,7 @@ export async function generateIndex(
       'Always (remember for session)',
       'Never (remember for session)'
     );
-    
+
     if (choice === 'Always (remember for session)') {
       setAutoFixerPreference('always');
       log(`Auto-fixer set to: always`);
@@ -199,7 +199,7 @@ export async function generateIndex(
   // Step 7: Build complete index
   const indexData = {
       metadata: {
-        formatVersion: '3.0', // Phase 2: Bumped for entity + field extraction
+        formatVersion: '3.0', // Phase 2: Bumped for node + field extraction
         documentVersion: '1.0.0',
         created: new Date().toISOString(),
         generated: true,
@@ -234,7 +234,7 @@ async function scanWorkspace(
     patterns: IndexPatterns
   ): Promise<string[]> {
     const files: string[] = [];
-    
+
   function walkDir(dir: string): void {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
 
@@ -319,7 +319,7 @@ async function buildHierarchy(
     // Add file
     const fileName = parts[parts.length - 1];
     const fileNode = await createFileNode(file, fileName, root);
-    
+
     // Collect types from file
     collectTypes(fileNode, detectedTypes);
 
@@ -371,13 +371,13 @@ async function buildHierarchy(
 }
 
 /**
- * Recursively collect all entity types from a node tree
+ * Recursively collect all node types from a node tree
  */
 function collectTypes(node: any, types: Set<string>): void {
   if (node.type && node.type !== 'folder' && node.type !== 'document' && node.type !== 'index') {
     types.add(node.type);
   }
-  
+
   if (node.children && Array.isArray(node.children)) {
     node.children.forEach((child: any) => collectTypes(child, types));
   }
@@ -392,18 +392,18 @@ function mergeTypes(
   typeStyles: any[]
 ): TypeDefinition[] {
   const typeMap = new Map<string, TypeDefinition>();
-  
+
   // Add existing types (preserve manually defined ones)
   existingTypes.forEach(t => {
     typeMap.set(t.type, t);
   });
-  
+
   // Add detected types (only if not already defined)
   detectedTypes.forEach(type => {
     if (!typeMap.has(type)) {
       // Check if there's a typeStyle for this type
       const style = typeStyles?.find(s => s.type === type);
-      
+
       typeMap.set(type, {
         type,
         emoji: style?.emoji,
@@ -412,14 +412,14 @@ function mergeTypes(
       });
     }
   });
-  
+
   // Sort: manually defined first, then detected alphabetically
   const manual = existingTypes.filter(t => typeMap.has(t.type));
   const detected = detectedTypes
     .filter(t => !existingTypes.some(e => e.type === t))
     .sort()
     .map(t => typeMap.get(t)!);
-  
+
   return [...manual, ...detected];
 }
 
@@ -448,12 +448,12 @@ async function mergePerFolderIndexes(
 
     // Check if this folder has a per-folder .index.codex.yaml
     const perFolderIndexPath = path.join(workspaceRoot, folderPath, '.index.codex.yaml');
-    
+
     if (fs.existsSync(perFolderIndexPath)) {
       try {
         const indexContent = fs.readFileSync(perFolderIndexPath, 'utf-8');
         const indexData = YAML.parse(indexContent);
-        
+
         if (indexData.children && Array.isArray(indexData.children)) {
           // Merge order values from per-folder index
           applyPerFolderOrders(folder.children, indexData.children);
@@ -489,7 +489,7 @@ function applyPerFolderOrders(
 ): void {
   // Build lookup map by _filename or name
   const indexMap = new Map<string, any>();
-  
+
   for (const child of indexChildren) {
     const key = child._filename || child.name;
     if (key) {
@@ -501,7 +501,7 @@ function applyPerFolderOrders(
   for (const child of generatedChildren) {
     const key = child._filename || child.name;
     const indexEntry = indexMap.get(key);
-    
+
     if (indexEntry && indexEntry.order !== undefined) {
       child.order = indexEntry.order;
     } else if (child.order === undefined) {
@@ -532,20 +532,20 @@ function resolveIncludePath(
   if (includePath.startsWith('/')) {
     return path.join(workspaceRoot, includePath.substring(1));
   }
-  
+
   // Otherwise, resolve relative to parent file's directory
   const parentDir = path.dirname(parentFilePath);
   const resolved = path.resolve(parentDir, includePath);
-  
+
   // Normalize to remove .. and . segments
   const normalized = path.normalize(resolved);
-  
+
   // Security check: ensure resolved path is within workspace
   const relative = path.relative(workspaceRoot, normalized);
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new Error(`Include path escapes workspace root: ${includePath}`);
   }
-  
+
   return normalized;
 }
 
@@ -557,7 +557,7 @@ function hasMissingIds(data: any): boolean {
   if (!data || typeof data !== 'object') {
     return false;
   }
-  
+
   // Check children array
   if (Array.isArray(data.children)) {
     for (const child of data.children) {
@@ -565,19 +565,19 @@ function hasMissingIds(data: any): boolean {
       if (child.include) {
         continue;
       }
-      
-      // Check if this entity is missing an ID
+
+      // Check if this node is missing an ID
       if (child.type && !child.id) {
         return true;
       }
-      
+
       // Recursively check nested children
       if (hasMissingIds(child)) {
         return true;
       }
     }
   }
-  
+
   return false;
 }
 
@@ -591,35 +591,35 @@ async function loadAndParseCodexFile(
 ): Promise<any> {
   const content = fs.readFileSync(filePath, 'utf-8');
   let data = YAML.parse(content);
-  
+
   // Check if file needs auto-fixing
   if (hasMissingIds(data)) {
     const currentPref = getAutoFixerPreference();
-    
+
     // If preference is set to "always", auto-fix silently
     if (currentPref === 'always') {
       const relativePath = path.relative(workspaceRoot, filePath);
       log(`  Auto-fixing: ${relativePath}`);
-      
+
       const { CodexAutoFixer } = await import('./autoFixer');
       const fixer = new CodexAutoFixer();
       const fixed = fixer.autoFixCodex(data);
-      
+
       // Save fixed file
       fs.writeFileSync(filePath, YAML.stringify(fixed), 'utf-8');
       return fixed;
     }
-    
+
     // Otherwise skip (user said "never" or "no" in batch prompt)
   }
-  
+
   return data;
 }
 
 /**
  * Resolve includes recursively within codex data
  * Returns modified children array with includes replaced by actual content
- * 
+ *
  * @param children - Children array from codex file
  * @param parentFilePath - Absolute path to parent codex file
  * @param workspaceRoot - Workspace root path
@@ -636,22 +636,22 @@ async function resolveIncludes(
   if (!children || !Array.isArray(children)) {
     return [];
   }
-  
+
   // Check depth limit
   if (depth >= MAX_DEPTH) {
     log(`[resolveIncludes] Max depth ${MAX_DEPTH} reached at ${parentFilePath}`);
     return children;
   }
-  
+
   const resolved: any[] = [];
-  
+
   for (const child of children) {
     // Handle include directives
     if (child.include) {
       try {
         const includePath = child.include;
         const resolvedPath = resolveIncludePath(includePath, parentFilePath, workspaceRoot);
-        
+
         // Check for circular includes
         if (visitedPaths.has(resolvedPath)) {
           const chain = Array.from(visitedPaths).join(' → ');
@@ -663,7 +663,7 @@ async function resolveIncludes(
           });
           continue;
         }
-        
+
         // Check if file exists
         if (!fs.existsSync(resolvedPath)) {
           resolved.push({
@@ -674,15 +674,15 @@ async function resolveIncludes(
           });
           continue;
         }
-        
+
         // Load and parse included file
         try {
           const includedData = await loadAndParseCodexFile(resolvedPath, workspaceRoot);
-          
+
           // Add to visited set for circular detection
           const newVisited = new Set(visitedPaths);
           newVisited.add(resolvedPath);
-          
+
           // Recursively resolve includes in the included file
           const includedChildren = await resolveIncludes(
             includedData.children,
@@ -691,22 +691,22 @@ async function resolveIncludes(
             depth + 1,
             newVisited
           );
-          
-          // Merge included entity - ONLY navigation metadata, NOT content
+
+          // Merge included node - ONLY navigation metadata, NOT content
           const includedNode: any = {
             id: includedData.id || `included-${Date.now()}`,
             type: includedData.type || 'unknown',
             name: includedData.name || includedData.title || path.basename(resolvedPath, path.extname(resolvedPath)),
             children: includedChildren,
             _included_from: path.relative(workspaceRoot, resolvedPath),
-            _node_kind: 'entity', // Included files become entities in the tree
+            _node_kind: 'node', // Included files become nodes in the tree
           };
-          
+
           // Optional small metadata
           if (includedData.title) includedNode.title = includedData.title;
           if (includedData.tags && Array.isArray(includedData.tags)) includedNode.tags = includedData.tags;
           if (includedData.order !== undefined) includedNode.order = includedData.order;
-          
+
           resolved.push(includedNode);
         } catch (parseError: any) {
           resolved.push({
@@ -739,25 +739,25 @@ async function resolveIncludes(
       resolved.push(resolvedChild);
     }
   }
-  
+
   return resolved;
 }
 
 // ============================================================================
-// PHASE 2: Entity & Field Extraction
+// PHASE 2: Node & Field Extraction
 // ============================================================================
 
 /**
- * Extract entity and field children from codex data (recursive)
- * Creates nodes for entities (type: module/character/etc) and their fields (summary, body, etc)
- * 
+ * Extract node and field children from codex data (recursive)
+ * Creates nodes for nodes (type: module/character/etc) and their fields (summary, body, etc)
+ *
  * @param children - Children array from codex file
  * @param parentFilePath - Relative path to parent file (for _parent_file)
  * @param workspaceRoot - Workspace root path
- * @param depth - Current depth (1 = first-level entities)
- * @param parentEntityId - Parent entity ID (for nested entities)
+ * @param depth - Current depth (1 = first-level nodes)
+ * @param parentEntityId - Parent node ID (for nested nodes)
  */
-async function extractEntityChildren(
+async function extractNodeChildren(
   children: any[] | undefined,
   parentFilePath: string,
   workspaceRoot: string,
@@ -767,52 +767,52 @@ async function extractEntityChildren(
   if (!children || !Array.isArray(children)) {
     return [];
   }
-  
+
   // Check depth limit
   if (depth > MAX_DEPTH) {
-    log(`[extractEntityChildren] Max depth ${MAX_DEPTH} reached`);
+    log(`[extractNodeChildren] Max depth ${MAX_DEPTH} reached`);
     return [];
   }
-  
+
   const extracted: any[] = [];
-  
+
   for (const child of children) {
-    // Skip if this is not an entity (e.g., it's an include directive or malformed)
+    // Skip if this is not a node (e.g., it's an include directive or malformed)
     if (!child.type) {
       continue;
     }
-    
-    // Generate defensive entity ID
-    const entityId = child.id || `entity-${child.type}-${depth}-${extracted.length}`;
-    
-    // Create entity node - ONLY include navigation metadata, NOT content
+
+    // Generate defensive node ID
+    const entityId = child.id || `node-${child.type}-${depth}-${extracted.length}`;
+
+    // Create node - ONLY include navigation metadata, NOT content
     const entityNode: any = {
       id: entityId,
       type: child.type,
       name: child.name || child.title || 'Untitled',
-      _node_kind: 'entity',
+      _node_kind: 'node',
       _parent_file: parentFilePath,
       _depth: depth,
-      children: [], // Will be populated with fields + nested entities
+      children: [], // Will be populated with fields + nested nodes
     };
-    
+
     // Optional small metadata (useful for navigation/filtering)
     if (child.title) entityNode.title = child.title;
     if (child.tags && Array.isArray(child.tags)) entityNode.tags = child.tags;
     if (child.order !== undefined) entityNode.order = child.order;
-    
+
     if (parentEntityId) {
       entityNode._parent_entity = parentEntityId;
     }
-    
+
     // Extract field children (summary, body, attributes, content)
     const fieldChildren: any[] = [];
     const fieldNames = ['summary', 'body', 'attributes', 'content'];
-    
+
     for (const fieldName of fieldNames) {
       if (child[fieldName] !== undefined) {
         const fieldValue = child[fieldName];
-        
+
         // Skip empty arrays for attributes and content
         if (fieldName === 'attributes' && Array.isArray(fieldValue) && fieldValue.length === 0) {
           continue;
@@ -820,10 +820,10 @@ async function extractEntityChildren(
         if (fieldName === 'content' && Array.isArray(fieldValue) && fieldValue.length === 0) {
           continue;
         }
-        
-        const fieldType = typeof fieldValue === 'string' ? 'string' : 
+
+        const fieldType = typeof fieldValue === 'string' ? 'string' :
                          Array.isArray(fieldValue) ? 'array' : 'object';
-        
+
         fieldChildren.push({
           id: `${entityId}-${fieldName}`,
           type: 'field',
@@ -837,10 +837,10 @@ async function extractEntityChildren(
         });
       }
     }
-    
-    // Extract nested entity children (recursively)
+
+    // Extract nested node children (recursively)
     const entityChildren = child.children
-      ? await extractEntityChildren(
+      ? await extractNodeChildren(
           child.children,
           parentFilePath,
           workspaceRoot,
@@ -848,13 +848,13 @@ async function extractEntityChildren(
           entityId
         )
       : [];
-    
-    // Combine field children + entity children
+
+    // Combine field children + node children
     entityNode.children = [...fieldChildren, ...entityChildren];
-    
+
     extracted.push(entityNode);
   }
-  
+
   return extracted;
 }
 
@@ -899,7 +899,7 @@ async function createFileNode(
     _format: format,
     _default_status: 'private',
     order: 1,
-    children: [], // Will be populated with entities/fields
+    children: [], // Will be populated with nodes/fields
   };
 
   // Process Full Codex files (YAML/JSON) - Phase 1 & 2 integration
@@ -907,10 +907,10 @@ async function createFileNode(
     try {
       // Phase 1: Load file with auto-fixer
       const data = await loadAndParseCodexFile(filePath, root);
-      
+
       if (data.type) {baseNode.type = data.type;}
       if (data.name) {baseNode.name = data.name;}
-      
+
       // Phase 1: Resolve includes
       const resolvedChildren = await resolveIncludes(
         data.children,
@@ -919,28 +919,28 @@ async function createFileNode(
         0, // Start at depth 0 for includes
         new Set([filePath]) // Mark this file as visited
       );
-      
-      // Phase 2: Extract entities and fields from resolved children
-      const entityChildren = await extractEntityChildren(
+
+      // Phase 2: Extract nodes and fields from resolved children
+      const entityChildren = await extractNodeChildren(
         resolvedChildren,
         relative, // Pass relative path for _parent_file
         root,
-        1 // First-level entities start at depth 1
+        1 // First-level nodes start at depth 1
       );
-      
+
       baseNode.children = entityChildren;
     } catch (error) {
       log(`[createFileNode] Error processing ${fileName}: ${error}`);
       // Return base node without children on error
     }
   }
-  
+
   // Process Codex Lite (Markdown) files
   else if (format === 'markdown') {
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
       const { type: fmType, name: fmName } = parseFrontmatter(content);
-      
+
       if (fmType) {baseNode.type = fmType;}
       if (fmName) {
         baseNode.name = fmName;
@@ -949,8 +949,8 @@ async function createFileNode(
         const h1Match = content.match(/^#\s+(.+)$/m);
         if (h1Match) {baseNode.name = h1Match[1].trim();}
       }
-      
-      // Markdown files are treated as flat entities (no children extraction)
+
+      // Markdown files are treated as flat nodes (no children extraction)
     } catch (error) {
       // Use defaults if parsing fails
     }
@@ -1075,7 +1075,7 @@ export async function runGenerateIndex(): Promise<void> {
           },
           token
         };
-        
+
         const outputPath = await generateIndex({
           workspaceRoot,
           indexFilePath: fs.existsSync(indexPath) ? indexPath : undefined,
@@ -1140,10 +1140,10 @@ export async function generatePerFolderIndex(
   // Scan immediate children only (no recursion)
   const entries = fs.readdirSync(fullFolderPath, { withFileTypes: true });
   const children: any[] = [];
-  
+
   // Count total files for progress reporting
-  const totalFiles = entries.filter(e => 
-    !e.name.startsWith('.') && 
+  const totalFiles = entries.filter(e =>
+    !e.name.startsWith('.') &&
     e.name !== '.index.codex.yaml'
   ).length;
   let processedFiles = 0;
@@ -1159,7 +1159,7 @@ export async function generatePerFolderIndex(
     }
 
     processedFiles++;
-    
+
     // Report progress for this file with count
     const folderName = path.basename(folderPath || 'root');
     progress?.report(`[${folderName}] ${entry.name} (${processedFiles}/${totalFiles})`, 0);
@@ -1168,8 +1168,8 @@ export async function generatePerFolderIndex(
 
     if (entry.isFile()) {
       // Check if it's a codex file
-      if (entry.name.endsWith('.codex.yaml') || 
-          entry.name.endsWith('.codex.json') || 
+      if (entry.name.endsWith('.codex.yaml') ||
+          entry.name.endsWith('.codex.json') ||
           entry.name.endsWith('.md')) {
         const fileNode = await createFileNode(childPath, entry.name, workspaceRoot);
         // Fix _computed_path to be relative to workspace root, not folder
@@ -1186,14 +1186,14 @@ export async function generatePerFolderIndex(
         order: 999,
         children: [] // Initialize empty children array
       };
-      
+
       // Check if folder has a per-folder .index.codex.yaml
       const subIndexPath = path.join(childPath, '.index.codex.yaml');
       if (fs.existsSync(subIndexPath)) {
         try {
           const subIndexContent = fs.readFileSync(subIndexPath, 'utf-8');
           const subIndexData = YAML.parse(subIndexContent);
-          
+
           if (subIndexData.children && Array.isArray(subIndexData.children)) {
             // Merge children from per-folder index
             folderNode.children = subIndexData.children;
@@ -1202,7 +1202,7 @@ export async function generatePerFolderIndex(
           log(`Failed to merge per-folder index for ${entry.name}: ${error}`);
         }
       }
-      
+
       children.push(folderNode);
     }
   }
@@ -1225,7 +1225,7 @@ export async function generatePerFolderIndex(
   // Build index data
   const indexData = {
     metadata: {
-      formatVersion: '3.0', // Phase 2: Bumped for entity + field extraction
+      formatVersion: '3.0', // Phase 2: Bumped for node + field extraction
       documentVersion: '1.0.0',
       created: new Date().toISOString(),
       generated: true,
@@ -1257,10 +1257,10 @@ export async function cascadeRegenerateIndexes(
 
   // 2. Regenerate all parent folder indexes up to root
   let currentPath = changedFolderPath;
-  
+
   while (currentPath) {
     const parentPath = path.dirname(currentPath);
-    
+
     if (parentPath === '.' || parentPath === currentPath) {
       // Reached root
       break;
@@ -1278,7 +1278,7 @@ export async function cascadeRegenerateIndexes(
 /**
  * Recursively generate per-folder indexes for a folder and all its subfolders
  * This implements the fractal cascade architecture by processing from deepest to shallowest
- * 
+ *
  * @param workspaceRoot - Workspace root path
  * @param startFolder - Starting folder path (relative to workspace root)
  * @param progress - Optional progress reporter with cancellation support
@@ -1289,23 +1289,23 @@ export async function generateFolderHierarchy(
   progress?: IndexGenerationProgress
 ): Promise<void> {
   log(`[IndexGenerator] Generating folder hierarchy for: ${startFolder}`);
-  
+
   const fullStartPath = path.join(workspaceRoot, startFolder);
-  
+
   if (!fs.existsSync(fullStartPath)) {
     throw new Error(`Folder not found: ${startFolder}`);
   }
-  
+
   // 1. Recursively collect all subfolders (depth-first)
   const allFolders: string[] = [];
-  
+
   function collectSubfolders(folderPath: string) {
     const relativePath = path.relative(workspaceRoot, folderPath);
     allFolders.push(relativePath || '.');
-    
+
     try {
       const entries = fs.readdirSync(folderPath, { withFileTypes: true });
-      
+
       for (const entry of entries) {
         if (entry.isDirectory() && !entry.name.startsWith('.')) {
           const subfolder = path.join(folderPath, entry.name);
@@ -1316,29 +1316,29 @@ export async function generateFolderHierarchy(
       log(`[IndexGenerator] Error reading folder ${folderPath}: ${error}`);
     }
   }
-  
+
   collectSubfolders(fullStartPath);
-  
+
   const totalFolders = allFolders.length;
   log(`[IndexGenerator] Found ${totalFolders} folders to process`);
   progress?.report(`Scanning ${totalFolders} folders...`, 0);
-  
+
   // 2. Sort by depth (deepest first)
   allFolders.sort((a, b) => {
     const depthA = a === '.' ? 0 : a.split(path.sep).length;
     const depthB = b === '.' ? 0 : b.split(path.sep).length;
     return depthB - depthA; // Deepest first
   });
-  
+
   // 3. Generate per-folder index for each (deepest first)
   for (let i = 0; i < allFolders.length; i++) {
     const folderPath = allFolders[i];
-    
+
     // Check cancellation
     if (progress?.token?.isCancellationRequested) {
       throw new Error('Index generation cancelled by user');
     }
-    
+
     try {
       const folderName = folderPath === '.' ? 'root' : path.basename(folderPath);
       progress?.report(
@@ -1346,7 +1346,7 @@ export async function generateFolderHierarchy(
         (100 / totalFolders)
       );
       log(`[IndexGenerator] Generating index for: ${folderPath}`);
-      
+
       await generatePerFolderIndex(
         workspaceRoot,
         folderPath === '.' ? '' : folderPath,
@@ -1357,11 +1357,11 @@ export async function generateFolderHierarchy(
       // Continue with other folders even if one fails
     }
   }
-  
+
   // 4. Finally, regenerate top-level .index.codex.yaml to merge everything
   progress?.report('Finalizing index...', 0);
   log(`[IndexGenerator] Regenerating top-level index`);
   await generateIndex({ workspaceRoot });
-  
+
   log(`[IndexGenerator] Folder hierarchy generation complete`);
 }

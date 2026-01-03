@@ -6,14 +6,14 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as YAML from 'yaml';
-import { 
-  CodexNode, 
-  CodexDocument, 
+import {
+  CodexNode,
+  CodexDocument,
   CodexAttribute,
   CodexContentSection,
   parseCodex,
   parseMarkdownAsCodex,
-  setNodeProse, 
+  setNodeProse,
   setMarkdownNodeProse,
   setMarkdownFrontmatterField,
   setNodeName,
@@ -35,7 +35,7 @@ export class WriterViewManager {
   private wordCountStatusBarItem: vscode.StatusBarItem;
   private panelStats: Map<string, WriterPanelStats> = new Map();
   private treeProvider: CodexTreeProvider | null = null;
-  
+
   constructor(private readonly context: vscode.ExtensionContext) {
     // Create word count status bar item
     this.wordCountStatusBarItem = vscode.window.createStatusBarItem(
@@ -44,14 +44,14 @@ export class WriterViewManager {
     );
     context.subscriptions.push(this.wordCountStatusBarItem);
   }
-  
+
   /**
    * Set the tree provider reference (needed for accessing index document)
    */
   setTreeProvider(treeProvider: CodexTreeProvider): void {
     this.treeProvider = treeProvider;
   }
-  
+
   /**
    * Get workspace root path
    */
@@ -62,7 +62,7 @@ export class WriterViewManager {
     }
     return '';
   }
-  
+
   /**
    * Format author field (string or array) into display string
    */
@@ -75,7 +75,7 @@ export class WriterViewManager {
     }
     return String(author);
   }
-  
+
   /**
    * Get author from current document or fallback to index document
    */
@@ -87,7 +87,7 @@ export class WriterViewManager {
         return authorStr;
       }
     }
-    
+
     // Fallback to index document
     const indexDoc = this.treeProvider?.getIndexDocument();
     if (indexDoc?.metadata?.author) {
@@ -96,38 +96,38 @@ export class WriterViewManager {
         return authorStr;
       }
     }
-    
+
     return 'Unknown Author';
   }
-  
+
   /**
    * Update status bar with word count
    */
   private updateStatusBar(stats: WriterPanelStats): void {
     // Primary display: word count
     this.wordCountStatusBarItem.text = `$(pencil) ${stats.wordCount} words`;
-    
+
     // Rich tooltip with all stats
     const tooltipLines = [
       `${stats.wordCount} words in "${stats.nodeName}"`,
       `${stats.charCount} characters`
     ];
-    
+
     if (stats.field) {
       tooltipLines.push(`Field: ${stats.field}`);
     }
-    
+
     this.wordCountStatusBarItem.tooltip = tooltipLines.join('\n');
     this.wordCountStatusBarItem.show();
   }
-  
+
   /**
    * Hide status bar item
    */
   private hideStatusBar(): void {
     this.wordCountStatusBarItem.hide();
   }
-  
+
   /**
    * Update status bar to show the currently active Writer View panel
    */
@@ -142,28 +142,28 @@ export class WriterViewManager {
         }
       }
     }
-    
+
     // No active Writer View found - hide status bar
     this.hideStatusBar();
   }
-  
+
   /**
    * Store stats for a panel and update status bar if it's active
    */
   private updateStatsForPanel(
-    panelKey: string, 
+    panelKey: string,
     panel: vscode.WebviewPanel,
     stats: WriterPanelStats
   ): void {
     // Store stats for this panel
     this.panelStats.set(panelKey, stats);
-    
+
     // Only update status bar if THIS panel is the active one
     if (panel.active && panel.visible) {
       this.updateStatusBar(stats);
     }
   }
-  
+
   /**
    * Get the theme setting from configuration
    */
@@ -171,7 +171,7 @@ export class WriterViewManager {
     const config = vscode.workspace.getConfiguration('chapterwiseCodex.writerView');
     return config.get<'light' | 'dark' | 'system' | 'theme'>('theme', 'theme');
   }
-  
+
   /**
    * Get the current VS Code theme kind (light or dark)
    */
@@ -179,51 +179,51 @@ export class WriterViewManager {
     const colorTheme = vscode.window.activeColorTheme;
     return colorTheme.kind === vscode.ColorThemeKind.Light ? 'light' : 'dark';
   }
-  
+
   /**
    * Open or focus a Writer View for a node
    */
   async openWriterView(treeItem: CodexTreeItem): Promise<void> {
     const node = treeItem.codexNode;
     const documentUri = treeItem.documentUri;
-    
+
     // Create a unique key for this panel
     const panelKey = `${documentUri.toString()}#${node.id || node.path.join('/')}`;
-    
+
     // Check if panel already exists - just focus it
     let existingPanel = this.panels.get(panelKey);
     if (existingPanel) {
       existingPanel.reveal(vscode.ViewColumn.Active);
       return;
     }
-    
+
     // Read file directly - DON'T open in VS Code text editor
     const fileName = documentUri.fsPath;
     const text = fs.readFileSync(fileName, 'utf-8');
-    
+
     // Use appropriate parser based on file type
-    const codexDoc = isMarkdownFile(fileName) 
+    const codexDoc = isMarkdownFile(fileName)
       ? parseMarkdownAsCodex(text, fileName)
       : parseCodex(text);
-      
+
     if (!codexDoc) {
       const fileType = isMarkdownFile(fileName) ? 'Markdown' : 'Codex';
       vscode.window.showErrorMessage(`Unable to parse ${fileType} document`);
       return;
     }
-    
-    // Determine initial field based on entity structure using smart defaults
+
+    // Determine initial field based on node structure using smart defaults
     let initialField: string;
-    
-    // Smart default: overview for multi-field entities, single field otherwise
+
+    // Smart default: overview for multi-field nodes, single field otherwise
     const proseFieldCount = node.availableFields.filter(f => !f.startsWith('__')).length;
     const hasChildren = node.children && node.children.length > 0;
     const hasContentSections = node.hasContentSections;
     const hasAttributes = node.hasAttributes;
-    
+
     // Count total fields
     const fieldCount = proseFieldCount + (hasContentSections ? 1 : 0) + (hasAttributes ? 1 : 0) + (hasChildren ? 1 : 0);
-    
+
     // Default to overview if multiple fields, otherwise show the single field
     if (fieldCount > 1) {
       initialField = '__overview__';
@@ -237,7 +237,7 @@ export class WriterViewManager {
       // Single structured field - stay in overview to show it
       initialField = '__overview__';
     }
-    
+
     // Remap special fields to actual prose field for initial content load
     let proseFieldToLoad = initialField;
     if (initialField === '__overview__' || initialField === '__content__' || initialField === '__attributes__') {
@@ -245,7 +245,7 @@ export class WriterViewManager {
       // This ensures the prose editor has content even if we're showing structured view
       proseFieldToLoad = node.availableFields.includes('summary') ? 'summary' : (node.proseField || 'body');
     }
-    
+
     let prose: string;
     // Handle special fields (attributes, content sections) - they don't have prose content
     if (proseFieldToLoad.startsWith('__')) {
@@ -266,7 +266,7 @@ export class WriterViewManager {
     } else {
       prose = getNodeProse(codexDoc, node, proseFieldToLoad);
     }
-    
+
     // Create new panel in the ACTIVE editor group (same frame, new tab)
     let panel = vscode.window.createWebviewPanel(
       'chapterwiseCodexWriter',
@@ -280,15 +280,15 @@ export class WriterViewManager {
         ],
       }
     );
-    
+
     this.panels.set(panelKey, panel);
-    
+
     // Get author display
     const authorDisplay = this.getAuthorDisplay(codexDoc);
-    
+
     // Get workspace root for relative path display
     const workspaceRoot = this.getWorkspaceRoot();
-    
+
     // Set initial HTML with remembered field using the new builder
     panel.webview.html = buildWebviewHtml({
       webview: panel.webview,
@@ -301,23 +301,23 @@ export class WriterViewManager {
       filePath: documentUri.fsPath,
       workspaceRoot: workspaceRoot
     });
-    
+
     // Store initial stats and update status bar
     const initialStats = calculateStats(prose, node.name, initialField);
     this.updateStatsForPanel(panelKey, panel, initialStats);
-    
+
     // Track current field for this panel
     let currentField = initialField;
     let currentType = node.type;
     let currentAttributes: CodexAttribute[] = node.attributes || [];
     let currentContentSections: CodexContentSection[] = node.contentSections || [];
-    
+
     // Listen for panel visibility/focus changes
     const viewStateDisposable = panel.onDidChangeViewState(() => {
       // Update status bar whenever any panel's state changes
       this.updateStatusBarForActivePanel();
     });
-    
+
     // Handle messages from webview (closure captures node and documentUri)
     panel.webview.onDidReceiveMessage(
       async (message) => {
@@ -326,59 +326,59 @@ export class WriterViewManager {
             const fieldToSave = message.field || currentField;
             const typeToSave = message.newType || currentType;
             await this.handleSave(documentUri, node, message.text, fieldToSave, typeToSave);
-            
+
             // Update stored stats
             const saveStats = calculateStats(message.text, node.name, fieldToSave);
             this.updateStatsForPanel(panelKey, panel, saveStats);
-            
+
             panel.webview.postMessage({ type: 'saved' });
             break;
-          
+
           case 'saveAs':
             await this.handleSaveAs(documentUri);
             break;
-          
+
           case 'openFile':
             // Open the file in normal code editor
             const doc = await vscode.workspace.openTextDocument(documentUri);
             await vscode.window.showTextDocument(doc, { preview: false });
             break;
-          
+
           case 'typeChanged':
             // Store the new type value (will be saved with next save)
             currentType = message.newType;
             break;
-          
+
           case 'contentChanged':
             // New message type for real-time updates
             const contentStats = calculateStats(message.text, node.name, currentField);
             this.updateStatsForPanel(panelKey, panel, contentStats);
             break;
-          
+
           case 'renameName':
             await this.handleRenameName(documentUri, node, message.name, panel);
             break;
-          
+
           case 'addField':
             await this.handleAddField(documentUri, node, message.fieldType, panel);
             break;
-            
+
           case 'switchField':
             currentField = message.field;
-            
+
             // Only fetch prose content for regular fields (not attributes/content)
             if (message.field !== '__attributes__' && message.field !== '__content__') {
               // Read file directly - DON'T open in VS Code text editor
               const filePath = documentUri.fsPath;
               const text = fs.readFileSync(filePath, 'utf-8');
-              
+
               const parsed = isMarkdownFile(fileName)
                 ? parseMarkdownAsCodex(text, fileName)
                 : parseCodex(text);
-              
+
               if (parsed) {
                 let fieldContent: string;
-                
+
                 if (isMarkdownFile(fileName)) {
                   // For markdown files, extract field from frontmatter or body
                   if (message.field === 'body') {
@@ -392,12 +392,12 @@ export class WriterViewManager {
                   // For codex files, use getNodeProse
                   fieldContent = getNodeProse(parsed, node, message.field);
                 }
-                
+
                 panel.webview.postMessage({ type: 'fieldContent', text: fieldContent, field: message.field });
               }
             }
             break;
-            
+
           case 'requestContent':
             // Read file directly - DON'T open in VS Code text editor
             const filePathReq = documentUri.fsPath;
@@ -423,7 +423,7 @@ export class WriterViewManager {
               panel.webview.postMessage({ type: 'content', text: currentProse });
             }
             break;
-            
+
           // Attributes - batch save (local state is managed in webview for instant UI)
           case 'saveAttributes':
             // Receive full array from webview and save once
@@ -431,7 +431,7 @@ export class WriterViewManager {
             await this.handleSaveAttributes(documentUri, node, currentAttributes);
             panel.webview.postMessage({ type: 'saveComplete' });
             break;
-            
+
           // Content Sections - batch save (local state is managed in webview for instant UI)
           case 'saveContentSections':
             // Receive full array from webview and save once
@@ -444,83 +444,83 @@ export class WriterViewManager {
       undefined,
       this.context.subscriptions
     );
-    
+
     // Listen for VS Code theme changes (affects "theme" mode)
     const themeChangeDisposable = vscode.window.onDidChangeActiveColorTheme(() => {
       const vscodeThemeKind = this.getVSCodeThemeKind();
       const themeSetting = this.getThemeSetting();
-      
+
       // Update this specific panel
-      panel.webview.postMessage({ 
+      panel.webview.postMessage({
         type: 'themeChanged',
         themeSetting: themeSetting,
         vscodeTheme: vscodeThemeKind
       });
     });
-    
+
     // Listen for settings changes
     const configChangeDisposable = vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('chapterwiseCodex.writerView.theme')) {
         const themeSetting = this.getThemeSetting();
         const vscodeThemeKind = this.getVSCodeThemeKind();
-        
+
         // Update this specific panel
-        panel.webview.postMessage({ 
+        panel.webview.postMessage({
           type: 'themeChanged',
           themeSetting: themeSetting,
           vscodeTheme: vscodeThemeKind
         });
       }
     });
-    
+
     // Handle panel disposal
     panel.onDidDispose(() => {
       this.panels.delete(panelKey);
       this.panelStats.delete(panelKey);
-      
+
       // Update status bar (will show another Writer View if one exists, or hide)
       this.updateStatusBarForActivePanel();
-      
+
       themeChangeDisposable.dispose();
       configChangeDisposable.dispose();
       viewStateDisposable.dispose();
     });
   }
-  
+
   /**
    * Open Writer View for a specific field of a node
    */
   async openWriterViewForField(node: CodexNode, documentUri: vscode.Uri, targetField: string): Promise<void> {
     // Create a unique key for this panel (same as openWriterView)
     const panelKey = `${documentUri.toString()}#${node.id || node.path.join('/')}`;
-    
+
     // Check if panel already exists
     let existingPanel = this.panels.get(panelKey);
     if (existingPanel) {
       existingPanel.reveal(vscode.ViewColumn.Active);
       // If panel exists, send message to switch to the target field
-      existingPanel.webview.postMessage({ 
-        type: 'switchToField', 
-        field: targetField 
+      existingPanel.webview.postMessage({
+        type: 'switchToField',
+        field: targetField
       });
       return;
     }
-    
+
     // Read file directly - DON'T open in VS Code text editor
     const fileName = documentUri.fsPath;
     const text = fs.readFileSync(fileName, 'utf-8');
-    
+
     // Use appropriate parser based on file type
     const codexDoc = isMarkdownFile(fileName)
       ? parseMarkdownAsCodex(text, fileName)
       : parseCodex(text);
-      
+
     if (!codexDoc) {
       const fileType = isMarkdownFile(fileName) ? 'Markdown' : 'Codex';
       vscode.window.showErrorMessage(`Unable to parse ${fileType} document`);
       return;
     }
-    
+
     // Remap special fields to actual prose field for initial content load
     let proseFieldToLoad = targetField;
     if (targetField === '__overview__' || targetField === '__content__' || targetField === '__attributes__') {
@@ -528,7 +528,7 @@ export class WriterViewManager {
       // This ensures the prose editor has content even if we're showing structured view
       proseFieldToLoad = node.availableFields.includes('summary') ? 'summary' : (node.proseField || 'body');
     }
-    
+
     // Get prose value for the target field
     let prose: string;
     if (proseFieldToLoad.startsWith('__')) {
@@ -545,7 +545,7 @@ export class WriterViewManager {
     } else {
       prose = getNodeProse(codexDoc, node, proseFieldToLoad);
     }
-    
+
     // Create new panel
     let panel = vscode.window.createWebviewPanel(
       'chapterwiseCodexWriter',
@@ -559,15 +559,15 @@ export class WriterViewManager {
         ],
       }
     );
-    
+
     this.panels.set(panelKey, panel);
-    
+
     // Get author display
     const authorDisplay = this.getAuthorDisplay(codexDoc);
-    
+
     // Get workspace root for relative path display
     const workspaceRoot = this.getWorkspaceRoot();
-    
+
     // Set initial HTML with the target field selected using the new builder
     panel.webview.html = buildWebviewHtml({
       webview: panel.webview,
@@ -580,23 +580,23 @@ export class WriterViewManager {
       filePath: documentUri.fsPath,
       workspaceRoot: workspaceRoot
     });
-    
+
     // Store initial stats and update status bar
     const initialStats = calculateStats(prose, node.name, targetField);
     this.updateStatsForPanel(panelKey, panel, initialStats);
-    
+
     // Track current field for this panel
     let currentField = targetField;
     let currentType = node.type;
     let currentAttributes: CodexAttribute[] = node.attributes || [];
     let currentContentSections: CodexContentSection[] = node.contentSections || [];
-    
+
     // Listen for panel visibility/focus changes
     const viewStateDisposable2 = panel.onDidChangeViewState(() => {
       // Update status bar whenever any panel's state changes
       this.updateStatusBarForActivePanel();
     });
-    
+
     // Handle messages from webview (same handlers as openWriterView)
     panel.webview.onDidReceiveMessage(
       async (message) => {
@@ -605,50 +605,50 @@ export class WriterViewManager {
             const fieldToSave = message.field || currentField;
             const typeToSave = message.newType || currentType;
             await this.handleSave(documentUri, node, message.text, fieldToSave, typeToSave);
-            
+
             // Update stored stats
             const saveStats = calculateStats(message.text, node.name, fieldToSave);
             this.updateStatsForPanel(panelKey, panel, saveStats);
-            
+
             panel.webview.postMessage({ type: 'saved' });
             break;
-          
+
           case 'saveAs':
             await this.handleSaveAs(documentUri);
             break;
-          
+
           case 'openFile':
             // Open the file in normal code editor
             const doc = await vscode.workspace.openTextDocument(documentUri);
             await vscode.window.showTextDocument(doc, { preview: false });
             break;
-          
+
           case 'typeChanged':
             // Store the new type value (will be saved with next save)
             currentType = message.newType;
             break;
-          
+
           case 'contentChanged':
             // New message type for real-time updates
             const contentStats = calculateStats(message.text, node.name, currentField);
             this.updateStatsForPanel(panelKey, panel, contentStats);
             break;
-          
+
           case 'switchField':
             currentField = message.field;
-            
+
             if (message.field !== '__attributes__' && message.field !== '__content__') {
               // Read file directly - DON'T open in VS Code text editor
               const filePath = documentUri.fsPath;
               const text = fs.readFileSync(filePath, 'utf-8');
-              
+
               const parsed = isMarkdownFile(fileName)
                 ? parseMarkdownAsCodex(text, fileName)
                 : parseCodex(text);
-              
+
               if (parsed) {
                 let fieldContent: string;
-                
+
                 if (isMarkdownFile(fileName)) {
                   // For markdown files, extract field from frontmatter or body
                   if (message.field === 'body') {
@@ -662,12 +662,12 @@ export class WriterViewManager {
                   // For codex files, use getNodeProse
                   fieldContent = getNodeProse(parsed, node, message.field);
                 }
-                
+
                 panel.webview.postMessage({ type: 'fieldContent', text: fieldContent, field: message.field });
               }
             }
             break;
-            
+
           case 'requestContent':
             // Read file directly - DON'T open in VS Code text editor
             const filePathReq = documentUri.fsPath;
@@ -693,13 +693,13 @@ export class WriterViewManager {
               panel.webview.postMessage({ type: 'content', text: currentProse });
             }
             break;
-            
+
           case 'saveAttributes':
             currentAttributes = message.attributes || [];
             await this.handleSaveAttributes(documentUri, node, currentAttributes);
             panel.webview.postMessage({ type: 'saveComplete' });
             break;
-            
+
           case 'saveContentSections':
             currentContentSections = message.sections || [];
             await this.handleSaveContentSections(documentUri, node, currentContentSections);
@@ -710,43 +710,43 @@ export class WriterViewManager {
       undefined,
       this.context.subscriptions
     );
-    
+
     // Listen for VS Code theme changes (affects "theme" mode)
     const themeChangeDisposable2 = vscode.window.onDidChangeActiveColorTheme(() => {
       const vscodeThemeKind = this.getVSCodeThemeKind();
       const themeSetting = this.getThemeSetting();
-      
+
       // Update this specific panel
-      panel.webview.postMessage({ 
+      panel.webview.postMessage({
         type: 'themeChanged',
         themeSetting: themeSetting,
         vscodeTheme: vscodeThemeKind
       });
     });
-    
+
     // Listen for settings changes
     const configChangeDisposable2 = vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('chapterwiseCodex.writerView.theme')) {
         const themeSetting = this.getThemeSetting();
         const vscodeThemeKind = this.getVSCodeThemeKind();
-        
+
         // Update this specific panel
-        panel.webview.postMessage({ 
+        panel.webview.postMessage({
           type: 'themeChanged',
           themeSetting: themeSetting,
           vscodeTheme: vscodeThemeKind
         });
       }
     });
-    
+
     // Handle panel disposal
     panel.onDidDispose(() => {
       this.panels.delete(panelKey);
       this.panelStats.delete(panelKey);
-      
+
       // Update status bar (will show another Writer View if one exists, or hide)
       this.updateStatusBarForActivePanel();
-      
+
       themeChangeDisposable2.dispose();
       configChangeDisposable2.dispose();
       viewStateDisposable2.dispose();
@@ -763,9 +763,9 @@ export class WriterViewManager {
       const document = await vscode.workspace.openTextDocument(documentUri);
       const fileName = documentUri.fsPath;
       const originalText = document.getText();
-      
+
       let newDocText: string;
-      
+
       // Handle markdown files (Codex Lite) differently
       if (isMarkdownFile(fileName)) {
         const codexDoc = parseMarkdownAsCodex(originalText, fileName);
@@ -773,7 +773,7 @@ export class WriterViewManager {
           vscode.window.showErrorMessage('Unable to parse Markdown document for saving');
           return;
         }
-        
+
         // For markdown, handle body and summary differently
         const fieldToSave = field || 'body';
         if (fieldToSave === 'summary') {
@@ -790,11 +790,11 @@ export class WriterViewManager {
           vscode.window.showErrorMessage('Unable to parse Codex document for saving');
           return;
         }
-        
+
         // Generate new document text
         newDocText = setNodeProse(codexDoc, node, newText, field);
       }
-      
+
       // Update type if changed
       if (newType && newType !== node.type) {
         const codexDocWithType = parseCodex(newDocText);
@@ -803,7 +803,7 @@ export class WriterViewManager {
           node.type = newType; // Update in-memory
         }
       }
-      
+
       // Apply the edit
       const edit = new vscode.WorkspaceEdit();
       const fullRange = new vscode.Range(
@@ -811,7 +811,7 @@ export class WriterViewManager {
         document.positionAt(originalText.length)
       );
       edit.replace(documentUri, fullRange, newDocText);
-      
+
       const success = await vscode.workspace.applyEdit(edit);
       if (success) {
         await document.save();
@@ -824,7 +824,7 @@ export class WriterViewManager {
       vscode.window.showErrorMessage(`Save failed: ${error}`);
     }
   }
-  
+
   /**
    * Handle Save As - create a copy of the current file with a new name
    */
@@ -834,10 +834,10 @@ export class WriterViewManager {
       const currentDir = path.dirname(currentPath);
       const currentExt = path.extname(currentPath);
       const currentBase = path.basename(currentPath, currentExt);
-      
+
       // Suggest new filename
       const defaultName = `${currentBase}-copy${currentExt}`;
-      
+
       // Ask user for new filename
       const newPath = await vscode.window.showSaveDialog({
         defaultUri: vscode.Uri.file(path.join(currentDir, defaultName)),
@@ -845,30 +845,30 @@ export class WriterViewManager {
           'Codex Files': ['yaml', 'yml', 'json', 'codex'],
           'Markdown Files': ['md']
         },
-        title: 'Save Entity As...'
+        title: 'Save Node As...'
       });
-      
+
       if (!newPath) {
         return; // User cancelled
       }
-      
+
       // Read current file content
       const content = fs.readFileSync(currentPath, 'utf-8');
-      
+
       // Parse and update metadata
       const isJson = newPath.fsPath.toLowerCase().endsWith('.json');
       const isYaml = newPath.fsPath.toLowerCase().match(/\.(yaml|yml|codex)$/);
-      
+
       if (isYaml || isJson) {
         let data: any;
-        
+
         // Parse based on current file type
         if (currentPath.toLowerCase().endsWith('.json')) {
           data = JSON.parse(content);
         } else {
           data = YAML.parse(content);
         }
-        
+
         // Update metadata
         if (!data.metadata) {
           data.metadata = {};
@@ -878,7 +878,7 @@ export class WriterViewManager {
         if (data.metadata.extractedFrom) {
           delete data.metadata.extractedFrom;
         }
-        
+
         // Write new file
         let newContent: string;
         if (isJson) {
@@ -887,30 +887,30 @@ export class WriterViewManager {
           const doc = new YAML.Document(data);
           newContent = doc.toString({ lineWidth: 120 });
         }
-        
+
         fs.writeFileSync(newPath.fsPath, newContent, 'utf-8');
       } else {
         // For markdown or other files, just copy as-is
         fs.writeFileSync(newPath.fsPath, content, 'utf-8');
       }
-      
+
       // Show success and ask if user wants to open new file
       const action = await vscode.window.showInformationMessage(
         `✓ Saved copy as: ${path.basename(newPath.fsPath)}`,
         'Open Copy',
         'Stay Here'
       );
-      
+
       if (action === 'Open Copy') {
         const doc = await vscode.workspace.openTextDocument(newPath);
         await vscode.window.showTextDocument(doc);
       }
-      
+
     } catch (error) {
       vscode.window.showErrorMessage(`Save As failed: ${error}`);
     }
   }
-  
+
   /**
    * Handle inline rename of the node name/title
    */
@@ -925,13 +925,13 @@ export class WriterViewManager {
       panel.webview.postMessage({ type: 'nameUpdateError', error: 'Name cannot be empty.' });
       return;
     }
-    
+
     try {
       const filePath = documentUri.fsPath;
       const fileName = filePath.toLowerCase();
       const originalText = fs.readFileSync(filePath, 'utf-8');
       let newDocText: string | null = null;
-      
+
       if (isMarkdownFile(fileName)) {
         // Codex Lite: store name in frontmatter
         newDocText = setMarkdownFrontmatterField(originalText, 'name', trimmed);
@@ -943,25 +943,25 @@ export class WriterViewManager {
         }
         newDocText = setNodeName(codexDoc, node, trimmed);
       }
-      
+
       if (!newDocText) {
         panel.webview.postMessage({ type: 'nameUpdateError', error: 'Rename failed: could not update text.' });
         return;
       }
-      
+
       fs.writeFileSync(filePath, newDocText, 'utf-8');
-      
+
       // Update in-memory node and panel title for consistency
       node.name = trimmed;
       panel.title = `✍️ ${trimmed || 'Writer'}`;
-      
+
       panel.webview.postMessage({ type: 'nameUpdated', name: trimmed });
     } catch (error) {
       console.error('Rename failed:', error);
       panel.webview.postMessage({ type: 'nameUpdateError', error: 'Failed to rename. See console for details.' });
     }
   }
-  
+
   /**
    * Handle saving attributes
    */
@@ -973,21 +973,21 @@ export class WriterViewManager {
     try {
       const document = await vscode.workspace.openTextDocument(documentUri);
       const codexDoc = parseCodex(document.getText());
-      
+
       if (!codexDoc) {
         vscode.window.showErrorMessage('Unable to parse Codex document for saving');
         return;
       }
-      
+
       const newDocText = setNodeAttributes(codexDoc, node, attributes);
-      
+
       const edit = new vscode.WorkspaceEdit();
       const fullRange = new vscode.Range(
         document.positionAt(0),
         document.positionAt(document.getText().length)
       );
       edit.replace(documentUri, fullRange, newDocText);
-      
+
       const success = await vscode.workspace.applyEdit(edit);
       if (success) {
         await document.save();
@@ -997,7 +997,7 @@ export class WriterViewManager {
       vscode.window.showErrorMessage(`Save failed: ${error}`);
     }
   }
-  
+
   /**
    * Handle saving content sections
    */
@@ -1009,21 +1009,21 @@ export class WriterViewManager {
     try {
       const document = await vscode.workspace.openTextDocument(documentUri);
       const codexDoc = parseCodex(document.getText());
-      
+
       if (!codexDoc) {
         vscode.window.showErrorMessage('Unable to parse Codex document for saving');
         return;
       }
-      
+
       const newDocText = setNodeContentSections(codexDoc, node, contentSections);
-      
+
       const edit = new vscode.WorkspaceEdit();
       const fullRange = new vscode.Range(
         document.positionAt(0),
         document.positionAt(document.getText().length)
       );
       edit.replace(documentUri, fullRange, newDocText);
-      
+
       const success = await vscode.workspace.applyEdit(edit);
       if (success) {
         await document.save();
@@ -1033,9 +1033,9 @@ export class WriterViewManager {
       vscode.window.showErrorMessage(`Save failed: ${error}`);
     }
   }
-  
+
   /**
-   * Handle adding a new field to the entity
+   * Handle adding a new field to the node
    */
   private async handleAddField(
     documentUri: vscode.Uri,
@@ -1049,17 +1049,17 @@ export class WriterViewManager {
       const originalText = document.getText();
       let newDocText: string;
       let addedField: string | null = null;
-      
+
       // Parse the document
       const codexDoc = isMarkdownFile(fileName)
         ? parseMarkdownAsCodex(originalText, fileName)
         : parseCodex(originalText);
-      
+
       if (!codexDoc) {
         vscode.window.showErrorMessage('Unable to parse document for adding field');
         return;
       }
-      
+
       // Handle different field types
       switch (fieldType) {
         case 'summary':
@@ -1081,7 +1081,7 @@ export class WriterViewManager {
             addedField = fieldType;
           }
           break;
-        
+
         case 'attributes':
           // Initialize empty attributes array if it doesn't exist
           if (!node.hasAttributes || !node.attributes || node.attributes.length === 0) {
@@ -1093,7 +1093,7 @@ export class WriterViewManager {
             newDocText = originalText;
           }
           break;
-        
+
         case 'content':
           // Initialize empty content sections array if it doesn't exist
           if (!node.hasContentSections || !node.contentSections || node.contentSections.length === 0) {
@@ -1105,12 +1105,12 @@ export class WriterViewManager {
             newDocText = originalText;
           }
           break;
-        
+
         default:
           vscode.window.showWarningMessage(`Unknown field type: ${fieldType}`);
           return;
       }
-      
+
       // Apply the edit if content changed
       if (newDocText && newDocText !== originalText) {
         const edit = new vscode.WorkspaceEdit();
@@ -1119,21 +1119,21 @@ export class WriterViewManager {
           document.positionAt(originalText.length)
         );
         edit.replace(documentUri, fullRange, newDocText);
-        
+
         const success = await vscode.workspace.applyEdit(edit);
         if (success) {
           await document.save();
           vscode.window.setStatusBarMessage(`✓ ${fieldType} field added`, 2000);
-          
+
           // Update node's available fields
           if (fieldType === 'summary' || fieldType === 'body') {
             if (!node.availableFields.includes(fieldType)) {
               node.availableFields.push(fieldType);
             }
           }
-          
+
           // Send message to webview to refresh and show the new field
-          panel.webview.postMessage({ 
+          panel.webview.postMessage({
             type: 'fieldAdded',
             fieldType: fieldType,
             addedField: addedField,
@@ -1149,7 +1149,7 @@ export class WriterViewManager {
       } else {
         // Field already exists, just switch to it
         if (addedField) {
-          panel.webview.postMessage({ 
+          panel.webview.postMessage({
             type: 'switchToField',
             field: addedField
           });
@@ -1159,7 +1159,7 @@ export class WriterViewManager {
       vscode.window.showErrorMessage(`Failed to add field: ${error}`);
     }
   }
-  
+
   /**
    * Dispose all panels
    */

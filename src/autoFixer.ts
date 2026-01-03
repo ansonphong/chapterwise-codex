@@ -76,14 +76,14 @@ export class CodexAutoFixer {
       content = this.ensureV1Metadata(content);
       content = this.removeLegacyFields(content);
       content = this.fixMissingEntityFields(content, '');
-      
+
       if (regenerateAllIds) {
         content = this.regenerateAllIdsInDocument(content, '');
       } else {
         content = this.fixInvalidUuids(content, '');
         content = this.fixDuplicateIds(content);
       }
-      
+
       content = this.fixInvalidAttributeStructure(content, '');
       content = this.fixInvalidRelationStructure(content, '');
       content = this.cleanEmptyNames(content, '');
@@ -358,7 +358,7 @@ export class CodexAutoFixer {
   }
 
   /**
-   * Fix missing required entity fields
+   * Fix missing required node fields
    */
   private fixMissingEntityFields(data: unknown, path: string): any {
     if (typeof data !== 'object' || data === null) return data;
@@ -369,7 +369,7 @@ export class CodexAutoFixer {
 
     const obj = data as Record<string, unknown>;
 
-    // Check if this looks like an entity
+    // Check if this looks like a node
     const entityFields = ['id', 'type', 'name', 'title', 'attributes', 'children'];
     if (entityFields.some(field => field in obj)) {
       // Fix missing id
@@ -380,7 +380,7 @@ export class CodexAutoFixer {
 
       // Fix missing type (optional, but good practice)
       if (!('type' in obj) && path) {
-        obj.type = 'entity';
+        obj.type = 'node';
         this.fixesApplied.push(`Added missing 'type' field at ${path}`);
       }
 
@@ -411,7 +411,7 @@ export class CodexAutoFixer {
 
     const obj = data as Record<string, unknown>;
 
-    // Fix entity IDs
+    // Fix node IDs
     if ('id' in obj && typeof obj.id === 'string') {
       if (!this.isValidUuid(obj.id)) {
         const oldId = obj.id;
@@ -465,7 +465,7 @@ export class CodexAutoFixer {
   }
 
   /**
-   * Fix duplicate entity IDs
+   * Fix duplicate node IDs
    */
   private fixDuplicateIds(content: Record<string, unknown>): Record<string, unknown> {
     const seenIds = new Set<string>();
@@ -511,7 +511,7 @@ export class CodexAutoFixer {
 
     const obj = data as Record<string, unknown>;
 
-    // Regenerate entity ID
+    // Regenerate node ID
     if ('id' in obj) {
       const oldId = obj.id;
       obj.id = this.generateNewUuid();
@@ -838,72 +838,72 @@ export class CodexAutoFixer {
 
     while (i < lines.length) {
       const line = lines[i];
-      
+
       // Check if this line starts a quoted value (single or double quote)
       const quotedValueMatch = line.match(/^(\s+)(\w+):\s*(['"])(.*)$/);
-      
+
       if (quotedValueMatch) {
         const [, indent, key, quote, firstLineContent] = quotedValueMatch;
-        
+
         // Check if the quote closes on the same line
         const quoteCloses = this.findClosingQuote(firstLineContent, quote);
-        
+
         if (quoteCloses === -1) {
           // Multi-line quoted string - collect all lines until closing quote
           const quotedLines = [firstLineContent];
           let j = i + 1;
           let foundClosing = false;
-          
+
           while (j < lines.length && !foundClosing) {
             const nextLine = lines[j];
             quotedLines.push(nextLine);
-            
+
             const closingPos = this.findClosingQuote(nextLine, quote);
             if (closingPos !== -1) {
               foundClosing = true;
             }
             j++;
           }
-          
+
           // Join the content and check for problematic patterns
           const fullContent = quotedLines.join('\n');
-          
+
           // Check if content has bold markdown with colons (problematic pattern)
           if (fullContent.includes('**') && /\*\*[^*]+\*\*:\s/g.test(fullContent)) {
             // Extract just the text content (remove quotes)
             let extractedContent = fullContent;
-            
+
             // Remove opening quote
             if (extractedContent.startsWith(quote)) {
               extractedContent = extractedContent.slice(1);
             }
-            
+
             // Find and remove closing quote
             const lastQuotePos = extractedContent.lastIndexOf(quote);
             if (lastQuotePos !== -1) {
               extractedContent = extractedContent.slice(0, lastQuotePos);
             }
-            
+
             // Clean up the content
             extractedContent = extractedContent
               .replace(/\n\s+/g, '\n')  // Normalize indentation
               .replace(/''/g, "'")       // Fix escaped single quotes
               .trim();
-            
+
             // Convert to block scalar
             const contentLines = extractedContent.split('\n');
             result.push(`${indent}${key}: |`);
             contentLines.forEach(contentLine => {
               result.push(`${indent}  ${contentLine}`);
             });
-            
+
             changesCount++;
             i = j; // Skip past all the lines we just processed
             continue;
           }
         }
       }
-      
+
       // If we didn't convert this line, just add it as-is
       result.push(line);
       i++;
@@ -951,7 +951,7 @@ export class CodexAutoFixer {
         for (const pair of node.items) {
           if (YAML.isScalar(pair.value) && typeof pair.value.value === 'string') {
             const str = pair.value.value;
-            
+
             // Check if string looks like time format (HH:MM:SS, MM:SS, HH:MM)
             // Pattern: 1-2 digits, colon, 2 digits, optionally more colons and digits
             // These MUST be quoted to prevent YAML sexagesimal parsing (e.g., 36:00 → 2160)
@@ -1032,10 +1032,10 @@ export async function runAutoFixer(regenerateAllIds: boolean = false): Promise<v
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: isMarkdown 
-        ? 'Auto-Fixing Codex Lite (Markdown)...' 
-        : regenerateAllIds 
-          ? 'Auto-Fixing (Regenerating IDs)...' 
+      title: isMarkdown
+        ? 'Auto-Fixing Codex Lite (Markdown)...'
+        : regenerateAllIds
+          ? 'Auto-Fixing (Regenerating IDs)...'
           : 'Auto-Fixing Codex...',
       cancellable: false,
     },
@@ -1044,7 +1044,7 @@ export async function runAutoFixer(regenerateAllIds: boolean = false): Promise<v
       const text = document.getText();
 
       const fixer = new CodexAutoFixer();
-      const result = isMarkdown 
+      const result = isMarkdown
         ? fixer.autoFixCodexLite(text, fileName)
         : fixer.autoFixCodex(text, regenerateAllIds);
 

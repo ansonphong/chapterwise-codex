@@ -1,10 +1,10 @@
 /**
  * Explode Codex - Extract and Modularize Codex Children
- * 
- * Extracts direct children from a codex file based on entity type,
+ *
+ * Extracts direct children from a codex file based on node type,
  * saves each as a standalone V1.0 codex file, and replaces them with
  * include directives in the parent file.
- * 
+ *
  * Ported from Python explode_codex.py
  */
 
@@ -19,7 +19,7 @@ import { CodexAutoFixer } from './autoFixer';
  * Options for explode operation
  */
 export interface ExplodeOptions {
-  types?: string[];           // Entity types to extract (undefined = all)
+  types?: string[];           // Node types to extract (undefined = all)
   outputPattern: string;      // Path pattern with {type}, {name}, {id}, {index}
   format: 'yaml' | 'json';
   dryRun: boolean;
@@ -73,7 +73,7 @@ export class CodexExploder {
 
       const fileContent = fs.readFileSync(inputPath, 'utf-8');
       const isJson = inputPath.toLowerCase().endsWith('.json');
-      
+
       let codexData: Record<string, unknown>;
       if (isJson) {
         codexData = JSON.parse(fileContent);
@@ -129,7 +129,7 @@ export class CodexExploder {
       // Process each extracted child
       for (let idx = 0; idx < extracted.length; idx++) {
         const child = extracted[idx];
-        
+
         try {
           const outputPath = this.resolveOutputPath(
             child,
@@ -263,7 +263,7 @@ export class CodexExploder {
 
     for (const child of children) {
       const childType = ((child.type as string) || '').toLowerCase();
-      
+
       if (typesLower.includes(childType)) {
         extracted.push(child);
       } else {
@@ -275,7 +275,7 @@ export class CodexExploder {
   }
 
   /**
-   * Create a standalone V1.0 codex file from a child entity
+   * Create a standalone V1.0 codex file from a child node
    */
   private createExtractedCodex(
     child: Record<string, unknown>,
@@ -313,7 +313,7 @@ export class CodexExploder {
       extractedCodex.id = generateUuid();
     }
     if (!extractedCodex.type) {
-      extractedCodex.type = 'entity';
+      extractedCodex.type = 'node';
     }
     if (!extractedCodex.name && !extractedCodex.title) {
       extractedCodex.name = 'Untitled';
@@ -332,7 +332,7 @@ export class CodexExploder {
     parentDir: string,
     format: 'yaml' | 'json'
   ): string {
-    const childType = (child.type as string) || 'entity';
+    const childType = (child.type as string) || 'node';
     const childName = (child.name as string) || (child.title as string) || 'Untitled';
     const childId = (child.id as string) || `child_${index}`;
 
@@ -368,23 +368,23 @@ export class CodexExploder {
   private sanitizeFilename(name: string): string {
     // Remove or replace invalid filename characters
     let safeName = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '');
-    
+
     // Replace multiple spaces with single space
     safeName = safeName.replace(/\s+/g, ' ');
-    
+
     // Trim and replace spaces with hyphens
     safeName = safeName.trim().replace(/ /g, '-');
-    
+
     // Limit length
     if (safeName.length > 100) {
       safeName = safeName.substring(0, 100);
     }
-    
+
     // Ensure not empty
     if (!safeName) {
       safeName = 'untitled';
     }
-    
+
     return safeName;
   }
 
@@ -549,14 +549,14 @@ export async function runExplodeCodex(): Promise<void> {
     { label: '', kind: vscode.QuickPickItemKind.Separator },
     ...availableTypes.map(type => ({
       label: `$(symbol-class) ${type}`,
-      description: `Extract all "${type}" entities`,
+      description: `Extract all "${type}" nodes`,
       picked: false
     }))
   ];
 
   const selectedTypes = await vscode.window.showQuickPick(typeItems, {
-    title: 'Explode Codex - Step 1/3: Select Entity Types',
-    placeHolder: 'Which entity types should be extracted into separate files?',
+    title: 'Explode Codex - Step 1/3: Select Node Types',
+    placeHolder: 'Which node types should be extracted into separate files?',
     canPickMany: true
   });
 
@@ -683,11 +683,11 @@ export async function runExplodeCodex(): Promise<void> {
 
   if (result.success) {
     if (options.dryRun) {
-      channel.appendLine(`✅ [DRY RUN] Would extract ${result.extractedCount} entities (no files created)`);
+      channel.appendLine(`✅ [DRY RUN] Would extract ${result.extractedCount} nodes (no files created)`);
     } else {
-      channel.appendLine(`✅ Success! Extracted ${result.extractedCount} entities`);
+      channel.appendLine(`✅ Success! Extracted ${result.extractedCount} nodes`);
     }
-    
+
     if (result.extractedFiles.length > 0) {
       channel.appendLine(options.dryRun ? `\nWould create files:` : `\nExtracted files:`);
       result.extractedFiles.forEach((f, i) => {
@@ -709,8 +709,8 @@ export async function runExplodeCodex(): Promise<void> {
     // Show success message (no longer blocks progress)
     const action = await vscode.window.showInformationMessage(
       options.dryRun
-        ? `[DRY RUN] Would extract ${result.extractedCount} entities`
-        : `✅ Extracted ${result.extractedCount} entities into separate files`,
+        ? `[DRY RUN] Would extract ${result.extractedCount} nodes`
+        : `✅ Extracted ${result.extractedCount} nodes into separate files`,
       'Show Details',
       'Open Folder'
     );

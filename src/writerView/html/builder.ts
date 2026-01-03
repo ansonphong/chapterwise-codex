@@ -36,28 +36,28 @@ export interface TypeDefinition {
  */
 export function buildWebviewHtml(options: WebviewHtmlOptions): string {
   const { webview, node, prose, initialField, themeSetting, vscodeThemeKind, author, indexTypes, filePath, workspaceRoot } = options;
-  
+
   const nonce = getNonce();
   const escapedProse = escapeHtml(prose);
   const authorDisplay = author ? escapeHtml(author) : 'Unknown Author';
-  
+
   // Calculate relative path for display
   const path = require('path');
-  const relativePath = workspaceRoot 
+  const relativePath = workspaceRoot
     ? path.relative(workspaceRoot, filePath)
     : path.basename(filePath);
   const fullPath = filePath;
-  
+
   // Build field selector options
   const fieldOptions = buildFieldSelectorOptions(node, initialField);
-  
+
   // Build context toolbar
   const toolbarContext = getToolbarContextFromField(initialField);
   const toolbarHtml = buildToolbarHtml(toolbarContext, node);
-  
+
   // Build type selector options
   const typeOptions = buildTypeSelectorOptions(node, indexTypes || []);
-  
+
   return /* html */ `<!DOCTYPE html>
 <html lang="en" data-theme-setting="${themeSetting}" data-vscode-theme="${vscodeThemeKind}">
 <head>
@@ -84,7 +84,7 @@ ${getWriterViewStyles()}
       ${toolbarHtml}
     </div>
     <div class="header-right">
-      <select class="type-selector" id="typeSelector" title="Change entity type">
+      <select class="type-selector" id="typeSelector" title="Change node type">
         ${typeOptions}
       </select>
       <div class="save-menu-container">
@@ -120,21 +120,21 @@ ${getWriterViewStyles()}
       </div>
     </div>
   </div>
-  
+
   <div class="editor-container" id="proseEditor">
     <div class="editor-wrapper">
       <div class="overview-section-header" data-field="summary" style="display: none;">
         <span class="structured-title">Summary</span>
       </div>
-      <div 
-        id="editor" 
-        contenteditable="true" 
+      <div
+        id="editor"
+        contenteditable="true"
         spellcheck="true"
         data-placeholder="Start writing..."
       >${escapedProse}</div>
     </div>
   </div>
-  
+
   <!-- Attributes Editor -->
   <div class="structured-editor" id="attributesEditor">
     <div class="structured-header">
@@ -145,7 +145,7 @@ ${getWriterViewStyles()}
       ${renderAttributesTable(node.attributes || [])}
     </div>
   </div>
-  
+
   <!-- Content Sections Editor -->
   <div class="structured-editor" id="contentEditor">
     <div class="structured-header">
@@ -159,7 +159,7 @@ ${getWriterViewStyles()}
       ${renderContentSections(node.contentSections || [])}
     </div>
   </div>
-  
+
   <div class="footer">
     <span id="authorDisplay" title="Author(s)">
       <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: text-bottom; margin-right: 0.25rem;">
@@ -168,7 +168,7 @@ ${getWriterViewStyles()}
       ${authorDisplay}
     </span>
   </div>
-  
+
   <script nonce="${nonce}">
 ${getWriterViewScript(node, initialField)}
   </script>
@@ -181,18 +181,18 @@ ${getWriterViewScript(node, initialField)}
  */
 function buildFieldSelectorOptions(node: CodexNode, initialField: string): string {
   const options: string[] = [];
-  
-  // Check if entity has multiple fields to show overview option
-  const hasMultipleFields = node.availableFields.length > 1 || 
-    (node.attributes && node.attributes.length > 0) || 
+
+  // Check if node has multiple fields to show overview option
+  const hasMultipleFields = node.availableFields.length > 1 ||
+    (node.attributes && node.attributes.length > 0) ||
     (node.contentSections && node.contentSections.length > 0);
-  
-  // Add overview option for entities with multiple fields
+
+  // Add overview option for nodes with multiple fields
   if (hasMultipleFields) {
     options.push(`<option value="__overview__" ${initialField === '__overview__' ? 'selected' : ''}>📖 Overview</option>`);
     options.push('<option disabled>───────────</option>');
   }
-  
+
   // Add prose fields
   for (const f of node.availableFields) {
     if (!f.startsWith('__')) {
@@ -200,11 +200,11 @@ function buildFieldSelectorOptions(node: CodexNode, initialField: string): strin
       let emoji = '';
       if (f === 'summary') emoji = '📋 ';
       else if (f === 'body') emoji = '📄 ';
-      
+
       options.push(`<option value="${f}" ${f === initialField ? 'selected' : ''}>${emoji}${f}</option>`);
     }
   }
-  
+
   // Add "new" prose fields if not present
   if (!node.availableFields.includes('body')) {
     options.push(`<option value="body" ${initialField === 'body' ? 'selected' : ''}>📄 body (new)</option>`);
@@ -212,23 +212,23 @@ function buildFieldSelectorOptions(node: CodexNode, initialField: string): strin
   if (!node.availableFields.includes('summary')) {
     options.push(`<option value="summary" ${initialField === 'summary' ? 'selected' : ''}>📋 summary (new)</option>`);
   }
-  
+
   // Add separator and special fields if present (check actual node properties, not availableFields)
   const hasSpecialFields = node.hasAttributes || node.hasContentSections;
   if (hasSpecialFields) {
     options.push('<option disabled>───────────</option>');
-    
+
     // Add attributes option if node has attributes
     if (node.hasAttributes && node.attributes && node.attributes.length > 0) {
       options.push(`<option value="__attributes__" ${initialField === '__attributes__' ? 'selected' : ''}>📊 attributes (${node.attributes.length})</option>`);
     }
-    
+
     // Add content sections option if node has them
     if (node.hasContentSections && node.contentSections && node.contentSections.length > 0) {
       options.push(`<option value="__content__" ${initialField === '__content__' ? 'selected' : ''}>📝 content (${node.contentSections.length})</option>`);
     }
   }
-  
+
   return options.join('');
 }
 
@@ -237,7 +237,7 @@ function buildFieldSelectorOptions(node: CodexNode, initialField: string): strin
  */
 function buildTypeSelectorOptions(node: CodexNode, indexTypes: TypeDefinition[]): string {
   const options: string[] = [];
-  
+
   // Standard types
   const standardTypes = [
     { type: 'book', emoji: '📚' },
@@ -248,17 +248,17 @@ function buildTypeSelectorOptions(node: CodexNode, indexTypes: TypeDefinition[])
     { type: 'character', emoji: '👤' },
     { type: 'concept', emoji: '💡' }
   ];
-  
+
   // Add standard types (without emoji in label - keeps UI clean when closed)
   standardTypes.forEach(({ type }) => {
     const selected = node.type === type ? 'selected' : '';
     options.push(`<option value="${escapeHtml(type)}" ${selected}>${escapeHtml(type)}</option>`);
   });
-  
+
   // Add separator if custom types exist
   if (indexTypes.length > 0) {
     options.push('<option disabled>───────────</option>');
-    
+
     // Add custom types from index (without emoji in label)
     indexTypes.forEach(({ type, description }) => {
       const selected = node.type === type ? 'selected' : '';
@@ -266,7 +266,7 @@ function buildTypeSelectorOptions(node: CodexNode, indexTypes: TypeDefinition[])
       options.push(`<option value="${escapeHtml(type)}" ${selected} ${title}>${escapeHtml(type)}</option>`);
     });
   }
-  
+
   return options.join('');
 }
 

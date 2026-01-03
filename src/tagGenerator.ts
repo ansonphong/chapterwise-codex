@@ -1,8 +1,8 @@
 /**
  * Tag Generator - Extract tags from body fields in Codex files
- * 
+ *
  * Ported from Python: chapterwise-app/agent_worker/tags/tag_generator.py
- * 
+ *
  * Features:
  * - Unicode normalization and HTML/markdown cleanup
  * - Extended Latin tokenization with hyphen/apostrophe support
@@ -92,7 +92,7 @@ export class TagGenerator {
   private normalizeToken(word: string): string {
     let w = word.replace(/^[-'_]+|[-'_]+$/g, '');
     let lw = w.toLowerCase();
-    
+
     // Basic plural trim
     if (lw.length > 4 && lw.endsWith('s') && !lw.endsWith('ss')) {
       lw = lw.slice(0, -1);
@@ -100,7 +100,7 @@ export class TagGenerator {
     if (lw.endsWith("'s")) {
       lw = lw.slice(0, -2);
     }
-    
+
     return lw;
   }
 
@@ -110,7 +110,7 @@ export class TagGenerator {
   private displayName(name: string): string {
     if (name.includes(' ')) {
       // Title-case phrases
-      return name.split(' ').map(part => 
+      return name.split(' ').map(part =>
         part.charAt(0).toUpperCase() + part.slice(1)
       ).join(' ');
     }
@@ -129,7 +129,7 @@ export class TagGenerator {
     // Remove fenced code blocks and inline code
     text = text.replace(/```[\s\S]*?```/g, ' ');
     text = text.replace(/`[^`]*`/g, ' ');
-    
+
     // Remove markdown images and links
     text = text.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');
     text = text.replace(/\[[^\]]*\]\([^)]*\)/g, ' ');
@@ -204,7 +204,7 @@ export class TagGenerator {
 
       // Bigrams (phrases) with heading boost
       const phrases = new Map<string, number>();
-      
+
       const buildBigrams = (tokens: string[], boost: number = 1): void => {
         for (let i = 0; i < tokens.length - 1; i++) {
           const a = tokens[i];
@@ -298,7 +298,7 @@ export class TagGenerator {
         } else {
           obj.tags = generatedTags;
         }
-        
+
         wasModified = true;
         this.entitiesUpdated++;
         this.totalTagsGenerated += generatedTags.length;
@@ -356,7 +356,7 @@ export class TagGenerator {
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
       const isJson = filePath.toLowerCase().endsWith('.json');
-      
+
       let data: Record<string, unknown>;
       if (isJson) {
         data = JSON.parse(content);
@@ -438,7 +438,7 @@ export class TagGenerator {
 
       const fileContent = fs.readFileSync(inputPath, 'utf-8');
       const isJson = inputPath.toLowerCase().endsWith('.json');
-      
+
       let codexData: Record<string, unknown>;
       if (isJson) {
         codexData = JSON.parse(fileContent);
@@ -608,7 +608,7 @@ export async function runGenerateTags(): Promise<void> {
   // Step 2: Max tags
   const maxTagsInput = await vscode.window.showInputBox({
     title: 'Generate Tags - Step 2/3: Maximum Tags',
-    prompt: 'Maximum number of tags to generate per entity (1-100)',
+    prompt: 'Maximum number of tags to generate per node (1-100)',
     value: '10',
     validateInput: (value) => {
       const num = parseInt(value, 10);
@@ -695,7 +695,7 @@ export async function runGenerateTags(): Promise<void> {
 
   if (result.success) {
     channel.appendLine(`✅ Success!`);
-    channel.appendLine(`  Entities updated: ${result.entitiesUpdated}`);
+    channel.appendLine(`  Nodes updated: ${result.entitiesUpdated}`);
     channel.appendLine(`  Total tags generated: ${result.totalTagsGenerated}`);
 
     if (result.filesModified.length > 0) {
@@ -711,7 +711,7 @@ export async function runGenerateTags(): Promise<void> {
     }
 
     const message = result.entitiesUpdated > 0
-      ? `✅ Generated ${result.totalTagsGenerated} tags across ${result.entitiesUpdated} entities`
+      ? `✅ Generated ${result.totalTagsGenerated} tags across ${result.entitiesUpdated} nodes`
       : 'No tags generated (body fields may be too short or words don\'t meet minimum count)';
 
     const action = await vscode.window.showInformationMessage(
