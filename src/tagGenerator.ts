@@ -15,7 +15,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as YAML from 'yaml';
-import { isCodexFile } from './codexModel';
+import { isCodexFile, isMarkdownFile } from './codexModel';
 
 /**
  * Options for tag generation
@@ -415,7 +415,92 @@ export class TagGenerator {
   }
 
   /**
-   * Generate tags in a codex file
+   * Extract YAML frontmatter from markdown content
+   */
+  private extractFrontmatter(content: string): { frontmatter: Record<string, unknown>; body: string } {
+    const trimmed = content.trimStart();
+
+    if (!trimmed.startsWith('---')) {
+      return { frontmatter: {}, body: content };
+    }
+
+    const afterFirst = trimmed.slice(3);
+    const endIndex = afterFirst.indexOf('\n---');
+
+    if (endIndex === -1) {
+      return { frontmatter: {}, body: content };
+    }
+
+    const fmText = afterFirst.slice(0, endIndex);
+    const body = afterFirst.slice(endIndex + 4).trim();
+
+    try {
+      const frontmatter = YAML.parse(fmText) as Record<string, unknown> || {};
+      return { frontmatter, body };
+    } catch {
+      return { frontmatter: {}, body: content };
+    }
+  }
+
+  /**
+   * Serialize frontmatter and body back to markdown format
+   */
+  private serializeMarkdown(frontmatter: Record<string, unknown>, body: string): string {
+    if (Object.keys(frontmatter).length === 0) {
+      return body;
+    }
+
+    const fmYaml = YAML.stringify(frontmatter).trim();
+    return `---\n${fmYaml}\n---\n\n${body}`;
+  }
+
+  /**
+   * Generate tags for a Markdown (Codex Lite) file
+   */
+  private generateTagsForMarkdown(
+    inputPath: string,
+    options: TagGeneratorOptions
+  ): boolean {
+    try {
+      const content = fs.readFileSync(inputPath, 'utf-8');
+      const { frontmatter, body } = this.extractFrontmatter(content);
+
+      // If no frontmatter, we can't add tags properly
+      if (Object.keys(frontmatter).length === 0) {
+        this.errors.push(`No frontmatter found in: ${inputPath}`);
+        return false;
+      }
+
+      // Generate tags from body content
+      const generatedTags = this.computeTagsFromMarkdown(body, options.maxTags, options.minCount);
+
+      if (generatedTags.length === 0) {
+        return false;
+      }
+
+      // Convert to appropriate format
+      if (options.format === 'simple') {
+        frontmatter.tags = generatedTags.map(t => t.name);
+      } else {
+        frontmatter.tags = generatedTags;
+      }
+
+      this.entitiesUpdated++;
+      this.totalTagsGenerated += generatedTags.length;
+
+      // Write back to file
+      const newContent = this.serializeMarkdown(frontmatter, body);
+      fs.writeFileSync(inputPath, newContent, 'utf-8');
+
+      return true;
+    } catch (e) {
+      this.errors.push(`Failed to process markdown file '${inputPath}': ${e}`);
+      return false;
+    }
+  }
+
+  /**
+   * Generate tags in a codex or markdown file
    */
   async generateTags(
     documentUri: vscode.Uri,
@@ -436,6 +521,24 @@ export class TagGenerator {
 
       this.processedFiles.add(inputPath);
 
+      // Handle Markdown (Codex Lite) files
+      if (isMarkdownFile(inputPath)) {
+        const wasModified = this.generateTagsForMarkdown(inputPath, options);
+
+        if (wasModified) {
+          this.filesModified.push(inputPath);
+        }
+
+        return {
+          success: true,
+          entitiesUpdated: this.entitiesUpdated,
+          totalTagsGenerated: this.totalTagsGenerated,
+          filesModified: this.filesModified,
+          errors: this.errors
+        };
+      }
+
+      // Handle full Codex files
       const fileContent = fs.readFileSync(inputPath, 'utf-8');
       const isJson = inputPath.toLowerCase().endsWith('.json');
 
@@ -561,12 +664,15 @@ export async function runGenerateTags(): Promise<void> {
   const editor = vscode.window.activeTextEditor;
 
   if (!editor) {
-    vscode.window.showErrorMessage('No active editor. Open a Codex file first.');
+    vscode.window.showErrorMessage('No active editor. Open a Codex or Markdown file first.');
     return;
   }
 
-  if (!isCodexFile(editor.document.fileName)) {
-    vscode.window.showErrorMessage('Current file is not a Codex file (.codex.yaml, .codex.json, or .codex)');
+  const fileName = editor.document.fileName;
+  const isMarkdown = isMarkdownFile(fileName);
+
+  if (!isCodexFile(fileName) && !isMarkdown) {
+    vscode.window.showErrorMessage('Current file is not a Codex file (.codex.yaml, .codex.json) or Markdown file (.md)');
     return;
   }
 
@@ -578,8 +684,9 @@ export async function runGenerateTags(): Promise<void> {
   const documentText = editor.document.getText();
   const documentUri = editor.document.uri;
 
-  // Check if document has body fields
-  if (!TagGenerator.hasBodyFields(documentText)) {
+  // For markdown files, check if it has content after frontmatter
+  // For codex files, check if it has body fields
+  if (!isMarkdown && !TagGenerator.hasBodyFields(documentText)) {
     vscode.window.showWarningMessage('No body fields found in this codex file. Nothing to generate tags from.');
     return;
   }
@@ -641,22 +748,25 @@ export async function runGenerateTags(): Promise<void> {
     return;
   }
 
-  // Check for includes
-  const hasIncludes = TagGenerator.hasIncludes(documentText);
+  // Check for includes (only for Codex files, not markdown)
   let followIncludes = false;
 
-  if (hasIncludes) {
-    const includeChoice = await vscode.window.showInformationMessage(
-      'This document has include directives. Also generate tags in included files?',
-      'Yes, Include All Files',
-      'No, Just This File'
-    );
+  if (!isMarkdown) {
+    const hasIncludes = TagGenerator.hasIncludes(documentText);
 
-    if (!includeChoice) {
-      return;
+    if (hasIncludes) {
+      const includeChoice = await vscode.window.showInformationMessage(
+        'This document has include directives. Also generate tags in included files?',
+        'Yes, Include All Files',
+        'No, Just This File'
+      );
+
+      if (!includeChoice) {
+        return;
+      }
+
+      followIncludes = includeChoice.includes('Yes');
     }
-
-    followIncludes = includeChoice.includes('Yes');
   }
 
   // Build options
@@ -751,10 +861,6 @@ export async function runGenerateTags(): Promise<void> {
 export function disposeTagGenerator(): void {
   outputChannel?.dispose();
 }
-
-
-
-
 
 
 
