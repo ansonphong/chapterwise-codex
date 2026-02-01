@@ -23,6 +23,7 @@ import { countFilesInIndex as countIndexFiles } from './indexParser';
 import { CodexDragAndDropController } from './dragDropController';
 import { initializeGitRepository, ensureGitIgnore, setupGitLFS, disposeGitSetup } from './gitSetup';
 import { runGitSetupWizard } from './gitSetup/wizard';
+import { registerScrivenerImport, disposeScrivenerImport } from './scrivenerImport';
 
 /**
  * Notification Helper - Show transient messages that auto-dismiss
@@ -159,6 +160,10 @@ export function activate(context: vscode.ExtensionContext): void {
     // Register commands
     registerCommands(context);
     outputChannel.appendLine('Commands registered');
+
+    // Register Scrivener import command
+    registerScrivenerImport(context);
+    outputChannel.appendLine('Scrivener import command registered');
 
     // Update status bar based on active editor
     updateStatusBar();
@@ -1860,6 +1865,7 @@ export function deactivate(): void {
   disposeTagGenerator();
   disposeConvertFormat();
   disposeGitSetup();
+  disposeScrivenerImport();
   outputChannel?.appendLine('ChapterWise Codex extension deactivated');
   outputChannel?.dispose();
 }

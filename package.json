@@ -200,6 +200,11 @@
         "command": "chapterwiseCodex.navigateToFieldInCodeView",
         "title": "Open Field in Code View",
         "icon": "$(code)"
+      },
+      {
+        "command": "chapterwiseCodex.importScrivener",
+        "title": "ChapterWise Codex: Import Scrivener Project",
+        "icon": "$(file-add)"
       }
     ],
     "viewsContainers": {
@@ -403,6 +408,10 @@
         {
           "command": "chapterwiseCodex.git.setupLFS",
           "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "chapterwiseCodex.importScrivener",
+          "when": "true"
         }
       ]
     },
