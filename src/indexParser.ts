@@ -307,12 +307,18 @@ export function resolveSubIndexIncludes(
             }
 
             if (subData && typeof subData === 'object') {
+              // Get directory name for correct path computation
+              const dirName = path.basename(path.dirname(subIndexPath));
+
               // Merge sub-index as a node
               const subNode: IndexChildNode = {
-                id: subData.id || path.basename(path.dirname(subIndexPath)),
+                id: subData.id || dirName,
                 type: subData.type || 'folder',
-                name: subData.name || path.basename(path.dirname(subIndexPath)),
-                _included_from: includePath,
+                name: subData.name || dirName,
+                // IMPORTANT: Set _filename to directory name for correct path computation
+                // This ensures paths like "book-1/chapters/..." instead of "Book One/chapters/..."
+                _filename: dirName,
+                _subindex_path: subIndexPath, // Renamed from _included_from for web app parity
               };
 
               // Copy optional fields
