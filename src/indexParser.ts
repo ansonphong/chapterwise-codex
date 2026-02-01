@@ -243,10 +243,24 @@ export function isIncludeDirective(child: any): child is IncludeDirective {
 }
 
 /**
- * Check if an include points to a sub-index file
+ * Check if an include points to a sub-index file.
+ * Supports both visible and hidden variants:
+ * - index.codex.yaml (committed YAML)
+ * - .index.codex.yaml (hidden cache YAML)
+ * - index.codex.json (committed JSON)
+ * - .index.codex.json (hidden cache JSON)
  */
 export function isSubIndexInclude(includePath: string): boolean {
-  return includePath.endsWith('index.codex.yaml') || includePath.endsWith('index.codex.json');
+  if (!includePath || typeof includePath !== 'string') {
+    return false;
+  }
+  const fileName = path.basename(includePath);
+  return (
+    fileName === 'index.codex.yaml' ||
+    fileName === '.index.codex.yaml' ||
+    fileName === 'index.codex.json' ||
+    fileName === '.index.codex.json'
+  );
 }
 
 /**
