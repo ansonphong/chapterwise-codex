@@ -219,12 +219,62 @@
     "views": {
       "chapterwiseCodex": [
         {
+          "id": "chapterwiseCodexMaster",
+          "name": "Master Index",
+          "when": "chapterwiseCodex.hasMultipleIndexes"
+        },
+        {
+          "id": "chapterwiseCodexIndex0",
+          "name": "Index 1",
+          "when": "chapterwiseCodex.index0Visible"
+        },
+        {
+          "id": "chapterwiseCodexIndex1",
+          "name": "Index 2",
+          "when": "chapterwiseCodex.index1Visible"
+        },
+        {
+          "id": "chapterwiseCodexIndex2",
+          "name": "Index 3",
+          "when": "chapterwiseCodex.index2Visible"
+        },
+        {
+          "id": "chapterwiseCodexIndex3",
+          "name": "Index 4",
+          "when": "chapterwiseCodex.index3Visible"
+        },
+        {
+          "id": "chapterwiseCodexIndex4",
+          "name": "Index 5",
+          "when": "chapterwiseCodex.index4Visible"
+        },
+        {
+          "id": "chapterwiseCodexIndex5",
+          "name": "Index 6",
+          "when": "chapterwiseCodex.index5Visible"
+        },
+        {
+          "id": "chapterwiseCodexIndex6",
+          "name": "Index 7",
+          "when": "chapterwiseCodex.index6Visible"
+        },
+        {
+          "id": "chapterwiseCodexIndex7",
+          "name": "Index 8",
+          "when": "chapterwiseCodex.index7Visible"
+        },
+        {
           "id": "chapterwiseCodexNavigator",
-          "name": "ChapterWise Codex Navigator"
+          "name": "ChapterWise Codex Navigator",
+          "when": "!chapterwiseCodex.hasMultipleIndexes"
         }
       ]
     },
     "viewsWelcome": [
+      {
+        "view": "chapterwiseCodexMaster",
+        "contents": "No orphan files found.\n\nAll files are organized within sub-indexes."
+      },
       {
         "view": "chapterwiseCodexNavigator",
         "contents": "No Codex file is currently open.\n\nOpen a .codex.yaml or .codex.json file to see its structure here.\n\n[Open Codex File](command:workbench.action.files.openFile)"
