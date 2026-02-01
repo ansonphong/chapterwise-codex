@@ -7,7 +7,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { CodexNode, CodexDocument, parseCodex, parseMarkdownAsCodex, isCodexFile, isCodexLikeFile, isMarkdownFile } from './codexModel';
-import { parseIndexFile, isIndexFile, IndexDocument, IndexChildNode, getEffectiveEmoji, countFilesInIndex } from './indexParser';
+import { parseIndexFile, parseIndexFileJSON, isIndexFile, IndexDocument, IndexChildNode, getEffectiveEmoji, countFilesInIndex } from './indexParser';
 
 /**
  * Helper to log to the output channel
@@ -789,7 +789,7 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     this.workspaceRoot = workspaceRoot;
 
     if (folderPath) {
-      const indexPath = path.join(workspaceRoot, folderPath, '.index.codex.yaml');
+      const indexPath = path.join(workspaceRoot, folderPath, '.index.codex.json');
 
       // Check if index exists
       if (!fs.existsSync(indexPath)) {
@@ -820,7 +820,7 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
 
         // Parse the index
         const parseStart = Date.now();
-        this.indexDoc = parseIndexFile(indexContent);
+        this.indexDoc = parseIndexFileJSON(indexContent);
         const parseTime = Date.now() - parseStart;
         log(`[TreeProvider] Index parsed in ${parseTime}ms`);
 
@@ -1138,7 +1138,7 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     const workspaceRoot = this.workspaceRoot;
 
     // Construct URI for index file
-    const indexPath = path.join(workspaceRoot, this.contextFolder, '.index.codex.yaml');
+    const indexPath = path.join(workspaceRoot, this.contextFolder, '.index.codex.json');
     const uri = vscode.Uri.file(indexPath);
 
     if (!element) {

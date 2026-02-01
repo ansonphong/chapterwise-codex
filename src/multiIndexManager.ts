@@ -22,7 +22,7 @@ export interface DiscoveredIndex {
 }
 
 /**
- * Manages discovery and display of multiple index.codex.yaml files
+ * Manages discovery and display of multiple index.codex.yaml files (human-written)
  */
 export class MultiIndexManager {
   private discoveredIndexes: Map<string, DiscoveredIndex> = new Map();
@@ -38,7 +38,7 @@ export class MultiIndexManager {
     this.workspaceRoot = workspaceRoot;
     this.discoveredIndexes.clear();
 
-    // Find all index.codex.yaml files (excluding hidden .index.codex.yaml)
+    // Find all index.codex.yaml files (human-written, excluding generated .index.codex.json)
     const pattern = new vscode.RelativePattern(
       workspaceRoot,
       '**/index.codex.yaml'

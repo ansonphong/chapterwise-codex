@@ -117,6 +117,32 @@ export function parseIndexFile(content: string): IndexDocument | null {
 }
 
 /**
+ * Parse generated .index.codex.json file (fast path)
+ */
+export function parseIndexFileJSON(content: string): IndexDocument | null {
+  try {
+    const data = JSON.parse(content);
+
+    if (!data || typeof data !== 'object' || data.type !== 'index') {
+      return null;
+    }
+
+    // Apply type styles and default status (same as YAML path)
+    if (data.typeStyles && data.children) {
+      applyTypeStyles(data.children, data.typeStyles);
+    }
+    if (data.children) {
+      applyDefaultStatus(data.children);
+    }
+
+    return data as IndexDocument;
+  } catch (error) {
+    console.error('[IndexParser] Failed to parse JSON index:', error);
+    return null;
+  }
+}
+
+/**
  * Apply type styles to children recursively
  */
 function applyTypeStyles(children: IndexChildNode[], typeStyles: TypeStyle[]): void {
@@ -169,7 +195,6 @@ export function isIndexFile(fileName: string): boolean {
   const base = path.basename(fileName);
   return (
     base === 'index.codex.yaml' ||
-    base === '.index.codex.yaml' ||
     base === 'index.codex.json' ||
     base === '.index.codex.json'
   );
@@ -245,10 +270,9 @@ export function isIncludeDirective(child: any): child is IncludeDirective {
 /**
  * Check if an include points to a sub-index file.
  * Supports both visible and hidden variants:
- * - index.codex.yaml (committed YAML)
- * - .index.codex.yaml (hidden cache YAML)
- * - index.codex.json (committed JSON)
- * - .index.codex.json (hidden cache JSON)
+ * - index.codex.yaml (committed YAML - human-written)
+ * - index.codex.json (committed JSON - human-written)
+ * - .index.codex.json (hidden cache JSON - generated)
  */
 export function isSubIndexInclude(includePath: string): boolean {
   if (!includePath || typeof includePath !== 'string') {
@@ -257,7 +281,6 @@ export function isSubIndexInclude(includePath: string): boolean {
   const fileName = path.basename(includePath);
   return (
     fileName === 'index.codex.yaml' ||
-    fileName === '.index.codex.yaml' ||
     fileName === 'index.codex.json' ||
     fileName === '.index.codex.json'
   );

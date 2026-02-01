@@ -8,7 +8,6 @@
  * Includes ChapterWise-specific patterns, OS-specific files, and common backup patterns
  */
 export const GITIGNORE_TEMPLATE = `# ChapterWise auto-generated index cache
-.index.codex.yaml
 .index.codex.json
 
 # Writing project folders
@@ -124,7 +123,6 @@ export function getGitAttributesDescription(): string {
  */
 export const GITIGNORE_CATEGORIES = {
   chapterwise: `# ChapterWise auto-generated index cache
-.index.codex.yaml
 .index.codex.json
 `,
   writingFolders: `# Writing project folders

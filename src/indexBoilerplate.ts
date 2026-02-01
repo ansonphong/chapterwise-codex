@@ -140,7 +140,7 @@ function getDefaultPatterns() {
       '**/*.webp',
       '**/*.svg',
       '**/index.codex.yaml',
-      '**/.index.codex.yaml',
+      '**/.index.codex.json',
     ],
   };
 }

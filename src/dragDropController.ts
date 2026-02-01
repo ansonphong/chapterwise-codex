@@ -583,15 +583,15 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
     try {
       const targetPath = target.getFilePath();
       const folderPath = path.dirname(targetPath);
-      const perFolderIndexPath = path.join(workspaceRoot, folderPath, '.index.codex.yaml');
+      const perFolderIndexPath = path.join(workspaceRoot, folderPath, '.index.codex.json');
       
       if (!fs.existsSync(perFolderIndexPath)) {
         return [];
       }
       
       const indexContent = fs.readFileSync(perFolderIndexPath, 'utf-8');
-      const indexData = YAML.parse(indexContent);
-      
+      const indexData = JSON.parse(indexContent);
+
       return indexData.children || [];
     } catch (error) {
       console.error('Failed to get siblings:', error);

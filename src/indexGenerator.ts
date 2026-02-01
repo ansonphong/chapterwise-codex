@@ -1,10 +1,10 @@
 /**
  * Index Generator - Fractal Cascade Architecture
  *
- * Scans workspace and generates .index.codex.yaml with full project hierarchy
+ * Scans workspace and generates .index.codex.json with full project hierarchy
  *
  * NEW: Per-folder indexes
- * - Each folder can have its own .index.codex.yaml
+ * - Each folder can have its own .index.codex.json
  * - Per-folder indexes define order for immediate children
  * - Parent indexes merge child indexes (cascade up)
  * - Top-level index is complete workspace tree
@@ -217,9 +217,9 @@ export async function generateIndex(
       children,
     };
 
-  // Step 8: Write .index.codex.yaml
-  const outputPath = path.join(workspaceRoot, '.index.codex.yaml');
-  fs.writeFileSync(outputPath, YAML.stringify(indexData), 'utf-8');
+  // Step 8: Write .index.codex.json
+  const outputPath = path.join(workspaceRoot, '.index.codex.json');
+  fs.writeFileSync(outputPath, JSON.stringify(indexData, null, 2), 'utf-8');
 
   progressReporter?.report('Complete!', 5);
 
@@ -283,7 +283,7 @@ function shouldInclude(fileName: string, includePatterns: string[]): boolean {
 
 /**
  * Build hierarchical children structure from file list
- * NEW: Supports per-folder .index.codex.yaml merging
+ * NEW: Supports per-folder .index.codex.json merging
  * Returns children array and detected types
  */
 async function buildHierarchy(
@@ -424,7 +424,7 @@ function mergeTypes(
 }
 
 /**
- * Merge per-folder .index.codex.yaml files into the hierarchy
+ * Merge per-folder .index.codex.json files into the hierarchy
  * Processes from deepest folders UP to preserve order values
  */
 async function mergePerFolderIndexes(
@@ -446,8 +446,8 @@ async function mergePerFolderIndexes(
     const folder = tree.get(folderPath);
     if (!folder) continue;
 
-    // Check if this folder has a per-folder .index.codex.yaml
-    const perFolderIndexPath = path.join(workspaceRoot, folderPath, '.index.codex.yaml');
+    // Check if this folder has a per-folder .index.codex.json
+    const perFolderIndexPath = path.join(workspaceRoot, folderPath, '.index.codex.json');
 
     if (fs.existsSync(perFolderIndexPath)) {
       try {
@@ -464,7 +464,7 @@ async function mergePerFolderIndexes(
     }
   }
 
-  // Also check for root-level .index.codex.yaml (not hidden)
+  // Also check for root-level index.codex.yaml (human-written, not hidden)
   const rootIndexPath = path.join(workspaceRoot, 'index.codex.yaml');
   if (fs.existsSync(rootIndexPath)) {
     try {
@@ -1096,7 +1096,7 @@ export async function runGenerateIndex(): Promise<void> {
         const fileCount = countFiles(data.children);
 
       const action = await vscode.window.showInformationMessage(
-          `✅ Generated .index.codex.yaml\nFound ${fileCount} files`,
+          `✅ Generated .index.codex.json\nFound ${fileCount} files`,
         'Open Index',
           'Show in Explorer'
       );
@@ -1131,7 +1131,7 @@ export async function runRegenerateIndex(basePath?: string): Promise<void> {
 }
 
 /**
- * Generate per-folder .index.codex.yaml for a specific folder
+ * Generate per-folder .index.codex.json for a specific folder
  * This creates a complete index for just the immediate children
  */
 export async function generatePerFolderIndex(
@@ -1152,12 +1152,12 @@ export async function generatePerFolderIndex(
   // Count total files for progress reporting
   const totalFiles = entries.filter(e =>
     !e.name.startsWith('.') &&
-    e.name !== '.index.codex.yaml'
+    e.name !== '.index.codex.json'
   ).length;
   let processedFiles = 0;
 
   for (const entry of entries) {
-    if (entry.name === '.index.codex.yaml' || entry.name.startsWith('.')) {
+    if (entry.name === '.index.codex.json' || entry.name.startsWith('.')) {
       continue; // Skip hidden files and the index itself
     }
 
@@ -1195,8 +1195,8 @@ export async function generatePerFolderIndex(
         children: [] // Initialize empty children array
       };
 
-      // Check if folder has a per-folder .index.codex.yaml
-      const subIndexPath = path.join(childPath, '.index.codex.yaml');
+      // Check if folder has a per-folder .index.codex.json
+      const subIndexPath = path.join(childPath, '.index.codex.json');
       if (fs.existsSync(subIndexPath)) {
         try {
           const subIndexContent = fs.readFileSync(subIndexPath, 'utf-8');
@@ -1245,9 +1245,9 @@ export async function generatePerFolderIndex(
     children,
   };
 
-  // Write per-folder .index.codex.yaml
-  const outputPath = path.join(fullFolderPath, '.index.codex.yaml');
-  fs.writeFileSync(outputPath, YAML.stringify(indexData), 'utf-8');
+  // Write per-folder .index.codex.json
+  const outputPath = path.join(fullFolderPath, '.index.codex.json');
+  fs.writeFileSync(outputPath, JSON.stringify(indexData, null, 2), 'utf-8');
 
   return outputPath;
       }
@@ -1279,7 +1279,7 @@ export async function cascadeRegenerateIndexes(
     currentPath = parentPath;
   }
 
-  // 3. Finally, regenerate top-level .index.codex.yaml
+  // 3. Finally, regenerate top-level .index.codex.json
   await generateIndex({ workspaceRoot });
 }
 
@@ -1366,7 +1366,7 @@ export async function generateFolderHierarchy(
     }
   }
 
-  // 4. Finally, regenerate top-level .index.codex.yaml to merge everything
+  // 4. Finally, regenerate top-level .index.codex.json to merge everything
   progress?.report('Finalizing index...', 0);
   log(`[IndexGenerator] Regenerating top-level index`);
   await generateIndex({ workspaceRoot });

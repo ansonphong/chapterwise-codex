@@ -1,9 +1,9 @@
 /**
  * Settings Manager - Configuration resolution system
- * 
+ *
  * Implements cascading configuration hierarchy:
  * 1. Per-Codex Settings (in individual .codex.yaml files) - HIGHEST PRIORITY
- * 2. Project Settings (in .index.codex.yaml)
+ * 2. Project Settings (in .index.codex.json)
  * 3. VS Code Settings (global defaults)
  * 4. Built-in Defaults - LOWEST PRIORITY
  */
@@ -106,7 +106,7 @@ export class NavigatorSettingsManager {
     const vscodeSettings = this.getVSCodeSettings();
     const merged1 = this.mergeSettings(defaults, vscodeSettings);
     
-    // 3. Merge with project settings (from .index.codex.yaml)
+    // 3. Merge with project settings (from .index.codex.json)
     const projectSettings = await this.getProjectSettings(documentUri);
     const merged2 = this.mergeSettings(merged1, projectSettings);
     
@@ -130,19 +130,19 @@ export class NavigatorSettingsManager {
   }
   
   /**
-   * Get project-wide settings from .index.codex.yaml
+   * Get project-wide settings from .index.codex.json
    */
   private async getProjectSettings(
     fileUri: vscode.Uri
   ): Promise<Partial<NavigatorSettings>> {
     try {
-      // Find .index.codex.yaml in workspace
+      // Find .index.codex.json in workspace
       const workspaceFolder = vscode.workspace.getWorkspaceFolder(fileUri);
       if (!workspaceFolder) {
         return {};
       }
       
-      const indexPath = path.join(workspaceFolder.uri.fsPath, '.index.codex.yaml');
+      const indexPath = path.join(workspaceFolder.uri.fsPath, '.index.codex.json');
       
       if (!fs.existsSync(indexPath)) {
         return {};
@@ -150,7 +150,7 @@ export class NavigatorSettingsManager {
       
       // Parse index file
       const indexContent = fs.readFileSync(indexPath, 'utf-8');
-      const indexDoc = YAML.parse(indexContent);
+      const indexDoc = JSON.parse(indexContent);
       
       // Extract navigatorSettings
       return this.extractNavigatorSettingsFromYaml(indexDoc);

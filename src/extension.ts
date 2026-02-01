@@ -254,9 +254,9 @@ async function autoDiscoverIndexFiles(): Promise<void> {
     }
 
     // Also check for workspace root index
-    const rootIndexPath = path.join(workspaceRoot, '.index.codex.yaml');
+    const rootIndexPath = path.join(workspaceRoot, '.index.codex.json');
     if (fs.existsSync(rootIndexPath)) {
-      console.log(`[ChapterWise Codex] Found workspace root index: .index.codex.yaml`);
+      console.log(`[ChapterWise Codex] Found workspace root index: .index.codex.json`);
       // This will be loaded automatically by INDEX mode
     }
   } catch (error) {
@@ -1383,10 +1383,10 @@ function registerCommands(context: vscode.ExtensionContext): void {
       // Set context for button highlighting
       await vscode.commands.executeCommand('setContext', 'codexNavigatorMode', 'index');
 
-      // Auto-open .index.codex.yaml if it exists
+      // Auto-open .index.codex.json if it exists
       const workspaceRoot = vscode.workspace.workspaceFolders?.[0];
       if (workspaceRoot) {
-        const indexPath = path.join(workspaceRoot.uri.fsPath, '.index.codex.yaml');
+        const indexPath = path.join(workspaceRoot.uri.fsPath, '.index.codex.json');
         if (fs.existsSync(indexPath)) {
           const doc = await vscode.workspace.openTextDocument(indexPath);
           treeProvider.setActiveDocument(doc);
@@ -1560,7 +1560,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
       outputChannel.appendLine(`[setContextFolder] Workspace root: ${workspaceRoot}`);
 
       // Generate index if needed (always regenerate)
-      const indexPath = path.join(uri.fsPath, '.index.codex.yaml');
+      const indexPath = path.join(uri.fsPath, '.index.codex.json');
 
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
@@ -1841,7 +1841,7 @@ async function updateIndexFileExpansionState(
 ): Promise<void> {
   // Read index file
   const content = fs.readFileSync(indexPath, 'utf-8');
-  const indexData = YAML.parse(content);
+  const indexData = JSON.parse(content);
 
   if (!indexData || !indexData.children) {
     return;
@@ -1857,7 +1857,7 @@ async function updateIndexFileExpansionState(
 
   if (changesApplied > 0) {
     // Write back to file
-    fs.writeFileSync(indexPath, YAML.stringify(indexData), 'utf-8');
+    fs.writeFileSync(indexPath, JSON.stringify(indexData, null, 2), 'utf-8');
   }
 }
 
@@ -1896,7 +1896,7 @@ function determineIndexFileForNode(
   if (node._parent_file) {
     const parentFilePath = node._parent_file;
     const folderPath = path.dirname(parentFilePath);
-    const perFolderIndex = path.join(workspaceRoot, folderPath, '.index.codex.yaml');
+    const perFolderIndex = path.join(workspaceRoot, folderPath, '.index.codex.json');
 
     if (fs.existsSync(perFolderIndex)) {
       return perFolderIndex;
@@ -1906,7 +1906,7 @@ function determineIndexFileForNode(
   // If node has _computed_path, use its directory
   if (node._computed_path) {
     const folderPath = path.dirname(node._computed_path);
-    const perFolderIndex = path.join(workspaceRoot, folderPath, '.index.codex.yaml');
+    const perFolderIndex = path.join(workspaceRoot, folderPath, '.index.codex.json');
 
     if (fs.existsSync(perFolderIndex)) {
       return perFolderIndex;
@@ -1914,7 +1914,7 @@ function determineIndexFileForNode(
   }
 
   // Fall back to workspace root index
-  return path.join(workspaceRoot, '.index.codex.yaml');
+  return path.join(workspaceRoot, '.index.codex.json');
 }
 
 // ============================================================================
