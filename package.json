@@ -577,6 +577,17 @@
             "Adapt to your current VS Code theme colors"
           ],
           "description": "Color theme for the Writer View prose editor"
+        },
+        "chapterwiseCodex.indexDisplayMode": {
+          "type": "string",
+          "enum": ["nested", "stacked", "tabs"],
+          "enumDescriptions": [
+            "Show all indexes merged into single tree (current behavior)",
+            "Show each index as a separate collapsible section",
+            "Show each index in a tabbed interface (future)"
+          ],
+          "default": "stacked",
+          "description": "How to display multiple index.codex.yaml files in the navigator"
         }
       }
     }
