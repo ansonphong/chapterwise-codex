@@ -39,7 +39,7 @@ export interface IndexChildNode {
   _type_emoji?: string; // Emoji from typeStyles (auto-applied)
   _type_color?: string; // Color from typeStyles (auto-applied)
   _default_status?: string; // Default status if not explicitly set
-  _included_from?: string; // V2: Path this node was included from (for tracking)
+  _subindex_path?: string; // V2: Absolute path to the sub-index file this node was expanded from
 
   // For tree navigation (runtime only)
   parent?: IndexChildNode; // Parent node reference (not serialized)
@@ -357,7 +357,7 @@ export function resolveSubIndexIncludes(
           type: 'document', // Will be refined by content parsing
           name: baseName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
           _filename: fileName,
-          _included_from: includePath,
+          _subindex_path: path.resolve(parentDir, includePath),
           _format: ext === '.md' ? 'markdown' : ext === '.yaml' ? 'yaml' : 'json',
         });
       }

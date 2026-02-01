@@ -698,7 +698,7 @@ async function resolveIncludes(
             type: includedData.type || 'unknown',
             name: includedData.name || includedData.title || path.basename(resolvedPath, path.extname(resolvedPath)),
             children: includedChildren,
-            _included_from: path.relative(workspaceRoot, resolvedPath),
+            _subindex_path: resolvedPath,
             _node_kind: 'node', // Included files become nodes in the tree
           };
 
