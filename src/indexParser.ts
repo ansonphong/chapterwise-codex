@@ -271,7 +271,11 @@ export function isSubIndexInclude(includePath: string): boolean {
  * @param parentDir - Absolute path to the directory containing the parent index
  * @returns Resolved children array with includes expanded
  */
-export function resolveSubIndexIncludes(children: any[], parentDir: string): IndexChildNode[] {
+export function resolveSubIndexIncludes(
+  children: any[],
+  parentDir: string,
+  parsedIndexes: Set<string> = new Set()
+): IndexChildNode[] {
   const resolved: IndexChildNode[] = [];
 
   for (const child of children) {
@@ -281,8 +285,17 @@ export function resolveSubIndexIncludes(children: any[], parentDir: string): Ind
       if (isSubIndexInclude(includePath)) {
         // Load and merge sub-index
         const subIndexPath = path.resolve(parentDir, includePath);
+        const normalizedPath = path.normalize(subIndexPath);
+
+        // Circular reference check
+        if (parsedIndexes.has(normalizedPath)) {
+          console.warn(`[IndexParser] Circular sub-index reference detected: ${subIndexPath}`);
+          continue;
+        }
 
         if (fs.existsSync(subIndexPath)) {
+          // Add to parsed set before parsing (prevent infinite recursion)
+          parsedIndexes.add(normalizedPath);
           try {
             const subContent = fs.readFileSync(subIndexPath, 'utf-8');
             let subData: any;
@@ -313,7 +326,8 @@ export function resolveSubIndexIncludes(children: any[], parentDir: string): Ind
               if (subData.children && Array.isArray(subData.children)) {
                 subNode.children = resolveSubIndexIncludes(
                   subData.children,
-                  path.dirname(subIndexPath)
+                  path.dirname(subIndexPath),
+                  parsedIndexes
                 );
               }
 
@@ -350,7 +364,7 @@ export function resolveSubIndexIncludes(children: any[], parentDir: string): Ind
         const childDir = child._filename
           ? path.join(parentDir, path.dirname(child._filename))
           : parentDir;
-        node.children = resolveSubIndexIncludes(child.children, childDir);
+        node.children = resolveSubIndexIncludes(child.children, childDir, parsedIndexes);
       }
 
       resolved.push(node);
@@ -370,14 +384,21 @@ export function resolveSubIndexIncludes(children: any[], parentDir: string): Ind
  */
 export function parseIndexFileWithIncludes(
   content: string,
-  indexDir: string
+  indexDir: string,
+  indexPath?: string
 ): IndexDocument | null {
   const doc = parseIndexFile(content);
   if (!doc) {return null;}
 
+  // Initialize parsed indexes set with current index
+  const parsedIndexes = new Set<string>();
+  if (indexPath) {
+    parsedIndexes.add(path.normalize(indexPath));
+  }
+
   // Resolve any include directives in children
   if (doc.children && Array.isArray(doc.children)) {
-    doc.children = resolveSubIndexIncludes(doc.children, indexDir);
+    doc.children = resolveSubIndexIncludes(doc.children, indexDir, parsedIndexes);
   }
 
   return doc;
