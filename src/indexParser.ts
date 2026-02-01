@@ -285,7 +285,13 @@ export function resolveSubIndexIncludes(children: any[], parentDir: string): Ind
         if (fs.existsSync(subIndexPath)) {
           try {
             const subContent = fs.readFileSync(subIndexPath, 'utf-8');
-            const subData = YAML.parse(subContent);
+            let subData: any;
+
+            if (subIndexPath.endsWith('.json')) {
+              subData = JSON.parse(subContent);
+            } else {
+              subData = YAML.parse(subContent);
+            }
 
             if (subData && typeof subData === 'object') {
               // Merge sub-index as a node
