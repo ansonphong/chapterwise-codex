@@ -24,6 +24,9 @@ import { CodexDragAndDropController } from './dragDropController';
 import { initializeGitRepository, ensureGitIgnore, setupGitLFS, disposeGitSetup } from './gitSetup';
 import { runGitSetupWizard } from './gitSetup/wizard';
 import { registerScrivenerImport, disposeScrivenerImport } from './scrivenerImport';
+import { MultiIndexManager } from './multiIndexManager';
+import { SubIndexTreeProvider } from './subIndexTreeProvider';
+import { MasterIndexTreeProvider } from './masterIndexTreeProvider';
 
 /**
  * Notification Helper - Show transient messages that auto-dismiss
@@ -40,6 +43,12 @@ let treeView: vscode.TreeView<CodexTreeItemType>;
 let writerViewManager: WriterViewManager;
 let statusBarItem: vscode.StatusBarItem;
 let outputChannel: vscode.OutputChannel;
+
+// Multi-index support
+let multiIndexManager: MultiIndexManager | undefined;
+let masterTreeProvider: MasterIndexTreeProvider | undefined;
+const subIndexProviders: SubIndexTreeProvider[] = [];
+const subIndexViews: vscode.TreeView<CodexTreeItemType>[] = [];
 
 /**
  * Get the output channel for logging
@@ -136,6 +145,31 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     });
     outputChannel.appendLine('Tree expansion state handlers registered');
+
+    // Create multi-index manager
+    multiIndexManager = new MultiIndexManager(context);
+
+    // Create master index tree provider
+    masterTreeProvider = new MasterIndexTreeProvider();
+    const masterView = vscode.window.createTreeView('chapterwiseCodexMaster', {
+      treeDataProvider: masterTreeProvider,
+      showCollapseAll: true
+    });
+    context.subscriptions.push(masterView);
+
+    // Create sub-index tree providers (8 slots)
+    for (let i = 0; i < 8; i++) {
+      const provider = new SubIndexTreeProvider(`chapterwiseCodexIndex${i}`);
+      subIndexProviders.push(provider);
+
+      const view = vscode.window.createTreeView(`chapterwiseCodexIndex${i}`, {
+        treeDataProvider: provider,
+        showCollapseAll: true
+      });
+      subIndexViews.push(view);
+      context.subscriptions.push(view);
+    }
+    outputChannel.appendLine('Multi-index tree views created');
 
     // Initialize Writer View manager
     writerViewManager = new WriterViewManager(context);
@@ -1570,6 +1604,40 @@ function registerCommands(context: vscode.ExtensionContext): void {
         await context.workspaceState.update('chapterwiseCodex.lastContextPath', uri.fsPath);
         await context.workspaceState.update('chapterwiseCodex.lastContextType', 'folder');
         outputChannel.appendLine(`[setContextFolder] Context saved to workspace state`);
+
+        // After setting context folder, discover indexes for multi-index mode
+        if (multiIndexManager && workspaceRoot) {
+          const config = vscode.workspace.getConfiguration('chapterwiseCodex');
+          const displayMode = config.get<string>('indexDisplayMode', 'stacked');
+
+          if (displayMode === 'stacked') {
+            outputChannel.appendLine(`[setContextFolder] Discovering indexes for stacked mode...`);
+            const indexes = await multiIndexManager.discoverIndexes(workspaceRoot);
+            outputChannel.appendLine(`[setContextFolder] Found ${indexes.length} indexes`);
+
+            // Update master tree provider
+            if (masterTreeProvider) {
+              masterTreeProvider.setManager(multiIndexManager, workspaceRoot);
+            }
+
+            // Assign sub-indexes to view slots
+            const subIndexes = multiIndexManager.getSubIndexes();
+            subIndexes.forEach((index, i) => {
+              if (i < subIndexProviders.length) {
+                subIndexProviders[i].setIndex(index);
+                // Update view title
+                subIndexViews[i].title = index.displayName;
+              }
+            });
+
+            // Clear unused slots
+            for (let i = subIndexes.length; i < subIndexProviders.length; i++) {
+              subIndexProviders[i].setIndex(null);
+            }
+
+            outputChannel.appendLine(`[setContextFolder] Multi-index views configured`);
+          }
+        }
       });
 
       outputChannel.appendLine(`[setContextFolder] Complete - Viewing: ${path.basename(uri.fsPath)}`);
