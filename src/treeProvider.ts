@@ -884,6 +884,21 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
   }
 
   /**
+   * Get the current display mode
+   */
+  getDisplayMode(): string {
+    const config = vscode.workspace.getConfiguration('chapterwiseCodex');
+    return config.get<string>('indexDisplayMode', 'stacked');
+  }
+
+  /**
+   * Check if we should use the legacy single-tree view
+   */
+  shouldUseLegacyView(): boolean {
+    return this.getDisplayMode() === 'nested';
+  }
+
+  /**
    * Toggle field display and refresh tree
    */
   async toggleShowFields(): Promise<void> {
@@ -1104,6 +1119,13 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
    * Get children for index mode
    */
   private getIndexChildren(element?: CodexTreeItemType): CodexTreeItemType[] {
+    // In stacked mode with multiple indexes, defer to the separate providers
+    if (!this.shouldUseLegacyView()) {
+      // When in stacked mode, this provider only handles the case when
+      // there's no multi-index context (e.g., single index or no indexes)
+      // The MultiIndexManager handles showing/hiding the stacked views
+    }
+
     if (!this.indexDoc) {
       return [];
     }
