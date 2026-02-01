@@ -39,7 +39,15 @@ class WriteResult:
 class ScrivenerFileWriter:
     """Write Scrivener content to disk."""
 
-    def __init__(self, output_dir: Path, format: str = "markdown", dry_run: bool = False):
+    def __init__(
+        self,
+        output_dir: Path,
+        format: str = "markdown",
+        dry_run: bool = False,
+        index_depth: int = 1,
+        containers: Optional[List[str]] = None,
+        content_types: Optional[List[str]] = None
+    ):
         """
         Initialize file writer.
 
@@ -47,13 +55,20 @@ class ScrivenerFileWriter:
             output_dir: Directory to write files to
             format: Output format - "markdown", "yaml", or "json"
             dry_run: If True, don't actually write files
+            index_depth: How many levels get their own index.codex.yaml (0=single, 1=per-book, 2=per-act)
+            containers: Types that become inline in index (default: ["act", "part", "book", "folder"])
+            content_types: Types that become .md files (default: ["chapter", "scene", "document"])
         """
         self.output_dir = Path(output_dir)
         self.format = format
         self.dry_run = dry_run
+        self.index_depth = index_depth
+        self.containers = containers or ["act", "part", "book", "folder"]
+        self.content_types = content_types or ["chapter", "scene", "document"]
         self.files_written = 0
         self.dirs_created = 0
         self.errors: List[str] = []
+        self._index_files_created: List[Path] = []
 
     def preview_files(self, project: "ScrivenerProject") -> List[str]:
         """Preview what files would be created."""
@@ -317,6 +332,218 @@ class ScrivenerFileWriter:
 
         return children
 
+    # ========== NESTED INDEX METHODS (V2) ==========
+
+    def write_project_nested(self, project: "ScrivenerProject") -> WriteResult:
+        """Write project with nested index structure (V2)."""
+        if not self.dry_run:
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            self.dirs_created += 1
+
+        # Filter to manuscript items only (skip Research, Trash, etc.)
+        manuscript_items = [
+            item for item in project.binder_items
+            if item.item_type not in ("Trash", "TrashFolder", "ResearchFolder", "Root")
+            and not item.title.lower().startswith("template")
+        ]
+
+        # Write nested structure
+        self._write_nested_items(manuscript_items, self.output_dir, depth=0)
+
+        # Generate master index
+        self._write_master_index(project, manuscript_items)
+
+        return WriteResult(
+            files_written=self.files_written,
+            directories_created=self.dirs_created,
+            errors=self.errors
+        )
+
+    def _write_nested_items(self, items: List["BinderItem"], current_dir: Path, depth: int):
+        """Write items with nested index structure."""
+        for item in items:
+            if item.item_type in ("Trash", "TrashFolder", "Root"):
+                continue
+
+            slug = self._slugify(item.title)
+
+            if self._is_container(item):
+                # Create folder for container
+                folder_path = current_dir / slug
+                if not self.dry_run:
+                    folder_path.mkdir(parents=True, exist_ok=True)
+                    self.dirs_created += 1
+
+                # Decide whether this container gets its own index
+                if depth < self.index_depth:
+                    # Write sub-index for this container
+                    self._write_nested_index(item, folder_path, depth + 1)
+                    self._index_files_created.append(folder_path / "index.codex.yaml")
+
+                # Recurse into children
+                if item.children:
+                    self._write_nested_items(item.children, folder_path, depth + 1)
+
+            elif self._is_content(item):
+                # Write content file
+                self._write_document(item, current_dir)
+
+                # Text items can have children - write them in same directory
+                if item.children:
+                    self._write_nested_items(item.children, current_dir, depth)
+
+    def _write_nested_index(self, container_item: "BinderItem", directory: Path, depth: int):
+        """Write index.codex.yaml for a container (book, act, etc.)."""
+        if not yaml:
+            logger.warning("PyYAML not installed, skipping nested index generation")
+            return
+
+        index_data = {
+            "metadata": {
+                "formatVersion": "1.2",
+                "generator": "scrivener-import"
+            },
+            "id": container_item.uuid,
+            "type": self._map_type(container_item),
+            "name": container_item.title,
+            "patterns": {
+                "include": ["**/*.md"],
+                "exclude": ["_drafts/**"]
+            },
+            "children": self._build_children_with_includes(container_item.children, directory, depth)
+        }
+
+        # Add optional metadata
+        if container_item.synopsis:
+            index_data["summary"] = container_item.synopsis
+        if container_item.label:
+            index_data["scrivener_label"] = container_item.label
+        if container_item.status:
+            index_data["scrivener_status"] = container_item.status
+
+        index_path = directory / "index.codex.yaml"
+        if not self.dry_run:
+            index_path.write_text(
+                yaml.dump(index_data, default_flow_style=False, allow_unicode=True, sort_keys=False),
+                encoding="utf-8"
+            )
+            self.files_written += 1
+        logger.info(f"Created nested index: {index_path}")
+
+    def _build_children_with_includes(self, items: List["BinderItem"], parent_dir: Path, depth: int) -> List[dict]:
+        """Build children array with include directives for content files."""
+        children = []
+
+        for item in items:
+            if item.item_type in ("Trash", "TrashFolder", "Root"):
+                continue
+
+            slug = self._slugify(item.title)
+
+            if self._is_container(item):
+                # Check if this container gets its own index
+                if depth < self.index_depth:
+                    # Reference sub-index
+                    children.append({
+                        "include": f"./{slug}/index.codex.yaml"
+                    })
+                else:
+                    # Inline container with nested children
+                    child_data = {
+                        "id": item.uuid,
+                        "type": self._map_type(item),
+                        "name": item.title
+                    }
+                    if item.synopsis:
+                        child_data["summary"] = item.synopsis
+                    if item.label:
+                        child_data["scrivener_label"] = item.label
+
+                    # Add children with includes
+                    if item.children:
+                        child_data["children"] = self._build_children_with_includes(
+                            item.children, parent_dir / slug, depth + 1
+                        )
+                    children.append(child_data)
+
+            elif self._is_content(item):
+                # Include directive for content file
+                ext = self._get_extension()
+                # Calculate relative path from parent_dir
+                children.append({
+                    "include": f"./{slug}{ext}"
+                })
+
+                # Text items with children - add their children too
+                if item.children:
+                    for sub_child in self._build_children_with_includes(item.children, parent_dir, depth):
+                        children.append(sub_child)
+
+        return children
+
+    def _write_master_index(self, project: "ScrivenerProject", manuscript_items: List["BinderItem"]):
+        """Write the master index.codex.yaml at root."""
+        if not yaml:
+            return
+
+        # Build children - either includes to sub-indexes or inline
+        children = []
+        for item in manuscript_items:
+            if item.item_type in ("Trash", "TrashFolder", "Root"):
+                continue
+
+            slug = self._slugify(item.title)
+
+            if self._is_container(item) and self.index_depth > 0:
+                # Reference sub-index
+                children.append({
+                    "include": f"./{slug}/index.codex.yaml"
+                })
+            elif self._is_container(item):
+                # Inline container (index_depth=0)
+                child_data = {
+                    "id": item.uuid,
+                    "type": self._map_type(item),
+                    "name": item.title
+                }
+                if item.children:
+                    child_data["children"] = self._build_children_with_includes(item.children, self.output_dir / slug, 1)
+                children.append(child_data)
+            elif self._is_content(item):
+                # Content file at root level
+                ext = self._get_extension()
+                children.append({
+                    "include": f"./{slug}{ext}"
+                })
+
+        index_data = {
+            "metadata": {
+                "formatVersion": "1.2",
+                "generator": "scrivener-import",
+                "source": f"{project.title}.scriv"
+            },
+            "id": project.identifier or "project-root",
+            "type": "index",
+            "name": project.title,
+            "patterns": {
+                "include": ["**/*.md"],
+                "exclude": ["_drafts/**"]
+            },
+            "children": children
+        }
+
+        if project.author:
+            index_data["author"] = project.author
+
+        index_path = self.output_dir / "index.codex.yaml"
+        if not self.dry_run:
+            index_path.write_text(
+                yaml.dump(index_data, default_flow_style=False, allow_unicode=True, sort_keys=False),
+                encoding="utf-8"
+            )
+            self.files_written += 1
+        logger.info(f"Created master index: {index_path}")
+
     def _map_type(self, item: "BinderItem") -> str:
         """Map Scrivener item to Codex type."""
         # Check label first
@@ -330,6 +557,12 @@ class ScrivenerFileWriter:
                 return "character"
             if "location" in label_lower:
                 return "location"
+            if "act" in label_lower:
+                return "act"
+            if "part" in label_lower:
+                return "part"
+            if "book" in label_lower:
+                return "book"
 
         # Check title patterns
         title_lower = item.title.lower()
@@ -337,8 +570,28 @@ class ScrivenerFileWriter:
             return "chapter"
         if title_lower.startswith("scene"):
             return "scene"
+        if title_lower.startswith("act"):
+            return "act"
+        if title_lower.startswith("book"):
+            return "book"
+        if title_lower.startswith("part"):
+            return "part"
+
+        # Check item type for containers
+        if item.item_type in ("Folder", "DraftFolder"):
+            return "folder"
 
         return "document"
+
+    def _is_container(self, item: "BinderItem") -> bool:
+        """Check if item should be treated as a container (inline in index)."""
+        mapped_type = self._map_type(item)
+        return mapped_type in self.containers or item.item_type in ("Folder", "DraftFolder")
+
+    def _is_content(self, item: "BinderItem") -> bool:
+        """Check if item should be written as a content file (.md)."""
+        mapped_type = self._map_type(item)
+        return mapped_type in self.content_types or item.item_type == "Text"
 
     def _get_extension(self) -> str:
         """Get file extension for format."""

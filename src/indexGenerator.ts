@@ -998,22 +998,30 @@ function applyTypeStyles(children: any[], typeStyles: any[]): void {
           }
 
 /**
- * Sort children recursively by order then name
+ * Sort children recursively by order then name.
+ * V2: Only sorts if explicit `order` fields are present.
+ * This preserves array order for imports (Scrivener, etc.) that rely on position.
  */
 function sortChildrenRecursive(children: any[]): void {
-  children.sort((a, b) => {
-    if (a.order !== undefined && b.order !== undefined) {
-      return a.order - b.order;
-        }
-    return a.name.localeCompare(b.name);
-  });
+  // Only sort if at least one child has an explicit `order` field
+  const hasExplicitOrder = children.some(c => c.order !== undefined);
+
+  if (hasExplicitOrder) {
+    children.sort((a, b) => {
+      const orderA = a.order ?? 999;
+      const orderB = b.order ?? 999;
+      if (orderA !== orderB) {return orderA - orderB;}
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }
+  // No order fields = preserve array order as-is (important for Scrivener imports)
 
   for (const child of children) {
     if (child.children) {
       sortChildrenRecursive(child.children);
     }
   }
-  }
+}
 
   /**
  * Get default patterns

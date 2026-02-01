@@ -1,11 +1,20 @@
 /**
  * Index Parser
- * 
+ *
  * Parses and validates index.codex.yaml files
+ * V2: Supports nested index resolution (include: ./sub/index.codex.yaml)
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import YAML from 'yaml';
+
+/**
+ * Include directive (V2 nested indexes)
+ */
+export interface IncludeDirective {
+  include: string; // Relative path to included file (e.g., "./book-1/index.codex.yaml")
+}
 
 /**
  * Index child node structure (matches backend format)
@@ -21,6 +30,7 @@ export interface IndexChildNode {
   color?: string; // Custom color (overrides typeStyles)
   attributes?: Array<{ key: string; value: string }>;
   children?: IndexChildNode[]; // Nested children (folders only)
+  include?: string; // V2: Include directive for nested index or content file
 
   // Auto-computed fields (added by generator/parser)
   _filename?: string; // Actual filename on disk (REQUIRED for files)
@@ -29,6 +39,7 @@ export interface IndexChildNode {
   _type_emoji?: string; // Emoji from typeStyles (auto-applied)
   _type_color?: string; // Color from typeStyles (auto-applied)
   _default_status?: string; // Default status if not explicitly set
+  _included_from?: string; // V2: Path this node was included from (for tracking)
 
   // For tree navigation (runtime only)
   parent?: IndexChildNode; // Parent node reference (not serialized)
@@ -220,4 +231,134 @@ export function countFilesInIndex(children: IndexChildNode[]): number {
     }
   }
   return count;
+}
+
+// ========== V2: NESTED INDEX RESOLUTION ==========
+
+/**
+ * Check if a child entry is an include directive
+ */
+export function isIncludeDirective(child: any): child is IncludeDirective {
+  return child && typeof child === 'object' && typeof child.include === 'string';
+}
+
+/**
+ * Check if an include points to a sub-index file
+ */
+export function isSubIndexInclude(includePath: string): boolean {
+  return includePath.endsWith('index.codex.yaml') || includePath.endsWith('index.codex.json');
+}
+
+/**
+ * Resolve sub-index includes recursively.
+ * Loads nested index.codex.yaml files and merges them into the tree.
+ *
+ * @param children - Array of child nodes (may contain include directives)
+ * @param parentDir - Absolute path to the directory containing the parent index
+ * @returns Resolved children array with includes expanded
+ */
+export function resolveSubIndexIncludes(children: any[], parentDir: string): IndexChildNode[] {
+  const resolved: IndexChildNode[] = [];
+
+  for (const child of children) {
+    if (isIncludeDirective(child)) {
+      const includePath = child.include;
+
+      if (isSubIndexInclude(includePath)) {
+        // Load and merge sub-index
+        const subIndexPath = path.resolve(parentDir, includePath);
+
+        if (fs.existsSync(subIndexPath)) {
+          try {
+            const subContent = fs.readFileSync(subIndexPath, 'utf-8');
+            const subData = YAML.parse(subContent);
+
+            if (subData && typeof subData === 'object') {
+              // Merge sub-index as a node
+              const subNode: IndexChildNode = {
+                id: subData.id || path.basename(path.dirname(subIndexPath)),
+                type: subData.type || 'folder',
+                name: subData.name || path.basename(path.dirname(subIndexPath)),
+                _included_from: includePath,
+              };
+
+              // Copy optional fields
+              if (subData.summary) {subNode.title = subData.summary;}
+              if (subData.emoji) {subNode.emoji = subData.emoji;}
+              if (subData.scrivener_label) {
+                subNode.attributes = [{ key: 'scrivener_label', value: subData.scrivener_label }];
+              }
+
+              // Recursively resolve sub-index children
+              if (subData.children && Array.isArray(subData.children)) {
+                subNode.children = resolveSubIndexIncludes(
+                  subData.children,
+                  path.dirname(subIndexPath)
+                );
+              }
+
+              resolved.push(subNode);
+            }
+          } catch (error) {
+            console.error(`[IndexParser] Failed to load sub-index ${subIndexPath}:`, error);
+          }
+        } else {
+          console.warn(`[IndexParser] Sub-index not found: ${subIndexPath}`);
+        }
+      } else {
+        // Regular file include (e.g., ./chapter-01.md)
+        // Convert to a basic node with include path as filename
+        const fileName = path.basename(includePath);
+        const ext = path.extname(fileName);
+        const baseName = path.basename(fileName, ext);
+
+        resolved.push({
+          id: `file-${baseName}`,
+          type: 'document', // Will be refined by content parsing
+          name: baseName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+          _filename: fileName,
+          _included_from: includePath,
+          _format: ext === '.md' ? 'markdown' : ext === '.yaml' ? 'yaml' : 'json',
+        });
+      }
+    } else if (child && typeof child === 'object') {
+      // Regular node - copy and recurse if has children
+      const node: IndexChildNode = { ...child };
+
+      if (child.children && Array.isArray(child.children)) {
+        // Determine directory for nested children
+        const childDir = child._filename
+          ? path.join(parentDir, path.dirname(child._filename))
+          : parentDir;
+        node.children = resolveSubIndexIncludes(child.children, childDir);
+      }
+
+      resolved.push(node);
+    }
+  }
+
+  return resolved;
+}
+
+/**
+ * Parse index file with sub-index resolution.
+ * Use this for V2 nested index structures.
+ *
+ * @param content - YAML content of the index file
+ * @param indexDir - Absolute path to the directory containing the index file
+ * @returns Parsed and resolved IndexDocument
+ */
+export function parseIndexFileWithIncludes(
+  content: string,
+  indexDir: string
+): IndexDocument | null {
+  const doc = parseIndexFile(content);
+  if (!doc) {return null;}
+
+  // Resolve any include directives in children
+  if (doc.children && Array.isArray(doc.children)) {
+    doc.children = resolveSubIndexIncludes(doc.children, indexDir);
+  }
+
+  return doc;
 }

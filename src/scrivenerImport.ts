@@ -22,6 +22,7 @@ export interface ScrivenerImportOptions {
   outputDir: string;
   format: 'markdown' | 'yaml' | 'json';
   generateIndex: boolean;
+  indexDepth: number; // V2: 0=single, 1=per-book, 2=per-act
 }
 
 /**
@@ -133,6 +134,18 @@ async function getImportOptions(scrivPath: string): Promise<ScrivenerImportOptio
 
   if (!formatChoice) { return undefined; }
 
+  // V2: Index structure selection
+  const depthChoice = await vscode.window.showQuickPick([
+    { label: '$(file-code) Single index', description: 'One index.codex.yaml at root', detail: 'All hierarchy in one file', value: 0 },
+    { label: '$(folder-library) Per book (Recommended)', description: 'Index per major section', detail: 'Best for multi-book projects', value: 1 },
+    { label: '$(folder-opened) Per act', description: 'Index for each act/part', detail: 'Fine-grained control', value: 2 }
+  ], {
+    title: 'Index Structure',
+    placeHolder: 'How should the hierarchy be organized?'
+  });
+
+  if (depthChoice === undefined) { return undefined; }
+
   // Output location
   const workspaceFolders = vscode.workspace.workspaceFolders;
   let outputDir: string;
@@ -184,7 +197,8 @@ async function getImportOptions(scrivPath: string): Promise<ScrivenerImportOptio
     scrivPath,
     outputDir,
     format: formatChoice.value,
-    generateIndex: indexChoice.value
+    generateIndex: indexChoice.value,
+    indexDepth: depthChoice.value
   };
 }
 
@@ -205,12 +219,18 @@ async function runImport(
       options.scrivPath,
       '--format', options.format,
       '--output', options.outputDir,
+      '--index-depth', String(options.indexDepth),
       '--json',
       '--verbose'
     ];
 
     if (!options.generateIndex) {
       args.push('--no-index');
+    }
+
+    // V2: Use nested structure by default (unless index depth is 0 with flat flag)
+    if (options.indexDepth === 0) {
+      args.push('--flat');
     }
 
     const python = spawn('python3', args);

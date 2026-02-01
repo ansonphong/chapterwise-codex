@@ -183,6 +183,37 @@ Examples:
         help="Minimal output (errors only)"
     )
 
+    # V2: Nested index options
+    parser.add_argument(
+        "--index-depth",
+        type=int,
+        default=1,
+        help="How many levels get their own index.codex.yaml (0=single, 1=per-book, 2=per-act)"
+    )
+    parser.add_argument(
+        "--containers",
+        type=str,
+        default="act,part,book,folder",
+        help="Types that become inline in index (comma-separated, default: act,part,book,folder)"
+    )
+    parser.add_argument(
+        "--content",
+        type=str,
+        default="chapter,scene,document",
+        help="Types that become .md files (comma-separated, default: chapter,scene,document)"
+    )
+    parser.add_argument(
+        "--nested",
+        action="store_true",
+        default=True,
+        help="Use V2 nested index structure (default: True)"
+    )
+    parser.add_argument(
+        "--flat",
+        action="store_true",
+        help="Use flat structure (legacy V1 mode)"
+    )
+
     args = parser.parse_args()
 
     # Show help if no path provided
@@ -209,6 +240,13 @@ Examples:
 
     # Handle --no-index flag
     generate_index = args.generate_index and not args.no_index
+
+    # Parse container and content types
+    container_types = [t.strip() for t in args.containers.split(",")]
+    content_types = [t.strip() for t in args.content.split(",")]
+
+    # Use nested mode unless --flat is specified
+    use_nested = args.nested and not args.flat
 
     try:
         # Phase 1: Parse Scrivener project
@@ -248,9 +286,19 @@ Examples:
                 print("\n=== DRY RUN - No files will be written ===\n")
                 print(f"Output directory: {output_dir}")
                 print(f"Format: {args.format}")
+                print(f"Mode: {'nested (V2)' if use_nested else 'flat (V1)'}")
+                if use_nested:
+                    print(f"Index depth: {args.index_depth}")
                 print(f"\nFiles that would be created:")
 
-            writer = ScrivenerFileWriter(output_dir, args.format, dry_run=True)
+            writer = ScrivenerFileWriter(
+                output_dir,
+                args.format,
+                dry_run=True,
+                index_depth=args.index_depth,
+                containers=container_types,
+                content_types=content_types
+            )
             files = writer.preview_files(project)
 
             if args.json:
@@ -258,6 +306,8 @@ Examples:
                     "type": "preview",
                     "outputDir": str(output_dir),
                     "format": args.format,
+                    "mode": "nested" if use_nested else "flat",
+                    "indexDepth": args.index_depth if use_nested else 0,
                     "files": files,
                     "fileCount": len(files)
                 }))
@@ -269,16 +319,30 @@ Examples:
                 if generate_index:
                     print(f"\nIndex files:")
                     print(f"  {output_dir}/index.codex.yaml")
-                    print(f"  {output_dir}/.index.codex.yaml")
+                    if not use_nested:
+                        print(f"  {output_dir}/.index.codex.yaml")
         else:
             # Actually write files
-            writer = ScrivenerFileWriter(output_dir, args.format)
-            result = writer.write_project(project)
+            writer = ScrivenerFileWriter(
+                output_dir,
+                args.format,
+                index_depth=args.index_depth,
+                containers=container_types,
+                content_types=content_types
+            )
 
-            # Phase 5: Generate index
-            if generate_index:
-                report_progress("Generating index files...", 5, 5, args.json)
-                writer.generate_index(project)
+            if use_nested:
+                # V2: Nested index structure
+                result = writer.write_project_nested(project)
+                # Index is generated as part of write_project_nested
+            else:
+                # V1: Flat structure (legacy)
+                result = writer.write_project(project)
+
+                # Phase 5: Generate index (legacy mode)
+                if generate_index:
+                    report_progress("Generating index files...", 5, 5, args.json)
+                    writer.generate_index(project)
 
             # Final report
             if args.json:
