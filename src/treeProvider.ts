@@ -953,7 +953,7 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     const text = this.activeDocument.getText();
     log(`[TreeProvider] Index size: ${(text.length / 1024).toFixed(2)} KB`);
 
-    this.indexDoc = parseIndexFile(text);
+    this.indexDoc = parseIndexFileJSON(text);
     log(`[TreeProvider] Index parsed successfully`);
 
     this.codexDoc = null;  // Clear regular codex doc
