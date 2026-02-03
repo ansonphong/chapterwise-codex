@@ -33,6 +33,8 @@ export interface CodexNode {
   relations?: CodexRelation[];
   tags?: string[];
   image?: string;
+  images?: CodexImage[];
+  hasImages: boolean;
   hasAttributes: boolean;       // Whether node has attributes array
   hasContentSections: boolean;  // Whether node has content array
   isInclude?: boolean;          // Whether this is an include directive (not a real node)
@@ -69,6 +71,16 @@ export interface CodexRelation {
   type: string;
   target: string;
   description?: string;
+}
+
+/**
+ * Represents an image attached to a node
+ */
+export interface CodexImage {
+  url: string;
+  caption?: string;
+  alt?: string;
+  featured?: boolean;
 }
 
 /**
@@ -280,6 +292,7 @@ function parseNode(
   
   const hasAttributes = Array.isArray(nodeObj.attributes) && nodeObj.attributes.length > 0;
   const hasContentSections = Array.isArray(nodeObj.content) && nodeObj.content.length > 0;
+  const hasImages = Array.isArray(nodeObj.images) && nodeObj.images.length > 0;
   
   // availableFields should only contain actual prose field names
   const availableFields = [...baseAvailableFields];
@@ -296,6 +309,7 @@ function parseNode(
     children: [],
     hasAttributes,
     hasContentSections,
+    hasImages,
     isInclude,
     includePath,
   };
@@ -604,6 +618,7 @@ export function parseMarkdownAsCodex(text: string, fileName?: string): CodexDocu
       children: [],
       hasAttributes: false,
       hasContentSections: false,
+      hasImages: false,
       tags: tags.length > 0 ? tags : undefined,
       image: frontmatter?.image as string | undefined,
     };
