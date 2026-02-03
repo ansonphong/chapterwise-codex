@@ -27,7 +27,7 @@ interface MarkdownParts {
 }
 
 /**
- * Auto-fixer for Codex V1.0/V1.1 files
+ * Auto-fixer for Codex V1.0/V1.1/V1.2 files
  */
 export class CodexAutoFixer {
   private usedIds: Set<string> = new Set();
@@ -285,15 +285,16 @@ export class CodexAutoFixer {
 
     const metadata = content.metadata as Record<string, unknown>;
 
-    // Ensure formatVersion is "1.1"
+    // Ensure formatVersion is valid (1.0, 1.1, 1.2, or lite)
     if (!metadata.formatVersion) {
-      metadata.formatVersion = '1.1';
-      this.fixesApplied.push("Added metadata.formatVersion = '1.1'");
-    } else if (metadata.formatVersion !== '1.0' && metadata.formatVersion !== '1.1') {
+      metadata.formatVersion = '1.2';
+      this.fixesApplied.push("Added metadata.formatVersion = '1.2'");
+    } else if (!['1.0', '1.1', '1.2', 'lite'].includes(metadata.formatVersion as string)) {
       const oldVersion = metadata.formatVersion;
-      metadata.formatVersion = '1.1';
-      this.fixesApplied.push(`Updated metadata.formatVersion from '${oldVersion}' to '1.1'`);
+      metadata.formatVersion = '1.2';  // Default to latest, not 1.1
+      this.fixesApplied.push(`Updated metadata.formatVersion from '${oldVersion}' to '1.2'`);
     }
+    // Note: V1.2 is now accepted without modification
 
     // Ensure documentVersion exists
     if (!metadata.documentVersion) {
