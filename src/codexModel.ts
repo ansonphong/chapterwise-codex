@@ -292,7 +292,21 @@ function parseNode(
   
   const hasAttributes = Array.isArray(nodeObj.attributes) && nodeObj.attributes.length > 0;
   const hasContentSections = Array.isArray(nodeObj.content) && nodeObj.content.length > 0;
-  const hasImages = Array.isArray(nodeObj.images) && nodeObj.images.length > 0;
+
+  // Extract images
+  const rawImages = nodeObj.images;
+  let images: CodexImage[] | undefined;
+  let hasImages = false;
+
+  if (Array.isArray(rawImages) && rawImages.length > 0) {
+    hasImages = true;
+    images = rawImages.map((img: unknown) => ({
+      url: typeof img === 'string' ? img : ((img as Record<string, unknown>).url as string || ''),
+      caption: (img as Record<string, unknown>).caption as string | undefined,
+      alt: (img as Record<string, unknown>).alt as string | undefined,
+      featured: (img as Record<string, unknown>).featured as boolean | undefined,
+    })).filter(img => img.url);
+  }
   
   // availableFields should only contain actual prose field names
   const availableFields = [...baseAvailableFields];
@@ -310,6 +324,7 @@ function parseNode(
     hasAttributes,
     hasContentSections,
     hasImages,
+    images,
     isInclude,
     includePath,
   };
