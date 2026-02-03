@@ -165,6 +165,30 @@ export class WriterViewManager {
   }
 
   /**
+   * Resolve image URL for webview display
+   */
+  private resolveImageUrlForWebview(webview: vscode.Webview, url: string, workspaceRoot: string): string {
+    // If it's an absolute URL, use as-is
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+
+    // For relative paths, convert to webview URI
+    let fullPath: string;
+
+    if (url.startsWith('/')) {
+      // Relative to workspace root
+      fullPath = path.join(workspaceRoot, url.substring(1));
+    } else {
+      // Relative to current file
+      fullPath = path.join(workspaceRoot, url);
+    }
+
+    const fileUri = vscode.Uri.file(fullPath);
+    return webview.asWebviewUri(fileUri).toString();
+  }
+
+  /**
    * Get the theme setting from configuration
    */
   private getThemeSetting(): 'light' | 'dark' | 'system' | 'theme' {
@@ -282,6 +306,9 @@ export class WriterViewManager {
       }
     }
 
+    // Get workspace root for relative path display
+    const workspaceRoot = this.getWorkspaceRoot();
+
     // Create new panel in the ACTIVE editor group (same frame, new tab)
     let panel = vscode.window.createWebviewPanel(
       'chapterwiseCodexWriter',
@@ -292,6 +319,7 @@ export class WriterViewManager {
         retainContextWhenHidden: true,
         localResourceRoots: [
           vscode.Uri.joinPath(this.context.extensionUri, 'media'),
+          ...(workspaceRoot ? [vscode.Uri.file(workspaceRoot)] : []),
         ],
       }
     );
@@ -301,13 +329,22 @@ export class WriterViewManager {
     // Get author display
     const authorDisplay = this.getAuthorDisplay(codexDoc);
 
-    // Get workspace root for relative path display
-    const workspaceRoot = this.getWorkspaceRoot();
+    // Resolve image URLs for webview
+    const resolvedImages = node.images?.map(img => ({
+      ...img,
+      url: this.resolveImageUrlForWebview(panel.webview, img.url, workspaceRoot)
+    }));
+
+    // Create a modified node with resolved image URLs
+    const nodeWithResolvedImages = {
+      ...node,
+      images: resolvedImages
+    };
 
     // Set initial HTML with remembered field using the new builder
     panel.webview.html = buildWebviewHtml({
       webview: panel.webview,
-      node,
+      node: nodeWithResolvedImages,
       prose,
       initialField,
       themeSetting: this.getThemeSetting(),
@@ -624,6 +661,9 @@ export class WriterViewManager {
       }
     }
 
+    // Get workspace root for relative path display
+    const workspaceRoot = this.getWorkspaceRoot();
+
     // Create new panel
     let panel = vscode.window.createWebviewPanel(
       'chapterwiseCodexWriter',
@@ -634,6 +674,7 @@ export class WriterViewManager {
         retainContextWhenHidden: true,
         localResourceRoots: [
           vscode.Uri.joinPath(this.context.extensionUri, 'media'),
+          ...(workspaceRoot ? [vscode.Uri.file(workspaceRoot)] : []),
         ],
       }
     );
@@ -643,13 +684,22 @@ export class WriterViewManager {
     // Get author display
     const authorDisplay = this.getAuthorDisplay(codexDoc);
 
-    // Get workspace root for relative path display
-    const workspaceRoot = this.getWorkspaceRoot();
+    // Resolve image URLs for webview
+    const resolvedImages = node.images?.map(img => ({
+      ...img,
+      url: this.resolveImageUrlForWebview(panel.webview, img.url, workspaceRoot)
+    }));
+
+    // Create a modified node with resolved image URLs
+    const nodeWithResolvedImages = {
+      ...node,
+      images: resolvedImages
+    };
 
     // Set initial HTML with the target field selected using the new builder
     panel.webview.html = buildWebviewHtml({
       webview: panel.webview,
-      node,
+      node: nodeWithResolvedImages,
       prose,
       initialField: targetField,
       themeSetting: this.getThemeSetting(),

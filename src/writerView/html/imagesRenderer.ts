@@ -83,15 +83,9 @@ export function renderImageModal(): string {
 
 /**
  * Resolve image URL relative to workspace root
+ * Note: URLs are pre-resolved by the manager using webview.asWebviewUri()
  */
 function resolveImageUrl(url: string, workspaceRoot: string): string {
-  // If it's an absolute URL (http/https), use as-is
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url;
-  }
-
-  // For relative paths starting with /, resolve from workspace root
-  // The webview needs a vscode-resource URL, but we'll handle that in the manager
-  // For now, return a placeholder that will be replaced
-  return `vscode-resource-placeholder:${url}`;
+  // URLs are pre-resolved by the manager
+  return url;
 }
