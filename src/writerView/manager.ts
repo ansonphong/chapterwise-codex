@@ -455,6 +455,53 @@ export class WriterViewManager {
             await this.handleSaveContentSections(documentUri, node, currentContentSections);
             panel.webview.postMessage({ type: 'saveComplete' });
             break;
+
+          case 'updateImageCaption': {
+            const { url, caption } = message;
+
+            try {
+              // Read fresh file content
+              const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
+              const doc = YAML.parseDocument(text);
+
+              // Find the node in the document (handle nested nodes)
+              const targetNode = this.findNodeInYamlDoc(doc, node);
+              if (!targetNode) {
+                vscode.window.showErrorMessage('Could not find node in document');
+                return;
+              }
+
+              // Find images array
+              const images = targetNode.get('images');
+              if (!images || !YAML.isSeq(images)) {
+                return;
+              }
+
+              // Find image by URL
+              for (const item of images.items) {
+                if (YAML.isMap(item)) {
+                  const itemUrl = item.get('url');
+                  if (itemUrl === url) {
+                    if (caption) {
+                      item.set('caption', caption);
+                    } else {
+                      item.delete('caption');
+                    }
+                    break;
+                  }
+                }
+              }
+
+              // Write back
+              fs.writeFileSync(documentUri.fsPath, doc.toString());
+
+              // Confirm save
+              panel.webview.postMessage({ type: 'imageCaptionSaved', url });
+            } catch (error) {
+              vscode.window.showErrorMessage(`Failed to save caption: ${error}`);
+            }
+            break;
+          }
         }
       },
       undefined,
@@ -737,6 +784,53 @@ export class WriterViewManager {
             await this.handleSaveContentSections(documentUri, node, currentContentSections);
             panel.webview.postMessage({ type: 'saveComplete' });
             break;
+
+          case 'updateImageCaption': {
+            const { url, caption } = message;
+
+            try {
+              // Read fresh file content
+              const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
+              const doc = YAML.parseDocument(text);
+
+              // Find the node in the document (handle nested nodes)
+              const targetNode = this.findNodeInYamlDoc(doc, node);
+              if (!targetNode) {
+                vscode.window.showErrorMessage('Could not find node in document');
+                return;
+              }
+
+              // Find images array
+              const images = targetNode.get('images');
+              if (!images || !YAML.isSeq(images)) {
+                return;
+              }
+
+              // Find image by URL
+              for (const item of images.items) {
+                if (YAML.isMap(item)) {
+                  const itemUrl = item.get('url');
+                  if (itemUrl === url) {
+                    if (caption) {
+                      item.set('caption', caption);
+                    } else {
+                      item.delete('caption');
+                    }
+                    break;
+                  }
+                }
+              }
+
+              // Write back
+              fs.writeFileSync(documentUri.fsPath, doc.toString());
+
+              // Confirm save
+              panel.webview.postMessage({ type: 'imageCaptionSaved', url });
+            } catch (error) {
+              vscode.window.showErrorMessage(`Failed to save caption: ${error}`);
+            }
+            break;
+          }
         }
       },
       undefined,
@@ -1190,6 +1284,35 @@ export class WriterViewManager {
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to add field: ${error}`);
     }
+  }
+
+  /**
+   * Find a node in a YAML document by ID
+   */
+  private findNodeInYamlDoc(doc: YAML.Document, node: CodexNode): YAML.YAMLMap | null {
+    // If node is root, return document contents
+    if (!node.parent || node.path.length === 0) {
+      const contents = doc.contents;
+      if (YAML.isMap(contents)) {
+        return contents;
+      }
+      return null;
+    }
+
+    // Otherwise, traverse by path
+    let current: any = doc.contents;
+
+    for (const segment of node.path) {
+      if (YAML.isMap(current)) {
+        current = current.get(segment);
+      } else if (YAML.isSeq(current) && typeof segment === 'number') {
+        current = current.get(segment);
+      } else {
+        return null;
+      }
+    }
+
+    return YAML.isMap(current) ? current : null;
   }
 
   /**
