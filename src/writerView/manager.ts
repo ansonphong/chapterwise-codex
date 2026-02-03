@@ -11,6 +11,7 @@ import {
   CodexDocument,
   CodexAttribute,
   CodexContentSection,
+  CodexImage,
   parseCodex,
   parseMarkdownAsCodex,
   setNodeProse,
@@ -566,8 +567,32 @@ export class WriterViewManager {
           }
 
           case 'importImage': {
-            // TODO: Implement in Task 7
-            vscode.window.showInformationMessage('Import image - coming soon');
+            const result = await vscode.window.showOpenDialog({
+              canSelectMany: true,
+              filters: {
+                'Images': ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']
+              },
+              title: 'Select Images to Add'
+            });
+
+            if (result && result.length > 0) {
+              try {
+                const addedImages = await this.importImages(result, documentUri, node, workspaceRoot);
+
+                // Resolve URLs for the added images
+                const resolvedImages = addedImages.map(img => ({
+                  ...img,
+                  url: this.resolveImageUrlForWebview(panel.webview, img.url, workspaceRoot)
+                }));
+
+                panel.webview.postMessage({
+                  type: 'imagesAdded',
+                  images: resolvedImages
+                });
+              } catch (error) {
+                vscode.window.showErrorMessage(`Failed to import images: ${error}`);
+              }
+            }
             break;
           }
         }
@@ -1435,6 +1460,108 @@ export class WriterViewManager {
 
     scanDir(workspaceRoot);
     return images;
+  }
+
+  /**
+   * Get the target images directory based on user settings
+   */
+  private getImagesDirectory(documentUri: vscode.Uri, node: CodexNode, workspaceRoot: string): string {
+    const config = vscode.workspace.getConfiguration('chapterwiseCodex');
+    const organization = config.get<string>('images.organization', 'sharedWithNodeFolders');
+
+    const codexDir = path.dirname(documentUri.fsPath);
+    const nodeName = node.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || node.id;
+
+    if (organization === 'perNode') {
+      // /characters/aya/images/portrait.png
+      return path.join(codexDir, 'images');
+    } else {
+      // /characters/images/aya/portrait.png (sharedWithNodeFolders - default)
+      const parentDir = path.dirname(codexDir);
+      return path.join(parentDir, 'images', nodeName);
+    }
+  }
+
+  /**
+   * Import images from file picker and copy to node's images folder
+   */
+  private async importImages(
+    files: vscode.Uri[],
+    documentUri: vscode.Uri,
+    node: CodexNode,
+    workspaceRoot: string
+  ): Promise<CodexImage[]> {
+    const addedImages: CodexImage[] = [];
+
+    // Get target folder based on setting
+    const imagesDir = this.getImagesDirectory(documentUri, node, workspaceRoot);
+
+    // Create images folder if needed
+    if (!fs.existsSync(imagesDir)) {
+      fs.mkdirSync(imagesDir, { recursive: true });
+    }
+
+    for (const file of files) {
+      let targetPath: string;
+      let filename = path.basename(file.fsPath);
+
+      // Check if file is already in workspace
+      if (file.fsPath.startsWith(workspaceRoot)) {
+        // Already in workspace - ask if user wants to copy or reference
+        const action = await vscode.window.showQuickPick(
+          ['Reference original location', 'Copy to node folder'],
+          { placeHolder: `${filename} is already in workspace` }
+        );
+
+        if (action === 'Reference original location') {
+          // Use original path
+          const relativePath = '/' + path.relative(workspaceRoot, file.fsPath).replace(/\\/g, '/');
+          addedImages.push({ url: relativePath, caption: '', featured: addedImages.length === 0 });
+          continue;
+        }
+      }
+
+      // Handle duplicate filenames
+      targetPath = path.join(imagesDir, filename);
+      let counter = 1;
+      while (fs.existsSync(targetPath)) {
+        const ext = path.extname(filename);
+        const base = path.basename(filename, ext);
+        targetPath = path.join(imagesDir, `${base}-${counter}${ext}`);
+        counter++;
+      }
+
+      // Copy file to images folder
+      fs.copyFileSync(file.fsPath, targetPath);
+
+      // Calculate relative path from workspace root
+      const relativePath = '/' + path.relative(workspaceRoot, targetPath).replace(/\\/g, '/');
+
+      addedImages.push({
+        url: relativePath,
+        caption: '',
+        featured: addedImages.length === 0 // First image is featured
+      });
+    }
+
+    // Add images to the node's YAML
+    if (addedImages.length > 0) {
+      await this.addImagesToNode(documentUri, node, addedImages);
+    }
+
+    return addedImages;
+  }
+
+  /**
+   * Add images to node's YAML - TODO: implement in Task 8
+   */
+  private async addImagesToNode(
+    documentUri: vscode.Uri,
+    node: CodexNode,
+    newImages: CodexImage[]
+  ): Promise<void> {
+    // Stub - will be implemented in Task 8
+    console.log('addImagesToNode called with', newImages.length, 'images');
   }
 
   /**
