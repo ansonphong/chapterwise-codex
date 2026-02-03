@@ -9,6 +9,7 @@ import { getWriterViewStyles } from '../styles';
 import { getWriterViewScript } from '../script';
 import { renderAttributesTable } from './attributesRenderer';
 import { renderContentSections } from './contentRenderer';
+import { renderImagesGallery, renderImagesFullGallery, renderImageModal } from './imagesRenderer';
 import { buildToolbarHtml, getToolbarContextFromField } from '../toolbar';
 
 export interface WebviewHtmlOptions {
@@ -24,6 +25,8 @@ export interface WebviewHtmlOptions {
   workspaceRoot: string;
   /** All prose field values for overview mode */
   proseFields?: Record<string, string>;
+  /** Resolved image URLs for webview */
+  imageUrls?: Record<string, string>;
 }
 
 export interface TypeDefinition {
@@ -146,6 +149,17 @@ ${getWriterViewStyles()}
     </div>
   </div>
 
+  <!-- Images Gallery -->
+  <div class="structured-editor" id="imagesEditor" ${!node.hasImages ? 'style="display: none;"' : ''}>
+    <div class="structured-header">
+      <span class="structured-title overview-section-header-inline" data-field="__images__">Images</span>
+      <span class="images-count">${node.images?.length || 0} images</span>
+    </div>
+    <div id="imagesContainer">
+      ${node.hasImages ? renderImagesGallery(node.images || [], workspaceRoot) : ''}
+    </div>
+  </div>
+
   <!-- Main Prose Editor (for single field mode) -->
   <div class="editor-container" id="proseEditor">
     <div class="editor-wrapper">
@@ -209,6 +223,8 @@ ${getWriterViewStyles()}
     </span>
   </div>
 
+  ${renderImageModal()}
+
   <script nonce="${nonce}">
 ${getWriterViewScript(node, initialField)}
   </script>
@@ -254,7 +270,7 @@ function buildFieldSelectorOptions(node: CodexNode, initialField: string): strin
   }
 
   // Add separator and special fields if present (check actual node properties, not availableFields)
-  const hasSpecialFields = node.hasAttributes || node.hasContentSections;
+  const hasSpecialFields = node.hasAttributes || node.hasContentSections || node.hasImages;
   if (hasSpecialFields) {
     options.push('<option disabled>───────────</option>');
 
@@ -266,6 +282,11 @@ function buildFieldSelectorOptions(node: CodexNode, initialField: string): strin
     // Add content sections option if node has them
     if (node.hasContentSections && node.contentSections && node.contentSections.length > 0) {
       options.push(`<option value="__content__" ${initialField === '__content__' ? 'selected' : ''}>📝 content (${node.contentSections.length})</option>`);
+    }
+
+    // Add images option if node has images
+    if (node.hasImages && node.images && node.images.length > 0) {
+      options.push(`<option value="__images__" ${initialField === '__images__' ? 'selected' : ''}>🖼 images (${node.images.length})</option>`);
     }
   }
 
