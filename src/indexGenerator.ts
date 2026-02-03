@@ -847,6 +847,22 @@ async function extractNodeChildren(
       }
     }
 
+    // Extract images field if present
+    if (child.images && Array.isArray(child.images) && child.images.length > 0) {
+      fieldChildren.push({
+        id: `${entityId}-images`,
+        type: 'field',
+        name: 'images',
+        _node_kind: 'field',
+        _field_name: 'images',
+        _field_type: 'array',
+        _images_count: child.images.length,
+        _parent_file: effectiveParentFile,
+        _parent_entity: entityId,
+        _depth: depth + 1,
+      });
+    }
+
     // Extract nested node children (recursively)
     // Pass effectiveParentFile so nested children inherit the correct source file
     const entityChildren = child.children
