@@ -1366,6 +1366,47 @@ export class WriterViewManager {
   }
 
   /**
+   * Scan workspace for image files
+   */
+  private async scanWorkspaceImages(workspaceRoot: string): Promise<{ relativePath: string; fullPath: string }[]> {
+    const images: { relativePath: string; fullPath: string }[] = [];
+    const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+    const skipDirs = ['node_modules', '.git', '.vscode', 'out', 'dist', 'build'];
+
+    const scanDir = (dir: string, depth: number = 0) => {
+      if (depth > 5) return; // Limit recursion depth
+
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+
+          if (entry.isDirectory()) {
+            // Skip hidden and build directories
+            if (!entry.name.startsWith('.') && !skipDirs.includes(entry.name)) {
+              scanDir(fullPath, depth + 1);
+            }
+          } else if (entry.isFile()) {
+            const ext = path.extname(entry.name).toLowerCase();
+            if (imageExtensions.includes(ext)) {
+              images.push({
+                relativePath: '/' + path.relative(workspaceRoot, fullPath).replace(/\\/g, '/'),
+                fullPath
+              });
+            }
+          }
+        }
+      } catch (error) {
+        // Skip inaccessible directories
+      }
+    };
+
+    scanDir(workspaceRoot);
+    return images;
+  }
+
+  /**
    * Dispose all panels
    */
   dispose(): void {
