@@ -68,8 +68,11 @@ export interface CodexContentSection {
  * Represents a relation between nodes
  */
 export interface CodexRelation {
-  type: string;
-  target: string;
+  targetId: string;          // Changed from 'target' to match schema
+  type?: string;             // Relation type (ally, enemy, parent, etc.)
+  kind?: string;             // Alternative to type
+  strength?: number;         // 0-1 confidence
+  reciprocal?: boolean;      // Bidirectional flag
   description?: string;
 }
 
@@ -363,8 +366,11 @@ function parseNode(
     node.relations = nodeObj.relations.map((rel: unknown) => {
       const r = rel as Record<string, unknown>;
       return {
-        type: (r.type as string) ?? '',
-        target: (r.target as string) ?? '',
+        targetId: (r.targetId as string) ?? '',
+        type: r.type as string | undefined,
+        kind: r.kind as string | undefined,
+        strength: r.strength as number | undefined,
+        reciprocal: r.reciprocal as boolean | undefined,
         description: r.description as string | undefined,
       };
     });
