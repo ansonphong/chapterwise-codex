@@ -561,8 +561,37 @@ export class WriterViewManager {
           }
 
           case 'addExistingImage': {
-            // TODO: Implement in Task 8
-            vscode.window.showInformationMessage('Add existing image - coming soon');
+            const { imagePath } = message;
+
+            try {
+              await this.addImagesToNode(documentUri, node, [{
+                url: imagePath,
+                caption: '',
+                featured: !node.images || node.images.length === 0
+              }]);
+
+              // Re-read node to get updated images
+              const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
+              const parsedDoc = isMarkdownFile(documentUri.fsPath)
+                ? parseMarkdownAsCodex(text, documentUri.fsPath)
+                : parseCodex(text);
+
+              if (parsedDoc) {
+                const updatedNode = parsedDoc.allNodes.find(n => n.id === node.id);
+                if (updatedNode && updatedNode.images) {
+                  const newImage = updatedNode.images[updatedNode.images.length - 1];
+                  panel.webview.postMessage({
+                    type: 'imageAdded',
+                    image: {
+                      ...newImage,
+                      url: this.resolveImageUrlForWebview(panel.webview, newImage.url, workspaceRoot)
+                    }
+                  });
+                }
+              }
+            } catch (error) {
+              vscode.window.showErrorMessage(`Failed to add image: ${error}`);
+            }
             break;
           }
 
@@ -1553,15 +1582,42 @@ export class WriterViewManager {
   }
 
   /**
-   * Add images to node's YAML - TODO: implement in Task 8
+   * Add images to node's YAML array
    */
   private async addImagesToNode(
     documentUri: vscode.Uri,
     node: CodexNode,
     newImages: CodexImage[]
   ): Promise<void> {
-    // Stub - will be implemented in Task 8
-    console.log('addImagesToNode called with', newImages.length, 'images');
+    const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
+    const doc = YAML.parseDocument(text);
+
+    // Find the node in the document
+    const targetNode = this.findNodeInYamlDoc(doc, node);
+    if (!targetNode) {
+      throw new Error('Could not find node in document');
+    }
+
+    // Get or create images array
+    let images = targetNode.get('images');
+    if (!images || !YAML.isSeq(images)) {
+      images = doc.createNode([]);
+      targetNode.set('images', images);
+    }
+
+    // Add new images
+    for (const img of newImages) {
+      const imgObj: Record<string, unknown> = { url: img.url };
+      if (img.caption) imgObj.caption = img.caption;
+      if (img.alt) imgObj.alt = img.alt;
+      if (img.featured) imgObj.featured = img.featured;
+
+      const imgNode = doc.createNode(imgObj);
+      (images as YAML.YAMLSeq).add(imgNode);
+    }
+
+    // Write back
+    fs.writeFileSync(documentUri.fsPath, doc.toString());
   }
 
   /**
