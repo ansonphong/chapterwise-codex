@@ -1157,6 +1157,27 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
           imagesDirty = false;
           checkAllClean();
           break;
+
+        case 'workspaceImages':
+          allWorkspaceImages = message.images || [];
+          renderWorkspaceImages(allWorkspaceImages);
+          break;
+
+        case 'imageAdded':
+          if (message.image) {
+            localImages.push(message.image);
+            updateImagesGallery();
+            closeBrowserModal();
+          }
+          break;
+
+        case 'imagesAdded':
+          if (message.images && message.images.length > 0) {
+            localImages.push(...message.images);
+            updateImagesGallery();
+            closeBrowserModal();
+          }
+          break;
       }
     });
 
@@ -1282,6 +1303,160 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
           });
         }
       });
+    }
+
+    // === IMAGE BROWSER MODAL HANDLERS ===
+
+    const imageBrowserModal = document.getElementById('imageBrowserModal');
+    const browserBackdrop = document.getElementById('browserBackdrop');
+    const browserClose = document.getElementById('browserClose');
+    const tabWorkspace = document.getElementById('tabWorkspace');
+    const tabImport = document.getElementById('tabImport');
+    const workspaceTab = document.getElementById('workspaceTab');
+    const importTab = document.getElementById('importTab');
+    const imageSearch = document.getElementById('imageSearch');
+    const imageBrowserGrid = document.getElementById('imageBrowserGrid');
+    const importFromDiskBtn = document.getElementById('importFromDiskBtn');
+    const addImageBtn = document.getElementById('addImageBtn');
+
+    let allWorkspaceImages = [];
+
+    function openBrowserModal() {
+      if (imageBrowserModal) {
+        imageBrowserModal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        // Request workspace images
+        vscode.postMessage({ type: 'openImageBrowser' });
+      }
+    }
+
+    function closeBrowserModal() {
+      if (imageBrowserModal) {
+        imageBrowserModal.style.display = 'none';
+        document.body.style.overflow = '';
+      }
+    }
+
+    function switchTab(tab) {
+      if (tab === 'workspace') {
+        tabWorkspace?.classList.add('active');
+        tabImport?.classList.remove('active');
+        if (workspaceTab) workspaceTab.style.display = 'flex';
+        if (importTab) importTab.style.display = 'none';
+      } else {
+        tabWorkspace?.classList.remove('active');
+        tabImport?.classList.add('active');
+        if (workspaceTab) workspaceTab.style.display = 'none';
+        if (importTab) importTab.style.display = 'flex';
+      }
+    }
+
+    function renderWorkspaceImages(images) {
+      if (!imageBrowserGrid) return;
+
+      if (images.length === 0) {
+        imageBrowserGrid.innerHTML = '<div class="browser-empty">No images found in workspace</div>';
+        return;
+      }
+
+      imageBrowserGrid.innerHTML = images.map(img => \`
+        <div class="browser-image-item" data-path="\${img.path}" title="\${img.path}">
+          <img src="\${img.thumbnail}" alt="\${img.filename}" loading="lazy" />
+          <div class="browser-image-name">\${img.filename}</div>
+          <div class="browser-image-folder">\${img.folder}</div>
+        </div>
+      \`).join('');
+    }
+
+    function filterImages(query) {
+      const filtered = allWorkspaceImages.filter(img =>
+        img.filename.toLowerCase().includes(query.toLowerCase()) ||
+        img.folder.toLowerCase().includes(query.toLowerCase())
+      );
+      renderWorkspaceImages(filtered);
+    }
+
+    // Add Image button click
+    if (addImageBtn) {
+      addImageBtn.addEventListener('click', openBrowserModal);
+    }
+
+    // Close browser modal
+    if (browserClose) {
+      browserClose.addEventListener('click', closeBrowserModal);
+    }
+    if (browserBackdrop) {
+      browserBackdrop.addEventListener('click', closeBrowserModal);
+    }
+
+    // Tab switching
+    if (tabWorkspace) {
+      tabWorkspace.addEventListener('click', () => switchTab('workspace'));
+    }
+    if (tabImport) {
+      tabImport.addEventListener('click', () => switchTab('import'));
+    }
+
+    // Search filter
+    if (imageSearch) {
+      imageSearch.addEventListener('input', (e) => {
+        filterImages(e.target.value);
+      });
+    }
+
+    // Import from disk button
+    if (importFromDiskBtn) {
+      importFromDiskBtn.addEventListener('click', () => {
+        vscode.postMessage({ type: 'importImage' });
+      });
+    }
+
+    // Click on workspace image to add it
+    if (imageBrowserGrid) {
+      imageBrowserGrid.addEventListener('click', (e) => {
+        const item = e.target.closest('.browser-image-item');
+        if (item) {
+          const imagePath = item.dataset.path;
+          vscode.postMessage({ type: 'addExistingImage', imagePath });
+        }
+      });
+    }
+
+    // Keyboard: Escape to close browser modal
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && imageBrowserModal && imageBrowserModal.style.display === 'flex') {
+        closeBrowserModal();
+      }
+    });
+
+    // Update images gallery display
+    function updateImagesGallery() {
+      const imagesContainer = document.getElementById('imagesContainer');
+      const imagesCount = document.querySelector('.images-count');
+      const imagesEditor = document.getElementById('imagesEditor');
+
+      if (imagesContainer) {
+        if (localImages.length === 0) {
+          imagesContainer.innerHTML = '<div class="images-empty">No images</div>';
+        } else {
+          imagesContainer.innerHTML = \`<div class="images-grid">\${localImages.map((img, index) => \`
+            <div class="image-thumbnail" data-index="\${index}" data-url="\${img.url}">
+              \${img.featured ? '<span class="featured-badge">★</span>' : ''}
+              <img src="\${img.url}" alt="\${img.alt || img.caption || 'Image'}" loading="lazy" />
+              <div class="thumbnail-caption" title="\${img.caption || ''}">\${img.caption || '&nbsp;'}</div>
+            </div>
+          \`).join('')}</div>\`;
+        }
+      }
+
+      if (imagesCount) {
+        imagesCount.textContent = \`\${localImages.length} images\`;
+      }
+
+      // Show images section if it was hidden
+      if (imagesEditor) {
+        imagesEditor.style.display = '';
+      }
     }
 
     // Check if all saves are complete
