@@ -27,7 +27,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     let saveTimeout = null;
     let currentField = '${initialField}';
     let currentType = '${node.type}';
-    let currentEditorMode = '${initialField === '__overview__' ? 'overview' : initialField === '__attributes__' ? 'attributes' : initialField === '__content__' ? 'content' : 'prose'}';
+    let currentEditorMode = '${initialField === '__overview__' ? 'overview' : initialField === '__attributes__' ? 'attributes' : initialField === '__content__' ? 'content' : initialField === '__images__' ? 'images' : 'prose'}';
     let menuOpen = false;
 
     // LOCAL STATE - these are modified instantly, only saved on Save button click
@@ -41,6 +41,11 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     let bodyDirty = false;
     let originalSummary = summaryEditorContent ? summaryEditorContent.innerText : '';
     let originalBody = bodyEditorContent ? bodyEditorContent.innerText : '';
+
+    // Images state
+    let localImages = ${JSON.stringify(node.images || [])};
+    let imagesDirty = false;
+    let currentModalIndex = 0;
     
     // Detect system theme for JavaScript access
     function detectSystemTheme() {
@@ -166,7 +171,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     // ----- End inline title editing -----
     
     function updateDirtyIndicator() {
-      const anyDirty = isDirty || attributesDirty || contentSectionsDirty || summaryDirty || bodyDirty;
+      const anyDirty = isDirty || attributesDirty || contentSectionsDirty || summaryDirty || bodyDirty || imagesDirty;
       if (anyDirty) {
         saveMenuBtn.classList.add('dirty');
         saveMenuBtn.classList.remove('saved-flash');
@@ -184,6 +189,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       contentSectionsDirty = false;
       summaryDirty = false;
       bodyDirty = false;
+      imagesDirty = false;
       updateDirtyIndicator();
       originalContent = editor.innerText;
       if (summaryEditorContent) originalSummary = summaryEditorContent.innerText;
@@ -254,11 +260,13 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     // Show/hide editors based on field type
     function showEditor(editorType) {
       // Remove all mode classes
-      document.body.classList.remove('mode-prose', 'mode-structured', 'mode-overview');
-      
+      document.body.classList.remove('mode-prose', 'mode-structured', 'mode-overview', 'mode-images');
+
       // Add appropriate mode class
       if (editorType === 'overview') {
         document.body.classList.add('mode-overview');
+      } else if (editorType === 'images') {
+        document.body.classList.add('mode-images');
       } else if (editorType === 'attributes' || editorType === 'content') {
         document.body.classList.add('mode-structured');
         // Keep active class for structured editor selection
@@ -303,6 +311,9 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
         currentEditorMode = 'content';
         // Render from local state (no network call needed)
         renderContentSections();
+      } else if (newField === '__images__') {
+        showEditor('images');
+        currentEditorMode = 'images';
       } else {
         showEditor('prose');
         currentEditorMode = 'prose';
@@ -1140,12 +1151,142 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
           document.documentElement.setAttribute('data-vscode-theme', message.vscodeTheme);
           updateSystemThemeAttribute();
           break;
+
+        case 'imageCaptionSaved':
+          // Image caption was saved - reset dirty state
+          imagesDirty = false;
+          checkAllClean();
+          break;
       }
     });
-    
+
+    // === IMAGE MODAL HANDLERS ===
+
+    const imageModal = document.getElementById('imageModal');
+    const modalImage = document.getElementById('modalImage');
+    const modalCaption = document.getElementById('modalCaption');
+    const modalCounter = document.getElementById('modalCounter');
+    const modalClose = document.getElementById('modalClose');
+    const modalPrev = document.getElementById('modalPrev');
+    const modalNext = document.getElementById('modalNext');
+    const modalBackdrop = imageModal?.querySelector('.modal-backdrop');
+
+    function openImageModal(index) {
+      if (!localImages || index < 0 || index >= localImages.length) return;
+
+      currentModalIndex = index;
+      const img = localImages[index];
+
+      // Resolve URL for display
+      const resolvedUrl = resolveImageUrl(img.url);
+
+      modalImage.src = resolvedUrl;
+      modalImage.alt = img.alt || img.caption || 'Image';
+      modalCaption.value = img.caption || '';
+      modalCounter.textContent = \`\${index + 1} / \${localImages.length}\`;
+
+      // Update nav button states
+      modalPrev.disabled = index === 0;
+      modalNext.disabled = index === localImages.length - 1;
+
+      imageModal.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeImageModal() {
+      imageModal.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+
+    function navigateModal(direction) {
+      const newIndex = currentModalIndex + direction;
+      if (newIndex >= 0 && newIndex < localImages.length) {
+        openImageModal(newIndex);
+      }
+    }
+
+    function resolveImageUrl(url) {
+      // URLs are resolved by the manager, just return as-is for now
+      // The manager replaces vscode-resource-placeholder with actual URLs
+      return url.replace('vscode-resource-placeholder:', '');
+    }
+
+    // Thumbnail click handler
+    document.addEventListener('click', (e) => {
+      const thumbnail = e.target.closest('.image-thumbnail, .gallery-item');
+      if (thumbnail) {
+        const index = parseInt(thumbnail.dataset.index, 10);
+        openImageModal(index);
+      }
+    });
+
+    // Modal close handlers
+    if (modalClose) {
+      modalClose.addEventListener('click', closeImageModal);
+    }
+    if (modalBackdrop) {
+      modalBackdrop.addEventListener('click', closeImageModal);
+    }
+
+    // Modal navigation
+    if (modalPrev) {
+      modalPrev.addEventListener('click', () => navigateModal(-1));
+    }
+    if (modalNext) {
+      modalNext.addEventListener('click', () => navigateModal(1));
+    }
+
+    // Keyboard navigation
+    document.addEventListener('keydown', (e) => {
+      if (imageModal && imageModal.style.display === 'flex') {
+        if (e.key === 'Escape') {
+          closeImageModal();
+        } else if (e.key === 'ArrowLeft') {
+          navigateModal(-1);
+        } else if (e.key === 'ArrowRight') {
+          navigateModal(1);
+        }
+      }
+    });
+
+    // Caption edit handler
+    if (modalCaption) {
+      modalCaption.addEventListener('change', (e) => {
+        const newCaption = e.target.value.trim();
+        const img = localImages[currentModalIndex];
+
+        if (img && img.caption !== newCaption) {
+          img.caption = newCaption || undefined;
+          imagesDirty = true;
+          updateDirtyIndicator();
+
+          // Update thumbnail caption if visible
+          const thumbnail = document.querySelector(\`.image-thumbnail[data-index="\${currentModalIndex}"] .thumbnail-caption\`);
+          if (thumbnail) {
+            thumbnail.textContent = newCaption || ' ';
+            thumbnail.title = newCaption || '';
+          }
+
+          // Update gallery item caption if visible
+          const galleryCaption = document.querySelector(\`.gallery-item[data-index="\${currentModalIndex}"] .gallery-caption\`);
+          if (galleryCaption) {
+            galleryCaption.textContent = newCaption || 'No caption';
+            galleryCaption.title = newCaption || '';
+          }
+
+          // Send patch update to save
+          vscode.postMessage({
+            type: 'updateImageCaption',
+            url: img.url,
+            caption: newCaption
+          });
+        }
+      });
+    }
+
     // Check if all saves are complete
     function checkAllClean() {
-      if (!isDirty && !attributesDirty && !contentSectionsDirty) {
+      if (!isDirty && !attributesDirty && !contentSectionsDirty && !imagesDirty) {
         saveMenuBtn.disabled = false;
         saveMenuBtn.classList.remove('dirty');
         saveMenuBtn.classList.add('saved-flash');
@@ -1170,6 +1311,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     } else if (currentEditorMode === 'content') {
       showEditor('content');
       renderContentSections();
+    } else if (currentEditorMode === 'images') {
+      showEditor('images');
     } else {
       showEditor('prose');
       editor.focus();
