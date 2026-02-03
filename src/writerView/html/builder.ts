@@ -150,10 +150,11 @@ ${getWriterViewStyles()}
   </div>
 
   <!-- Images Gallery -->
-  <div class="structured-editor" id="imagesEditor" ${!node.hasImages ? 'style="display: none;"' : ''}>
+  <div class="structured-editor" id="imagesEditor">
     <div class="structured-header">
       <span class="structured-title overview-section-header-inline" data-field="__images__">Images</span>
       <span class="images-count">${node.images?.length || 0} images</span>
+      <button class="add-btn" id="addImageBtn">+ Add Image</button>
     </div>
     <div id="imagesContainer">
       ${node.hasImages ? renderImagesGallery(node.images || [], workspaceRoot) : ''}
