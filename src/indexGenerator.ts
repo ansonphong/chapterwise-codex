@@ -785,13 +785,22 @@ async function extractNodeChildren(
     // Generate defensive node ID
     const entityId = child.id || `node-${child.type}-${depth}-${extracted.length}`;
 
+    // Determine the correct parent file path:
+    // If this child has _subindex_path (from an included file), use that
+    // Otherwise use the passed parentFilePath
+    let effectiveParentFile = parentFilePath;
+    if (child._subindex_path) {
+      // Convert absolute path to relative path from workspace root
+      effectiveParentFile = path.relative(workspaceRoot, child._subindex_path);
+    }
+
     // Create node - ONLY include navigation metadata, NOT content
     const entityNode: any = {
       id: entityId,
       type: child.type,
       name: child.name || child.title || 'Untitled',
       _node_kind: 'node',
-      _parent_file: parentFilePath,
+      _parent_file: effectiveParentFile,
       _depth: depth,
       children: [], // Will be populated with fields + nested nodes
     };
@@ -831,7 +840,7 @@ async function extractNodeChildren(
           _node_kind: 'field',
           _field_name: fieldName,
           _field_type: fieldType,
-          _parent_file: parentFilePath,
+          _parent_file: effectiveParentFile,
           _parent_entity: entityId,
           _depth: depth + 1,
         });
@@ -839,10 +848,11 @@ async function extractNodeChildren(
     }
 
     // Extract nested node children (recursively)
+    // Pass effectiveParentFile so nested children inherit the correct source file
     const entityChildren = child.children
       ? await extractNodeChildren(
           child.children,
-          parentFilePath,
+          effectiveParentFile,
           workspaceRoot,
           depth + 1,
           entityId

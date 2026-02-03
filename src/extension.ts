@@ -765,8 +765,14 @@ function registerCommands(context: vscode.ExtensionContext): void {
         let targetNode: CodexNode | null = null;
 
         if (parentEntity) {
-          targetNode = findNodeById(codexDoc.rootNode, parentEntity);
+          // Use allNodes for more reliable lookup (handles deeply nested nodes)
+          targetNode = codexDoc.allNodes.find(n => n.id === parentEntity) || null;
           if (!targetNode) {
+            // Fallback: try recursive search
+            targetNode = findNodeById(codexDoc.rootNode, parentEntity);
+          }
+          if (!targetNode) {
+            outputChannel.appendLine(`[navigateToField] Node ${parentEntity} not found. Available IDs: ${codexDoc.allNodes.map(n => n.id).join(', ')}`);
             vscode.window.showErrorMessage(`Parent node ${parentEntity} not found in file`);
             return;
           }
@@ -838,14 +844,23 @@ function registerCommands(context: vscode.ExtensionContext): void {
           return;
         }
 
-        // Find the target node by ID
+        // Find the target node by ID using allNodes for reliable lookup
         const targetNodeId = node.id;
-        const targetNode = targetNodeId ? findNodeById(codexDoc.rootNode, targetNodeId) : null;
+        let targetNode: CodexNode | null = null;
+
+        if (targetNodeId) {
+          targetNode = codexDoc.allNodes.find(n => n.id === targetNodeId) || null;
+          if (!targetNode) {
+            // Fallback: try recursive search
+            targetNode = findNodeById(codexDoc.rootNode, targetNodeId);
+          }
+        }
 
         if (targetNode) {
           // Open Writer View focused on this node
           await writerViewManager.openWriterViewForField(targetNode, uri, '__overview__');
         } else {
+          outputChannel.appendLine(`[navigateToNode] Node ${targetNodeId} not found. Available IDs: ${codexDoc.allNodes.map(n => n.id).join(', ')}`);
           // Fallback: open file in Writer View at root
           const hasChildren = codexDoc.rootNode.children && codexDoc.rootNode.children.length > 0;
           const tempTreeItem = new CodexTreeItem(
