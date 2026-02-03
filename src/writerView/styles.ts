@@ -1127,11 +1127,269 @@ export function getWriterViewStyles(): string {
     body.mode-overview #attributesEditor:has(.empty-state) {
       display: none !important;
     }
-    
+
     body.mode-overview #contentEditor:has(.empty-state) {
       display: none !important;
     }
-    
+
+    /* === IMAGES GALLERY === */
+
+    /* Thumbnail grid in overview mode */
+    .images-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 12px;
+      padding: 8px 0;
+    }
+
+    .image-thumbnail {
+      position: relative;
+      cursor: pointer;
+      border-radius: 6px;
+      overflow: hidden;
+      background: var(--bg-secondary);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .image-thumbnail:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .image-thumbnail img {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .thumbnail-caption {
+      padding: 6px 8px;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      background: var(--bg-secondary);
+    }
+
+    .featured-badge {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      background: var(--accent);
+      color: white;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      z-index: 1;
+    }
+
+    .images-empty {
+      padding: 2rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    /* Full gallery view (images mode) */
+    .images-full-gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+      padding: 16px 0;
+    }
+
+    .gallery-item {
+      position: relative;
+      cursor: pointer;
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--bg-secondary);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .gallery-item:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    .gallery-item img {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .gallery-caption {
+      padding: 10px 12px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      background: var(--bg-secondary);
+    }
+
+    /* === IMAGE MODAL === */
+
+    .image-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-backdrop {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+    }
+
+    .modal-content {
+      position: relative;
+      max-width: 90vw;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .modal-close {
+      position: absolute;
+      top: -40px;
+      right: 0;
+      background: none;
+      border: none;
+      color: white;
+      font-size: 2rem;
+      cursor: pointer;
+      padding: 8px;
+      line-height: 1;
+      opacity: 0.8;
+      transition: opacity 0.15s;
+    }
+
+    .modal-close:hover {
+      opacity: 1;
+    }
+
+    .modal-counter {
+      position: absolute;
+      top: -40px;
+      left: 0;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 0.9rem;
+    }
+
+    .modal-image-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      max-height: 70vh;
+    }
+
+    .modal-image-container img {
+      max-width: 90vw;
+      max-height: 70vh;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+
+    .modal-caption-container {
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      max-width: 500px;
+    }
+
+    .modal-caption-container label {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 0.85rem;
+      flex-shrink: 0;
+    }
+
+    .modal-caption-input {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+      font-size: 0.9rem;
+    }
+
+    .modal-caption-input:focus {
+      outline: none;
+      border-color: var(--accent);
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .modal-caption-input::placeholder {
+      color: rgba(255, 255, 255, 0.4);
+    }
+
+    .modal-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      color: white;
+      font-size: 2.5rem;
+      padding: 16px 12px;
+      cursor: pointer;
+      opacity: 0.6;
+      transition: opacity 0.15s, background 0.15s;
+      border-radius: 4px;
+    }
+
+    .modal-nav:hover {
+      opacity: 1;
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .modal-prev {
+      left: -60px;
+    }
+
+    .modal-next {
+      right: -60px;
+    }
+
+    .modal-nav:disabled {
+      opacity: 0.2;
+      cursor: not-allowed;
+    }
+
+    /* Images section in overview mode */
+    body.mode-overview #imagesEditor {
+      display: block !important;
+    }
+
+    /* Images view mode */
+    body.mode-images #imagesEditor {
+      display: block !important;
+      width: 100%;
+      max-width: 900px;
+      margin: 2rem auto;
+    }
+
+    #imagesEditor {
+      display: none;
+    }
+
     /* === CONTEXT TOOLBAR STYLES === */
     ${getToolbarStyles()}
   `;
