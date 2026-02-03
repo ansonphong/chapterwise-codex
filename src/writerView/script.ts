@@ -15,9 +15,13 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     const typeSelector = document.getElementById('typeSelector');
     const nodeNameDisplay = document.getElementById('nodeName');
     const nodeNameEdit = document.getElementById('nodeNameEdit');
-    
+
+    // Overview mode prose editors
+    const summaryEditorContent = document.getElementById('summaryEditorContent');
+    const bodyEditorContent = document.getElementById('bodyEditorContent');
+
     ${getToolbarScript(node, initialField)}
-    
+
     let isDirty = false;
     let originalContent = editor.innerText;
     let saveTimeout = null;
@@ -25,12 +29,18 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     let currentType = '${node.type}';
     let currentEditorMode = '${initialField === '__overview__' ? 'overview' : initialField === '__attributes__' ? 'attributes' : initialField === '__content__' ? 'content' : 'prose'}';
     let menuOpen = false;
-    
+
     // LOCAL STATE - these are modified instantly, only saved on Save button click
     let localAttributes = ${JSON.stringify(node.attributes || [])};
     let localContentSections = ${JSON.stringify(node.contentSections || [])};
     let attributesDirty = false;
     let contentSectionsDirty = false;
+
+    // Track dirty state for overview prose fields
+    let summaryDirty = false;
+    let bodyDirty = false;
+    let originalSummary = summaryEditorContent ? summaryEditorContent.innerText : '';
+    let originalBody = bodyEditorContent ? bodyEditorContent.innerText : '';
     
     // Detect system theme for JavaScript access
     function detectSystemTheme() {
@@ -156,7 +166,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     // ----- End inline title editing -----
     
     function updateDirtyIndicator() {
-      const anyDirty = isDirty || attributesDirty || contentSectionsDirty;
+      const anyDirty = isDirty || attributesDirty || contentSectionsDirty || summaryDirty || bodyDirty;
       if (anyDirty) {
         saveMenuBtn.classList.add('dirty');
         saveMenuBtn.classList.remove('saved-flash');
@@ -172,20 +182,24 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       isDirty = false;
       attributesDirty = false;
       contentSectionsDirty = false;
+      summaryDirty = false;
+      bodyDirty = false;
       updateDirtyIndicator();
       originalContent = editor.innerText;
+      if (summaryEditorContent) originalSummary = summaryEditorContent.innerText;
+      if (bodyEditorContent) originalBody = bodyEditorContent.innerText;
     }
-    
+
     // Save function - saves ALL pending changes
     function save() {
-      const anyDirty = isDirty || attributesDirty || contentSectionsDirty;
+      const anyDirty = isDirty || attributesDirty || contentSectionsDirty || summaryDirty || bodyDirty;
       if (!anyDirty) return;
-      
+
       saveMenuBtn.disabled = true;
       saveMenuBtn.classList.remove('dirty');
       saveMenuBtn.title = 'Saving...';
-      
-      // Save prose if dirty
+
+      // Save prose if dirty (single field mode)
       if (isDirty) {
         vscode.postMessage({
           type: 'save',
@@ -194,7 +208,27 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
           newType: currentType
         });
       }
-      
+
+      // Save summary from overview mode
+      if (summaryDirty && summaryEditorContent) {
+        vscode.postMessage({
+          type: 'save',
+          text: summaryEditorContent.innerText,
+          field: 'summary',
+          newType: currentType
+        });
+      }
+
+      // Save body from overview mode
+      if (bodyDirty && bodyEditorContent) {
+        vscode.postMessage({
+          type: 'save',
+          text: bodyEditorContent.innerText,
+          field: 'body',
+          newType: currentType
+        });
+      }
+
       // Save attributes if dirty
       if (attributesDirty) {
         vscode.postMessage({
@@ -927,7 +961,42 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     
     editor.addEventListener('input', handleEditorChange);
     editor.addEventListener('beforeinput', handleEditorChange);
-    
+
+    // Overview prose editor handlers
+    function handleSummaryChange() {
+      if (summaryEditorContent && summaryEditorContent.innerText !== originalSummary) {
+        summaryDirty = true;
+        updateDirtyIndicator();
+      }
+    }
+
+    function handleBodyChange() {
+      if (bodyEditorContent && bodyEditorContent.innerText !== originalBody) {
+        bodyDirty = true;
+        updateDirtyIndicator();
+      }
+    }
+
+    if (summaryEditorContent) {
+      summaryEditorContent.addEventListener('input', handleSummaryChange);
+      summaryEditorContent.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+          e.preventDefault();
+          save();
+        }
+      });
+    }
+
+    if (bodyEditorContent) {
+      bodyEditorContent.addEventListener('input', handleBodyChange);
+      bodyEditorContent.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+          e.preventDefault();
+          save();
+        }
+      });
+    }
+
     // Handle keyboard shortcuts
     editor.addEventListener('keydown', (e) => {
       // Ctrl/Cmd + S to save

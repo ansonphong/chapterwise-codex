@@ -22,6 +22,8 @@ export interface WebviewHtmlOptions {
   indexTypes?: TypeDefinition[];
   filePath: string;
   workspaceRoot: string;
+  /** All prose field values for overview mode */
+  proseFields?: Record<string, string>;
 }
 
 export interface TypeDefinition {
@@ -35,11 +37,17 @@ export interface TypeDefinition {
  * Build the complete HTML for the Writer View webview
  */
 export function buildWebviewHtml(options: WebviewHtmlOptions): string {
-  const { webview, node, prose, initialField, themeSetting, vscodeThemeKind, author, indexTypes, filePath, workspaceRoot } = options;
+  const { webview, node, prose, initialField, themeSetting, vscodeThemeKind, author, indexTypes, filePath, workspaceRoot, proseFields } = options;
 
   const nonce = getNonce();
   const escapedProse = escapeHtml(prose);
   const authorDisplay = author ? escapeHtml(author) : 'Unknown Author';
+
+  // Get prose field values for overview mode
+  const summaryValue = proseFields?.summary ?? '';
+  const bodyValue = proseFields?.body ?? '';
+  const hasSummary = node.availableFields.includes('summary');
+  const hasBody = node.availableFields.includes('body');
 
   // Calculate relative path for display
   const path = require('path');
@@ -121,11 +129,26 @@ ${getWriterViewStyles()}
     </div>
   </div>
 
-  <div class="editor-container" id="proseEditor">
+  <!-- Summary Editor (shown at top in overview) -->
+  <div class="editor-container prose-section" id="summaryEditor" data-field="summary" ${!hasSummary ? 'style="display: none;"' : ''}>
     <div class="editor-wrapper">
-      <div class="overview-section-header" data-field="summary" style="display: none;">
+      <div class="overview-section-header">
         <span class="structured-title">Summary</span>
       </div>
+      <div
+        id="summaryEditorContent"
+        class="prose-editor-content"
+        contenteditable="true"
+        spellcheck="true"
+        data-placeholder="Write a summary..."
+        data-field="summary"
+      >${escapeHtml(summaryValue)}</div>
+    </div>
+  </div>
+
+  <!-- Main Prose Editor (for single field mode) -->
+  <div class="editor-container" id="proseEditor">
+    <div class="editor-wrapper">
       <div
         id="editor"
         contenteditable="true"
@@ -157,6 +180,23 @@ ${getWriterViewStyles()}
     </div>
     <div id="contentContainer">
       ${renderContentSections(node.contentSections || [])}
+    </div>
+  </div>
+
+  <!-- Body Editor (shown at bottom in overview, after content) -->
+  <div class="editor-container prose-section" id="bodyEditor" data-field="body" ${!hasBody ? 'style="display: none;"' : ''}>
+    <div class="editor-wrapper">
+      <div class="overview-section-header">
+        <span class="structured-title">Body</span>
+      </div>
+      <div
+        id="bodyEditorContent"
+        class="prose-editor-content"
+        contenteditable="true"
+        spellcheck="true"
+        data-placeholder="Write the main content..."
+        data-field="body"
+      >${escapeHtml(bodyValue)}</div>
     </div>
   </div>
 

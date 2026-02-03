@@ -987,27 +987,37 @@ export function getWriterViewStyles(): string {
     }
     
     /* === OVERVIEW MODE === */
-    /* Show all three sections in vertical stack with uniform width */
-    body.mode-overview .editor-container,
-    body.mode-overview .structured-editor {
+    /* Hide separate prose sections by default */
+    .prose-section {
+      display: none !important;
+    }
+
+    /* Hide main prose editor in overview mode */
+    body.mode-overview #proseEditor {
+      display: none !important;
+    }
+
+    /* Show prose sections in overview mode */
+    body.mode-overview .prose-section {
       display: block !important;
       width: 100%;
       max-width: 900px;
       margin: 2rem auto 0.75rem;
       box-sizing: border-box;
-    }
-    
-    /* Make prose editor look like a card */
-    body.mode-overview .editor-container {
       background: var(--bg-secondary);
       border: 1px solid var(--border-color);
       border-radius: 6px;
       padding: 1.5rem;
       overflow: visible;
     }
-    
-    /* Make attributes/content look like cards with same width */
+
+    /* Show all structured sections in overview mode */
     body.mode-overview .structured-editor {
+      display: block !important;
+      width: 100%;
+      max-width: 900px;
+      margin: 2rem auto 0.75rem;
+      box-sizing: border-box;
       background: var(--bg-secondary);
       border: 1px solid var(--border-color);
       border-radius: 6px;
@@ -1015,7 +1025,28 @@ export function getWriterViewStyles(): string {
       overflow-x: visible;
       padding: 0;
     }
-    
+
+    /* Style prose editor content in overview sections */
+    .prose-section .prose-editor-content {
+      min-height: 100px;
+      outline: none;
+      font-family: var(--font-prose);
+      font-size: var(--prose-font-size);
+      line-height: var(--prose-line-height);
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .prose-section .prose-editor-content:empty::before {
+      content: attr(data-placeholder);
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    .prose-section .prose-editor-content:focus:empty::before {
+      content: '';
+    }
+
     /* Overview section header (for prose/summary) */
     .overview-section-header {
       margin-top: 0;
@@ -1024,11 +1055,11 @@ export function getWriterViewStyles(): string {
       transition: color 0.15s ease;
       user-select: none;
     }
-    
+
     .overview-section-header:hover .structured-title {
       color: var(--text-primary);
     }
-    
+
     /* Show overview section header only in overview mode */
     body.mode-overview .overview-section-header {
       display: block !important;

@@ -267,6 +267,21 @@ export class WriterViewManager {
       prose = getNodeProse(codexDoc, node, proseFieldToLoad);
     }
 
+    // Load all prose fields for overview mode
+    const proseFields: Record<string, string> = {};
+    if (isMarkdownFile(fileName)) {
+      const frontmatter = codexDoc.frontmatter as Record<string, unknown> | undefined;
+      proseFields.summary = (frontmatter?.summary as string) ?? '';
+      proseFields.body = codexDoc.rootNode?.proseValue ?? '';
+    } else {
+      if (node.availableFields.includes('summary')) {
+        proseFields.summary = getNodeProse(codexDoc, node, 'summary');
+      }
+      if (node.availableFields.includes('body')) {
+        proseFields.body = getNodeProse(codexDoc, node, 'body');
+      }
+    }
+
     // Create new panel in the ACTIVE editor group (same frame, new tab)
     let panel = vscode.window.createWebviewPanel(
       'chapterwiseCodexWriter',
@@ -299,7 +314,8 @@ export class WriterViewManager {
       vscodeThemeKind: this.getVSCodeThemeKind(),
       author: authorDisplay,
       filePath: documentUri.fsPath,
-      workspaceRoot: workspaceRoot
+      workspaceRoot: workspaceRoot,
+      proseFields,
     });
 
     // Store initial stats and update status bar
@@ -546,6 +562,21 @@ export class WriterViewManager {
       prose = getNodeProse(codexDoc, node, proseFieldToLoad);
     }
 
+    // Load all prose fields for overview mode
+    const proseFields: Record<string, string> = {};
+    if (isMarkdownFile(fileName)) {
+      const frontmatter = codexDoc.frontmatter as Record<string, unknown> | undefined;
+      proseFields.summary = (frontmatter?.summary as string) ?? '';
+      proseFields.body = codexDoc.rootNode?.proseValue ?? '';
+    } else {
+      if (node.availableFields.includes('summary')) {
+        proseFields.summary = getNodeProse(codexDoc, node, 'summary');
+      }
+      if (node.availableFields.includes('body')) {
+        proseFields.body = getNodeProse(codexDoc, node, 'body');
+      }
+    }
+
     // Create new panel
     let panel = vscode.window.createWebviewPanel(
       'chapterwiseCodexWriter',
@@ -578,7 +609,8 @@ export class WriterViewManager {
       vscodeThemeKind: this.getVSCodeThemeKind(),
       author: authorDisplay,
       filePath: documentUri.fsPath,
-      workspaceRoot: workspaceRoot
+      workspaceRoot: workspaceRoot,
+      proseFields,
     });
 
     // Store initial stats and update status bar
