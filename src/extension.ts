@@ -10,7 +10,7 @@ import * as YAML from 'yaml';
 import { CodexTreeProvider, CodexTreeItem, CodexFieldTreeItem, IndexNodeTreeItem, CodexTreeItemType, createCodexTreeView } from './treeProvider';
 import { WriterViewManager } from './writerView';
 import { initializeValidation } from './validation';
-import { isCodexFile, parseMarkdownAsCodex, parseCodex, CodexNode } from './codexModel';
+import { isCodexFile, isMarkdownFile, parseMarkdownAsCodex, parseCodex, CodexNode } from './codexModel';
 import { runAutoFixer, disposeAutoFixer } from './autoFixer';
 import { runExplodeCodex, disposeExplodeCodex } from './explodeCodex';
 import { runImplodeCodex, disposeImplodeCodex } from './implodeCodex';
@@ -788,6 +788,75 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
         // Open Writer View with specific field selected
         await writerViewManager.openWriterViewForField(targetNode, documentUri, writerViewFieldName);
+      }
+    )
+  );
+
+  // Phase 3: Navigate to Node command (opens Writer View for nested nodes)
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'chapterwiseCodex.navigateToNode',
+      async (treeItem?: IndexNodeTreeItem) => {
+        if (!treeItem || !treeItem.indexNode) {
+          return;
+        }
+
+        const node = treeItem.indexNode as any;
+        const parentFile = node._parent_file;
+
+        if (!parentFile) {
+          vscode.window.showWarningMessage('Cannot navigate: No parent file found');
+          return;
+        }
+
+        const workspaceRoot = treeProvider.getWorkspaceRoot();
+        if (!workspaceRoot) {
+          vscode.window.showWarningMessage('Cannot navigate: No workspace root');
+          return;
+        }
+
+        const fullPath = path.join(workspaceRoot, parentFile);
+
+        if (!fs.existsSync(fullPath)) {
+          vscode.window.showWarningMessage(`File not found: ${parentFile}`);
+          return;
+        }
+
+        // Open the file and parse it
+        const uri = vscode.Uri.file(fullPath);
+        const fileContent = fs.readFileSync(fullPath, 'utf-8');
+
+        // Parse based on file type
+        const codexDoc = isMarkdownFile(fullPath)
+          ? parseMarkdownAsCodex(fileContent, fullPath)
+          : parseCodex(fileContent);
+
+        if (!codexDoc || !codexDoc.rootNode) {
+          // Fallback to text editor
+          const doc = await vscode.workspace.openTextDocument(uri);
+          await vscode.window.showTextDocument(doc);
+          return;
+        }
+
+        // Find the target node by ID
+        const targetNodeId = node.id;
+        const targetNode = targetNodeId ? findNodeById(codexDoc.rootNode, targetNodeId) : null;
+
+        if (targetNode) {
+          // Open Writer View focused on this node
+          await writerViewManager.openWriterViewForField(targetNode, uri, '__overview__');
+        } else {
+          // Fallback: open file in Writer View at root
+          const hasChildren = codexDoc.rootNode.children && codexDoc.rootNode.children.length > 0;
+          const tempTreeItem = new CodexTreeItem(
+            codexDoc.rootNode,
+            uri,
+            hasChildren,
+            false,
+            true
+          );
+          await writerViewManager.openWriterView(tempTreeItem);
+        }
       }
     )
   );
