@@ -1188,6 +1188,12 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
             closeImageModal();
           }
           break;
+
+        case 'imagesReordered':
+          // Order saved successfully
+          imagesDirty = false;
+          checkAllClean();
+          break;
       }
     });
 
@@ -1487,7 +1493,67 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       if (imagesEditor) {
         imagesEditor.style.display = '';
       }
+
+      // Re-initialize drag handlers for new elements
+      initDragHandlers();
     }
+
+    // === DRAG AND DROP REORDER ===
+
+    let draggedIndex = null;
+
+    function initDragHandlers() {
+      const thumbnails = document.querySelectorAll('.image-thumbnail, .gallery-item');
+
+      thumbnails.forEach((thumb, index) => {
+        thumb.setAttribute('draggable', 'true');
+
+        thumb.addEventListener('dragstart', (e) => {
+          draggedIndex = index;
+          thumb.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+        });
+
+        thumb.addEventListener('dragend', () => {
+          thumb.classList.remove('dragging');
+          draggedIndex = null;
+          // Remove all drag-over states
+          document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+        });
+
+        thumb.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          thumb.classList.add('drag-over');
+        });
+
+        thumb.addEventListener('dragleave', () => {
+          thumb.classList.remove('drag-over');
+        });
+
+        thumb.addEventListener('drop', (e) => {
+          e.preventDefault();
+          thumb.classList.remove('drag-over');
+
+          const dropIndex = index;
+          if (draggedIndex !== null && draggedIndex !== dropIndex) {
+            // Reorder local array
+            const [removed] = localImages.splice(draggedIndex, 1);
+            localImages.splice(dropIndex, 0, removed);
+
+            // Update display
+            updateImagesGallery();
+
+            // Save new order
+            const newOrder = localImages.map(img => img.url);
+            vscode.postMessage({ type: 'reorderImages', order: newOrder });
+          }
+        });
+      });
+    }
+
+    // Initial drag handler setup
+    initDragHandlers();
 
     // Check if all saves are complete
     function checkAllClean() {

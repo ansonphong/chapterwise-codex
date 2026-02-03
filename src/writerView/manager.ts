@@ -669,6 +669,53 @@ export class WriterViewManager {
             }
             break;
           }
+
+          case 'reorderImages': {
+            const { order } = message; // Array of URLs in new order
+
+            try {
+              const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
+              const doc = YAML.parseDocument(text);
+
+              const targetNode = this.findNodeInYamlDoc(doc, node);
+              if (!targetNode) {
+                vscode.window.showErrorMessage('Could not find node in document');
+                return;
+              }
+
+              const images = targetNode.get('images');
+              if (!images || !YAML.isSeq(images)) {
+                return;
+              }
+
+              // Create a map of URL to image node
+              const imageMap = new Map<string, YAML.Node>();
+              for (const item of (images as YAML.YAMLSeq).items) {
+                if (YAML.isMap(item)) {
+                  const url = item.get('url') as string;
+                  if (url) {
+                    imageMap.set(url, item);
+                  }
+                }
+              }
+
+              // Clear and rebuild in new order
+              (images as YAML.YAMLSeq).items = [];
+              for (const url of order) {
+                const imgNode = imageMap.get(url);
+                if (imgNode) {
+                  (images as YAML.YAMLSeq).add(imgNode);
+                }
+              }
+
+              fs.writeFileSync(documentUri.fsPath, doc.toString());
+
+              panel.webview.postMessage({ type: 'imagesReordered' });
+            } catch (error) {
+              vscode.window.showErrorMessage(`Failed to reorder images: ${error}`);
+            }
+            break;
+          }
         }
       },
       undefined,

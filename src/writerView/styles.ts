@@ -1610,6 +1610,25 @@ export function getWriterViewStyles(): string {
       color: var(--text-muted);
     }
 
+    /* === DRAG AND DROP REORDER === */
+
+    .image-thumbnail[draggable="true"],
+    .gallery-item[draggable="true"] {
+      cursor: grab;
+    }
+
+    .image-thumbnail.dragging,
+    .gallery-item.dragging {
+      opacity: 0.5;
+      cursor: grabbing;
+    }
+
+    .image-thumbnail.drag-over,
+    .gallery-item.drag-over {
+      border: 2px dashed var(--accent);
+      transform: scale(1.02);
+    }
+
     /* === CONTEXT TOOLBAR STYLES === */
     ${getToolbarStyles()}
   `;
