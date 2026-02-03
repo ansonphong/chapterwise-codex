@@ -539,6 +539,37 @@ export class WriterViewManager {
             }
             break;
           }
+
+          case 'openImageBrowser': {
+            // Scan workspace for images
+            const allImages = await this.scanWorkspaceImages(workspaceRoot);
+
+            // Resolve URLs for webview display
+            const imagesForBrowser = allImages.map(img => ({
+              path: img.relativePath,
+              thumbnail: this.resolveImageUrlForWebview(panel.webview, img.relativePath, workspaceRoot),
+              filename: path.basename(img.relativePath),
+              folder: path.dirname(img.relativePath).substring(1) || '/'
+            }));
+
+            panel.webview.postMessage({
+              type: 'workspaceImages',
+              images: imagesForBrowser
+            });
+            break;
+          }
+
+          case 'addExistingImage': {
+            // TODO: Implement in Task 8
+            vscode.window.showInformationMessage('Add existing image - coming soon');
+            break;
+          }
+
+          case 'importImage': {
+            // TODO: Implement in Task 7
+            vscode.window.showInformationMessage('Import image - coming soon');
+            break;
+          }
         }
       },
       undefined,
