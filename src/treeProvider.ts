@@ -334,6 +334,7 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
         body: ['symbol-text', 'symbolIcon.textForeground'],
         attributes: ['symbol-property', 'symbolIcon.propertyForeground'],
         content: ['symbol-snippet', 'symbolIcon.snippetForeground'],
+        images: ['file-media', 'symbolIcon.colorForeground'],
       };
 
       const fieldName = node._field_name;

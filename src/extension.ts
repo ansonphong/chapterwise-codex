@@ -790,6 +790,8 @@ function registerCommands(context: vscode.ExtensionContext): void {
           writerViewFieldName = '__attributes__';
         } else if (fieldName === 'content') {
           writerViewFieldName = '__content__';
+        } else if (fieldName === 'images') {
+          writerViewFieldName = '__images__';
         }
 
         // Open Writer View with specific field selected
