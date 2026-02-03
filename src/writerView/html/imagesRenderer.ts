@@ -1,0 +1,97 @@
+/**
+ * Renders image gallery HTML for Writer View
+ */
+
+import { CodexImage } from '../../codexModel';
+import { escapeHtml } from '../utils/helpers';
+
+/**
+ * Render thumbnail gallery for overview mode
+ */
+export function renderImagesGallery(images: CodexImage[], workspaceRoot: string): string {
+  if (!images || images.length === 0) {
+    return '<div class="images-empty">No images</div>';
+  }
+
+  const thumbnails = images.map((img, index) => {
+    const resolvedUrl = resolveImageUrl(img.url, workspaceRoot);
+    const caption = img.caption ? escapeHtml(img.caption) : '';
+    const alt = img.alt ? escapeHtml(img.alt) : (img.caption ? escapeHtml(img.caption) : 'Image');
+    const featuredBadge = img.featured ? '<span class="featured-badge">★</span>' : '';
+
+    return `
+      <div class="image-thumbnail" data-index="${index}" data-url="${escapeHtml(img.url)}">
+        ${featuredBadge}
+        <img src="${resolvedUrl}" alt="${alt}" loading="lazy" />
+        <div class="thumbnail-caption" title="${caption}">${caption || '&nbsp;'}</div>
+      </div>
+    `;
+  }).join('');
+
+  return `<div class="images-grid">${thumbnails}</div>`;
+}
+
+/**
+ * Render full-page gallery for images view mode
+ */
+export function renderImagesFullGallery(images: CodexImage[], workspaceRoot: string): string {
+  if (!images || images.length === 0) {
+    return '<div class="images-empty">No images attached to this node</div>';
+  }
+
+  const items = images.map((img, index) => {
+    const resolvedUrl = resolveImageUrl(img.url, workspaceRoot);
+    const caption = img.caption ? escapeHtml(img.caption) : '';
+    const alt = img.alt ? escapeHtml(img.alt) : (img.caption ? escapeHtml(img.caption) : 'Image');
+    const featuredBadge = img.featured ? '<span class="featured-badge">★</span>' : '';
+
+    return `
+      <div class="gallery-item" data-index="${index}" data-url="${escapeHtml(img.url)}">
+        ${featuredBadge}
+        <img src="${resolvedUrl}" alt="${alt}" loading="lazy" />
+        <div class="gallery-caption" title="${caption}">${caption || 'No caption'}</div>
+      </div>
+    `;
+  }).join('');
+
+  return `<div class="images-full-gallery">${items}</div>`;
+}
+
+/**
+ * Render modal overlay HTML (hidden by default)
+ */
+export function renderImageModal(): string {
+  return `
+    <div class="image-modal" id="imageModal" style="display: none;">
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <button class="modal-close" id="modalClose" title="Close (Escape)">×</button>
+        <div class="modal-counter" id="modalCounter">1 / 1</div>
+        <div class="modal-image-container">
+          <img id="modalImage" src="" alt="" />
+        </div>
+        <div class="modal-caption-container">
+          <label for="modalCaption">Caption:</label>
+          <input type="text" id="modalCaption" class="modal-caption-input" placeholder="Add a caption..." />
+        </div>
+        <button class="modal-nav modal-prev" id="modalPrev" title="Previous (←)">‹</button>
+        <button class="modal-nav modal-next" id="modalNext" title="Next (→)">›</button>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Resolve image URL relative to workspace root
+ */
+function resolveImageUrl(url: string, workspaceRoot: string): string {
+  // If it's an absolute URL (http/https), use as-is
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+
+  // For relative paths starting with /, resolve from workspace root
+  // The webview needs a vscode-resource URL, but we'll handle that in the manager
+  // For now, return a placeholder that will be replaced
+  return `vscode-resource-placeholder:${url}`;
+}
