@@ -10,6 +10,7 @@ import { getWriterViewScript } from '../script';
 import { renderAttributesTable } from './attributesRenderer';
 import { renderContentSections } from './contentRenderer';
 import { renderImagesGallery, renderImagesFullGallery, renderImageModal } from './imagesRenderer';
+import { renderImageBrowserModal } from './imageBrowserRenderer';
 import { buildToolbarHtml, getToolbarContextFromField } from '../toolbar';
 
 export interface WebviewHtmlOptions {
@@ -225,6 +226,7 @@ ${getWriterViewStyles()}
   </div>
 
   ${renderImageModal()}
+  ${renderImageBrowserModal()}
 
   <script nonce="${nonce}">
 ${getWriterViewScript(node, initialField)}
