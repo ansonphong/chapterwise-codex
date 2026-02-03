@@ -73,6 +73,7 @@ export function renderImageModal(): string {
         <div class="modal-caption-container">
           <label for="modalCaption">Caption:</label>
           <input type="text" id="modalCaption" class="modal-caption-input" placeholder="Add a caption..." />
+          <button class="modal-delete-btn" id="modalDelete" title="Delete image">🗑</button>
         </div>
         <button class="modal-nav modal-prev" id="modalPrev" title="Previous (←)">‹</button>
         <button class="modal-nav modal-next" id="modalNext" title="Next (→)">›</button>

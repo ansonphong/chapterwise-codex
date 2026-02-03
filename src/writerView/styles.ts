@@ -1340,6 +1340,23 @@ export function getWriterViewStyles(): string {
       color: rgba(255, 255, 255, 0.4);
     }
 
+    .modal-delete-btn {
+      padding: 8px 12px;
+      background: rgba(255, 100, 100, 0.2);
+      border: 1px solid rgba(255, 100, 100, 0.4);
+      border-radius: 4px;
+      color: #ff6b6b;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      flex-shrink: 0;
+    }
+
+    .modal-delete-btn:hover {
+      background: rgba(255, 100, 100, 0.3);
+      border-color: rgba(255, 100, 100, 0.6);
+    }
+
     .modal-nav {
       position: absolute;
       top: 50%;

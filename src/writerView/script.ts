@@ -1178,6 +1178,16 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
             closeBrowserModal();
           }
           break;
+
+        case 'imageDeleted':
+          // Remove from local array
+          const deleteIndex = message.index;
+          if (deleteIndex >= 0 && deleteIndex < localImages.length) {
+            localImages.splice(deleteIndex, 1);
+            updateImagesGallery();
+            closeImageModal();
+          }
+          break;
       }
     });
 
@@ -1302,6 +1312,26 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
             caption: newCaption
           });
         }
+      });
+    }
+
+    // Delete image button
+    const modalDelete = document.getElementById('modalDelete');
+    if (modalDelete) {
+      modalDelete.addEventListener('click', () => {
+        const img = localImages[currentModalIndex];
+        if (!img) return;
+
+        // Confirm deletion
+        const confirmed = confirm('Delete this image reference?\\n\\nNote: The image file will NOT be deleted from disk.');
+        if (!confirmed) return;
+
+        // Send delete message
+        vscode.postMessage({
+          type: 'deleteImage',
+          url: img.url,
+          index: currentModalIndex
+        });
       });
     }
 
