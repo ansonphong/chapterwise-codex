@@ -616,6 +616,16 @@
           "default": true,
           "description": "Show inherited colors with reduced opacity"
         },
+        "chapterwiseCodex.images.organization": {
+          "type": "string",
+          "enum": ["perNode", "sharedWithNodeFolders"],
+          "enumDescriptions": [
+            "Images folder next to codex file (e.g., /characters/aya/images/portrait.png)",
+            "Shared images folder with node subfolders (e.g., /characters/images/aya/portrait.png)"
+          ],
+          "default": "sharedWithNodeFolders",
+          "description": "How imported images are organized in the workspace"
+        },
         "chapterwiseCodex.writerView.theme": {
           "type": "string",
           "enum": ["light", "dark", "system", "theme"],
