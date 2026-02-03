@@ -1058,6 +1058,182 @@ export class WriterViewManager {
             }
             break;
           }
+
+          case 'openImageBrowser': {
+            // Scan workspace for images
+            const allImages = await this.scanWorkspaceImages(workspaceRoot);
+
+            // Resolve URLs for webview display
+            const imagesForBrowser = allImages.map(img => ({
+              path: img.relativePath,
+              thumbnail: this.resolveImageUrlForWebview(panel.webview, img.relativePath, workspaceRoot),
+              filename: path.basename(img.relativePath),
+              folder: path.dirname(img.relativePath).substring(1) || '/'
+            }));
+
+            panel.webview.postMessage({
+              type: 'workspaceImages',
+              images: imagesForBrowser
+            });
+            break;
+          }
+
+          case 'addExistingImage': {
+            const { imagePath } = message;
+
+            try {
+              await this.addImagesToNode(documentUri, node, [{
+                url: imagePath,
+                caption: '',
+                featured: !node.images || node.images.length === 0
+              }]);
+
+              // Re-read node to get updated images
+              const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
+              const parsedDoc = isMarkdownFile(documentUri.fsPath)
+                ? parseMarkdownAsCodex(text, documentUri.fsPath)
+                : parseCodex(text);
+
+              if (parsedDoc) {
+                const updatedNode = parsedDoc.allNodes.find(n => n.id === node.id);
+                if (updatedNode && updatedNode.images) {
+                  const newImage = updatedNode.images[updatedNode.images.length - 1];
+                  panel.webview.postMessage({
+                    type: 'imageAdded',
+                    image: {
+                      ...newImage,
+                      url: this.resolveImageUrlForWebview(panel.webview, newImage.url, workspaceRoot)
+                    }
+                  });
+                }
+              }
+            } catch (error) {
+              vscode.window.showErrorMessage(`Failed to add image: ${error}`);
+            }
+            break;
+          }
+
+          case 'importImage': {
+            const result = await vscode.window.showOpenDialog({
+              canSelectMany: true,
+              filters: {
+                'Images': ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']
+              },
+              title: 'Select Images to Add'
+            });
+
+            if (result && result.length > 0) {
+              try {
+                const addedImages = await this.importImages(result, documentUri, node, workspaceRoot);
+
+                // Resolve URLs for the added images
+                const resolvedImages = addedImages.map(img => ({
+                  ...img,
+                  url: this.resolveImageUrlForWebview(panel.webview, img.url, workspaceRoot)
+                }));
+
+                panel.webview.postMessage({
+                  type: 'imagesAdded',
+                  images: resolvedImages
+                });
+              } catch (error) {
+                vscode.window.showErrorMessage(`Failed to import images: ${error}`);
+              }
+            }
+            break;
+          }
+
+          case 'deleteImage': {
+            const { url, index } = message;
+
+            try {
+              const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
+              const doc = YAML.parseDocument(text);
+
+              const targetNode = this.findNodeInYamlDoc(doc, node);
+              if (!targetNode) {
+                vscode.window.showErrorMessage('Could not find node in document');
+                return;
+              }
+
+              const images = targetNode.get('images');
+              if (!images || !YAML.isSeq(images)) {
+                return;
+              }
+
+              // Find and remove image by URL
+              const items = (images as YAML.YAMLSeq).items;
+              for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (YAML.isMap(item)) {
+                  const itemUrl = item.get('url');
+                  if (itemUrl === url) {
+                    (images as YAML.YAMLSeq).delete(i);
+                    break;
+                  }
+                }
+              }
+
+              // If no images left, remove the images key
+              if ((images as YAML.YAMLSeq).items.length === 0) {
+                targetNode.delete('images');
+              }
+
+              fs.writeFileSync(documentUri.fsPath, doc.toString());
+
+              panel.webview.postMessage({ type: 'imageDeleted', url, index });
+            } catch (error) {
+              vscode.window.showErrorMessage(`Failed to delete image: ${error}`);
+            }
+            break;
+          }
+
+          case 'reorderImages': {
+            const { order } = message; // Array of URLs in new order
+
+            try {
+              const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
+              const doc = YAML.parseDocument(text);
+
+              const targetNode = this.findNodeInYamlDoc(doc, node);
+              if (!targetNode) {
+                vscode.window.showErrorMessage('Could not find node in document');
+                return;
+              }
+
+              const images = targetNode.get('images');
+              if (!images || !YAML.isSeq(images)) {
+                return;
+              }
+
+              // Create a map of URL to image node
+              const imageMap = new Map<string, YAML.Node>();
+              for (const item of (images as YAML.YAMLSeq).items) {
+                if (YAML.isMap(item)) {
+                  const url = item.get('url') as string;
+                  if (url) {
+                    imageMap.set(url, item);
+                  }
+                }
+              }
+
+              // Clear and rebuild in new order
+              (images as YAML.YAMLSeq).items = [];
+              for (const url of order) {
+                const imgNode = imageMap.get(url);
+                if (imgNode) {
+                  (images as YAML.YAMLSeq).add(imgNode);
+                }
+              }
+
+              fs.writeFileSync(documentUri.fsPath, doc.toString());
+
+              panel.webview.postMessage({ type: 'imagesReordered' });
+            } catch (error) {
+              vscode.window.showErrorMessage(`Failed to reorder images: ${error}`);
+            }
+            break;
+          }
         }
       },
       undefined,
