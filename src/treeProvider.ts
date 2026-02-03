@@ -360,7 +360,7 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
 
       // Try ID first (for specific modules), then type
       const key = this.indexNode.id?.toLowerCase() || this.indexNode.type?.toLowerCase() || 'module';
-      const config = entityIconMap[key] || entityIconMap.module;
+      const config = nodeIconMap[key] || nodeIconMap.module;
       return new vscode.ThemeIcon(config[0], new vscode.ThemeColor(config[1]));
     }
 
