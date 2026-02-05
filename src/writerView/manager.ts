@@ -541,24 +541,9 @@ export class WriterViewManager {
             break;
           }
 
-          case 'openImageBrowser': {
-            // Scan workspace for images
-            const allImages = await this.scanWorkspaceImages(workspaceRoot);
-
-            // Resolve URLs for webview display
-            const imagesForBrowser = allImages.map(img => ({
-              path: img.relativePath,
-              thumbnail: this.resolveImageUrlForWebview(panel.webview, img.relativePath, workspaceRoot),
-              filename: path.basename(img.relativePath),
-              folder: path.dirname(img.relativePath).substring(1) || '/'
-            }));
-
-            panel.webview.postMessage({
-              type: 'workspaceImages',
-              images: imagesForBrowser
-            });
+          case 'openImageBrowser':
+            await this.handleOpenImageBrowser(panel, workspaceRoot);
             break;
-          }
 
           case 'addExistingImage': {
             const { imagePath } = message;
@@ -1059,24 +1044,9 @@ export class WriterViewManager {
             break;
           }
 
-          case 'openImageBrowser': {
-            // Scan workspace for images
-            const allImages = await this.scanWorkspaceImages(workspaceRoot);
-
-            // Resolve URLs for webview display
-            const imagesForBrowser = allImages.map(img => ({
-              path: img.relativePath,
-              thumbnail: this.resolveImageUrlForWebview(panel.webview, img.relativePath, workspaceRoot),
-              filename: path.basename(img.relativePath),
-              folder: path.dirname(img.relativePath).substring(1) || '/'
-            }));
-
-            panel.webview.postMessage({
-              type: 'workspaceImages',
-              images: imagesForBrowser
-            });
+          case 'openImageBrowser':
+            await this.handleOpenImageBrowser(panel, workspaceRoot);
             break;
-          }
 
           case 'addExistingImage': {
             const { imagePath } = message;
@@ -1687,6 +1657,28 @@ export class WriterViewManager {
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to add field: ${error}`);
     }
+  }
+
+  /**
+   * Handle openImageBrowser message from webview
+   */
+  private async handleOpenImageBrowser(
+    panel: vscode.WebviewPanel,
+    workspaceRoot: string
+  ): Promise<void> {
+    const allImages = await this.scanWorkspaceImages(workspaceRoot);
+
+    const imagesForBrowser = allImages.map(img => ({
+      path: img.relativePath,
+      thumbnail: this.resolveImageUrlForWebview(panel.webview, img.relativePath, workspaceRoot),
+      filename: path.basename(img.relativePath),
+      folder: path.dirname(img.relativePath).substring(1) || '/'
+    }));
+
+    panel.webview.postMessage({
+      type: 'workspaceImages',
+      images: imagesForBrowser
+    });
   }
 
   /**
