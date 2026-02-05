@@ -553,50 +553,9 @@ export class WriterViewManager {
             await this.handleImportImage(panel, documentUri, node, workspaceRoot);
             break;
 
-          case 'deleteImage': {
-            const { url, index } = message;
-
-            try {
-              const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
-              const doc = YAML.parseDocument(text);
-
-              const targetNode = this.findNodeInYamlDoc(doc, node);
-              if (!targetNode) {
-                vscode.window.showErrorMessage('Could not find node in document');
-                return;
-              }
-
-              const images = targetNode.get('images');
-              if (!images || !YAML.isSeq(images)) {
-                return;
-              }
-
-              // Find and remove image by URL
-              const items = (images as YAML.YAMLSeq).items;
-              for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                if (YAML.isMap(item)) {
-                  const itemUrl = item.get('url');
-                  if (itemUrl === url) {
-                    (images as YAML.YAMLSeq).delete(i);
-                    break;
-                  }
-                }
-              }
-
-              // If no images left, remove the images key
-              if ((images as YAML.YAMLSeq).items.length === 0) {
-                targetNode.delete('images');
-              }
-
-              fs.writeFileSync(documentUri.fsPath, doc.toString());
-
-              panel.webview.postMessage({ type: 'imageDeleted', url, index });
-            } catch (error) {
-              vscode.window.showErrorMessage(`Failed to delete image: ${error}`);
-            }
+          case 'deleteImage':
+            await this.handleDeleteImage(panel, documentUri, node, message.url, message.index);
             break;
-          }
 
           case 'reorderImages': {
             const { order } = message; // Array of URLs in new order
@@ -999,50 +958,9 @@ export class WriterViewManager {
             await this.handleImportImage(panel, documentUri, node, workspaceRoot);
             break;
 
-          case 'deleteImage': {
-            const { url, index } = message;
-
-            try {
-              const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
-              const doc = YAML.parseDocument(text);
-
-              const targetNode = this.findNodeInYamlDoc(doc, node);
-              if (!targetNode) {
-                vscode.window.showErrorMessage('Could not find node in document');
-                return;
-              }
-
-              const images = targetNode.get('images');
-              if (!images || !YAML.isSeq(images)) {
-                return;
-              }
-
-              // Find and remove image by URL
-              const items = (images as YAML.YAMLSeq).items;
-              for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                if (YAML.isMap(item)) {
-                  const itemUrl = item.get('url');
-                  if (itemUrl === url) {
-                    (images as YAML.YAMLSeq).delete(i);
-                    break;
-                  }
-                }
-              }
-
-              // If no images left, remove the images key
-              if ((images as YAML.YAMLSeq).items.length === 0) {
-                targetNode.delete('images');
-              }
-
-              fs.writeFileSync(documentUri.fsPath, doc.toString());
-
-              panel.webview.postMessage({ type: 'imageDeleted', url, index });
-            } catch (error) {
-              vscode.window.showErrorMessage(`Failed to delete image: ${error}`);
-            }
+          case 'deleteImage':
+            await this.handleDeleteImage(panel, documentUri, node, message.url, message.index);
             break;
-          }
 
           case 'reorderImages': {
             const { order } = message; // Array of URLs in new order
@@ -1641,6 +1559,57 @@ export class WriterViewManager {
       } catch (error) {
         vscode.window.showErrorMessage(`Failed to import images: ${error}`);
       }
+    }
+  }
+
+  /**
+   * Handle deleteImage message from webview
+   */
+  private async handleDeleteImage(
+    panel: vscode.WebviewPanel,
+    documentUri: vscode.Uri,
+    node: CodexNode,
+    url: string,
+    index: number
+  ): Promise<void> {
+    try {
+      const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
+      const doc = YAML.parseDocument(text);
+
+      const targetNode = this.findNodeInYamlDoc(doc, node);
+      if (!targetNode) {
+        vscode.window.showErrorMessage('Could not find node in document');
+        return;
+      }
+
+      const images = targetNode.get('images');
+      if (!images || !YAML.isSeq(images)) {
+        return;
+      }
+
+      // Find and remove image by URL
+      const items = (images as YAML.YAMLSeq).items;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (YAML.isMap(item)) {
+          const itemUrl = item.get('url');
+          if (itemUrl === url) {
+            (images as YAML.YAMLSeq).delete(i);
+            break;
+          }
+        }
+      }
+
+      // If no images left, remove the images key
+      if ((images as YAML.YAMLSeq).items.length === 0) {
+        targetNode.delete('images');
+      }
+
+      fs.writeFileSync(documentUri.fsPath, doc.toString());
+
+      panel.webview.postMessage({ type: 'imageDeleted', url, index });
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to delete image: ${error}`);
     }
   }
 
