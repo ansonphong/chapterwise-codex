@@ -366,8 +366,19 @@ export class CodexExploder {
    * Sanitize a name for use as a filename
    */
   private sanitizeFilename(name: string): string {
+    // === SECURITY: Handle special directory patterns ===
+    if (name === '.' || name === '..') {
+      return 'untitled';
+    }
+
+    // === SECURITY: Remove leading dots (hidden files) ===
+    let safeName = name.startsWith('.') ? name.substring(1) : name;
+
     // Remove or replace invalid filename characters
-    let safeName = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '');
+    safeName = safeName.replace(/[<>:"/\\|?*\x00-\x1f]/g, '');
+
+    // === SECURITY: Remove path traversal sequences after character replacement ===
+    safeName = safeName.replace(/\.{2,}/g, '.');
 
     // Replace multiple spaces with single space
     safeName = safeName.replace(/\s+/g, ' ');
