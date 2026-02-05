@@ -1438,6 +1438,7 @@ export class WriterViewManager {
       }
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to add image: ${error}`);
+      panel.webview.postMessage({ type: 'imageAddError', message: 'Failed to add image' });
     }
   }
 
@@ -1473,6 +1474,7 @@ export class WriterViewManager {
         });
       } catch (error) {
         vscode.window.showErrorMessage(`Failed to import images: ${error}`);
+        panel.webview.postMessage({ type: 'imageImportError', message: 'Failed to import images' });
       }
     }
   }
@@ -1525,6 +1527,7 @@ export class WriterViewManager {
       panel.webview.postMessage({ type: 'imageDeleted', url, index });
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to delete image: ${error}`);
+      panel.webview.postMessage({ type: 'imageDeleteError', message: 'Failed to delete image' });
     }
   }
 
@@ -1577,6 +1580,7 @@ export class WriterViewManager {
       panel.webview.postMessage({ type: 'imagesReordered' });
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to reorder images: ${error}`);
+      panel.webview.postMessage({ type: 'imageReorderError', message: 'Failed to reorder images' });
     }
   }
 

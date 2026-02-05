@@ -16,6 +16,21 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     const nodeNameDisplay = document.getElementById('nodeName');
     const nodeNameEdit = document.getElementById('nodeNameEdit');
 
+    // Toast notification function
+    function showToast(message, type = 'info') {
+      const existing = document.querySelector('.toast');
+      if (existing) existing.remove();
+
+      const toast = document.createElement('div');
+      toast.className = 'toast ' + type;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+
+      setTimeout(() => {
+        toast.remove();
+      }, 3000);
+    }
+
     // Overview mode prose editors
     const summaryEditorContent = document.getElementById('summaryEditorContent');
     const bodyEditorContent = document.getElementById('bodyEditorContent');
@@ -1197,6 +1212,13 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
           // Order saved successfully
           imagesDirty = false;
           checkAllClean();
+          break;
+
+        case 'imageAddError':
+        case 'imageImportError':
+        case 'imageDeleteError':
+        case 'imageReorderError':
+          showToast(message.message, 'error');
           break;
       }
     });

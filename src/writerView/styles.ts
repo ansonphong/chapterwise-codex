@@ -1444,6 +1444,41 @@ export function getWriterViewStyles(): string {
       outline-offset: 2px;
     }
 
+    /* === TOAST NOTIFICATIONS === */
+
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #333;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      z-index: 1003;
+      animation: toast-in 0.3s ease;
+    }
+
+    .toast.error {
+      background: #c62828;
+    }
+
+    .toast.success {
+      background: #2e7d32;
+    }
+
+    @keyframes toast-in {
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+    }
+
     .modal-nav {
       position: absolute;
       top: 50%;
