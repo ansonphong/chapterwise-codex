@@ -1698,6 +1698,10 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
           draggedIndex = null;
           // Remove all drag-over states
           document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+          // Clean up indicators
+          document.querySelectorAll('.drag-over-left, .drag-over-right').forEach(el => {
+            el.classList.remove('drag-over-left', 'drag-over-right');
+          });
         });
 
         thumb.addEventListener('dragover', (e) => {
@@ -1713,6 +1717,10 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
         thumb.addEventListener('drop', (e) => {
           e.preventDefault();
           thumb.classList.remove('drag-over');
+          // Clean up indicators
+          document.querySelectorAll('.drag-over-left, .drag-over-right').forEach(el => {
+            el.classList.remove('drag-over-left', 'drag-over-right');
+          });
 
           const dropIndex = index;
           if (draggedIndex !== null && draggedIndex !== dropIndex) {
@@ -1733,6 +1741,27 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
 
     // Initial drag handler setup
     initDragHandlers();
+
+    // Document-level dragover for drop indicator
+    document.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const thumbnail = (e.target as HTMLElement).closest('.image-thumbnail, .gallery-item') as HTMLElement;
+
+      // Remove previous indicators
+      document.querySelectorAll('.drag-over-left, .drag-over-right').forEach(el => {
+        el.classList.remove('drag-over-left', 'drag-over-right');
+      });
+
+      if (thumbnail && !thumbnail.classList.contains('dragging')) {
+        const rect = thumbnail.getBoundingClientRect();
+        const midpoint = rect.left + rect.width / 2;
+        if (e.clientX < midpoint) {
+          thumbnail.classList.add('drag-over-left');
+        } else {
+          thumbnail.classList.add('drag-over-right');
+        }
+      }
+    });
 
     // Check if all saves are complete
     function checkAllClean() {

@@ -1879,6 +1879,30 @@ export function getWriterViewStyles(): string {
       transform: scale(1.02);
     }
 
+    .image-thumbnail.drag-over-left::before,
+    .gallery-item.drag-over-left::before {
+      content: '';
+      position: absolute;
+      left: -4px;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    .image-thumbnail.drag-over-right::after,
+    .gallery-item.drag-over-right::after {
+      content: '';
+      position: absolute;
+      right: -4px;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
     /* === CONTEXT TOOLBAR STYLES === */
     ${getToolbarStyles()}
   `;
