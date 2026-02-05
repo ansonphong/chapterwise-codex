@@ -232,8 +232,8 @@ function searchContent(query: ParsedQuery, index: SearchIndex): SearchResult[] {
       for (const token of entry.tokens) {
         if (fuzzyMatch(term, token)) {
           matches = true;
-          score = scoreDocument(entry.id, [term], index, entry.length);
-          break;
+          score += scoreDocument(entry.id, [term], index, entry.length);
+          break; // Break inner loop to avoid counting same term multiple times
         }
       }
     }
