@@ -380,15 +380,15 @@ export class NavigatorSettingsManager {
     
     // Extract each setting, preserving structure
     if (raw.defaultChildMode) {
-      settings.defaultChildMode = raw.defaultChildMode;
+      settings.defaultChildMode = validateChildMode(raw.defaultChildMode);
     }
     
     if (raw.fileOrganization) {
       settings.fileOrganization = {
-        strategy: raw.fileOrganization.strategy || 'organized',
-        dataFolderPath: raw.fileOrganization.dataFolderPath || 'Files/Data',
-        useUuidFilenames: raw.fileOrganization.useUuidFilenames !== undefined 
-          ? raw.fileOrganization.useUuidFilenames 
+        strategy: validateStrategy(raw.fileOrganization.strategy),
+        dataFolderPath: validateDataFolderPath(raw.fileOrganization.dataFolderPath),
+        useUuidFilenames: raw.fileOrganization.useUuidFilenames !== undefined
+          ? raw.fileOrganization.useUuidFilenames
           : false
       };
     }
@@ -397,7 +397,7 @@ export class NavigatorSettingsManager {
       settings.naming = {
         slugify: raw.naming.slugify !== undefined ? raw.naming.slugify : true,
         preserveCase: raw.naming.preserveCase !== undefined ? raw.naming.preserveCase : false,
-        separator: raw.naming.separator || '-',
+        separator: validateSeparator(raw.naming.separator),
         includeType: raw.naming.includeType !== undefined ? raw.naming.includeType : false,
         includeParent: raw.naming.includeParent !== undefined ? raw.naming.includeParent : false
       };
@@ -406,7 +406,7 @@ export class NavigatorSettingsManager {
     if (raw.includes) {
       settings.includes = {
         preferRelative: raw.includes.preferRelative !== undefined ? raw.includes.preferRelative : true,
-        format: raw.includes.format || 'string'
+        format: validateFormat(raw.includes.format)
       };
     }
     
