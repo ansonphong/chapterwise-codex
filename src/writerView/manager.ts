@@ -1418,7 +1418,7 @@ export class WriterViewManager {
       }]);
 
       // Re-read node to get updated images
-      const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
+      const text = await fsPromises.readFile(documentUri.fsPath, 'utf-8');
       const parsedDoc = isMarkdownFile(documentUri.fsPath)
         ? parseMarkdownAsCodex(text, documentUri.fsPath)
         : parseCodex(text);
@@ -1488,7 +1488,7 @@ export class WriterViewManager {
     index: number
   ): Promise<void> {
     try {
-      const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
+      const text = await fsPromises.readFile(documentUri.fsPath, 'utf-8');
       const doc = YAML.parseDocument(text);
 
       const targetNode = this.findNodeInYamlDoc(doc, node);
@@ -1520,7 +1520,7 @@ export class WriterViewManager {
         targetNode.delete('images');
       }
 
-      fs.writeFileSync(documentUri.fsPath, doc.toString());
+      await fsPromises.writeFile(documentUri.fsPath, doc.toString());
 
       panel.webview.postMessage({ type: 'imageDeleted', url, index });
     } catch (error) {
@@ -1538,7 +1538,7 @@ export class WriterViewManager {
     order: string[]
   ): Promise<void> {
     try {
-      const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
+      const text = await fsPromises.readFile(documentUri.fsPath, 'utf-8');
       const doc = YAML.parseDocument(text);
 
       const targetNode = this.findNodeInYamlDoc(doc, node);
@@ -1572,7 +1572,7 @@ export class WriterViewManager {
         }
       }
 
-      fs.writeFileSync(documentUri.fsPath, doc.toString());
+      await fsPromises.writeFile(documentUri.fsPath, doc.toString());
 
       panel.webview.postMessage({ type: 'imagesReordered' });
     } catch (error) {
@@ -1748,7 +1748,7 @@ export class WriterViewManager {
     node: CodexNode,
     newImages: CodexImage[]
   ): Promise<void> {
-    const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
+    const text = await fsPromises.readFile(documentUri.fsPath, 'utf-8');
     const doc = YAML.parseDocument(text);
 
     // Find the node in the document
@@ -1776,7 +1776,7 @@ export class WriterViewManager {
     }
 
     // Write back
-    fs.writeFileSync(documentUri.fsPath, doc.toString());
+    await fsPromises.writeFile(documentUri.fsPath, doc.toString());
   }
 
   /**
