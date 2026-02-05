@@ -8,6 +8,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { CodexNode, CodexDocument, parseCodex, parseMarkdownAsCodex, isCodexFile, isCodexLikeFile, isMarkdownFile } from './codexModel';
 import { parseIndexFile, parseIndexFileJSON, isIndexFile, IndexDocument, IndexChildNode, getEffectiveEmoji, countFilesInIndex } from './indexParser';
+import { getSearchIndexManager } from './extension';
 
 /**
  * Helper to log to the output channel
@@ -841,6 +842,14 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       this.isLoading = false;
       this.loadingMessage = null;
       this.refresh();
+    }
+
+    // Initialize search index for new context
+    if (folderPath) {
+      const searchManager = getSearchIndexManager();
+      if (searchManager) {
+        searchManager.initializeForContext(folderPath, workspaceRoot);
+      }
     }
   }
 
