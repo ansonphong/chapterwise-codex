@@ -545,40 +545,9 @@ export class WriterViewManager {
             await this.handleOpenImageBrowser(panel, workspaceRoot);
             break;
 
-          case 'addExistingImage': {
-            const { imagePath } = message;
-
-            try {
-              await this.addImagesToNode(documentUri, node, [{
-                url: imagePath,
-                caption: '',
-                featured: !node.images || node.images.length === 0
-              }]);
-
-              // Re-read node to get updated images
-              const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
-              const parsedDoc = isMarkdownFile(documentUri.fsPath)
-                ? parseMarkdownAsCodex(text, documentUri.fsPath)
-                : parseCodex(text);
-
-              if (parsedDoc) {
-                const updatedNode = parsedDoc.allNodes.find(n => n.id === node.id);
-                if (updatedNode && updatedNode.images) {
-                  const newImage = updatedNode.images[updatedNode.images.length - 1];
-                  panel.webview.postMessage({
-                    type: 'imageAdded',
-                    image: {
-                      ...newImage,
-                      url: this.resolveImageUrlForWebview(panel.webview, newImage.url, workspaceRoot)
-                    }
-                  });
-                }
-              }
-            } catch (error) {
-              vscode.window.showErrorMessage(`Failed to add image: ${error}`);
-            }
+          case 'addExistingImage':
+            await this.handleAddExistingImage(panel, documentUri, node, workspaceRoot, message.imagePath);
             break;
-          }
 
           case 'importImage': {
             const result = await vscode.window.showOpenDialog({
@@ -1048,40 +1017,9 @@ export class WriterViewManager {
             await this.handleOpenImageBrowser(panel, workspaceRoot);
             break;
 
-          case 'addExistingImage': {
-            const { imagePath } = message;
-
-            try {
-              await this.addImagesToNode(documentUri, node, [{
-                url: imagePath,
-                caption: '',
-                featured: !node.images || node.images.length === 0
-              }]);
-
-              // Re-read node to get updated images
-              const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
-              const parsedDoc = isMarkdownFile(documentUri.fsPath)
-                ? parseMarkdownAsCodex(text, documentUri.fsPath)
-                : parseCodex(text);
-
-              if (parsedDoc) {
-                const updatedNode = parsedDoc.allNodes.find(n => n.id === node.id);
-                if (updatedNode && updatedNode.images) {
-                  const newImage = updatedNode.images[updatedNode.images.length - 1];
-                  panel.webview.postMessage({
-                    type: 'imageAdded',
-                    image: {
-                      ...newImage,
-                      url: this.resolveImageUrlForWebview(panel.webview, newImage.url, workspaceRoot)
-                    }
-                  });
-                }
-              }
-            } catch (error) {
-              vscode.window.showErrorMessage(`Failed to add image: ${error}`);
-            }
+          case 'addExistingImage':
+            await this.handleAddExistingImage(panel, documentUri, node, workspaceRoot, message.imagePath);
             break;
-          }
 
           case 'importImage': {
             const result = await vscode.window.showOpenDialog({
@@ -1679,6 +1617,47 @@ export class WriterViewManager {
       type: 'workspaceImages',
       images: imagesForBrowser
     });
+  }
+
+  /**
+   * Handle addExistingImage message from webview
+   */
+  private async handleAddExistingImage(
+    panel: vscode.WebviewPanel,
+    documentUri: vscode.Uri,
+    node: CodexNode,
+    workspaceRoot: string,
+    imagePath: string
+  ): Promise<void> {
+    try {
+      await this.addImagesToNode(documentUri, node, [{
+        url: imagePath,
+        caption: '',
+        featured: !node.images || node.images.length === 0
+      }]);
+
+      // Re-read node to get updated images
+      const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
+      const parsedDoc = isMarkdownFile(documentUri.fsPath)
+        ? parseMarkdownAsCodex(text, documentUri.fsPath)
+        : parseCodex(text);
+
+      if (parsedDoc) {
+        const updatedNode = parsedDoc.allNodes.find(n => n.id === node.id);
+        if (updatedNode && updatedNode.images) {
+          const newImage = updatedNode.images[updatedNode.images.length - 1];
+          panel.webview.postMessage({
+            type: 'imageAdded',
+            image: {
+              ...newImage,
+              url: this.resolveImageUrlForWebview(panel.webview, newImage.url, workspaceRoot)
+            }
+          });
+        }
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to add image: ${error}`);
+    }
   }
 
   /**
