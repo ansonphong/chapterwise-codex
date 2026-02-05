@@ -38,3 +38,9 @@ export {
   getDepthBoost,
   getFieldBoost
 } from './scoring';
+
+// Search Engine
+export {
+  SearchOptions,
+  executeSearch
+} from './searchEngine';
