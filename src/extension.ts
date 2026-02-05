@@ -187,30 +187,35 @@ export function activate(context: vscode.ExtensionContext): void {
     });
     outputChannel.appendLine('Tree expansion state handlers registered');
 
-    // Create multi-index manager
-    multiIndexManager = new MultiIndexManager(context);
+    // Create multi-index manager (non-critical - continue if fails)
+    try {
+      multiIndexManager = new MultiIndexManager(context);
 
-    // Create master index tree provider
-    masterTreeProvider = new MasterIndexTreeProvider();
-    const masterView = vscode.window.createTreeView('chapterwiseCodexMaster', {
-      treeDataProvider: masterTreeProvider,
-      showCollapseAll: true
-    });
-    context.subscriptions.push(masterView);
-
-    // Create sub-index tree providers (8 slots)
-    for (let i = 0; i < 8; i++) {
-      const provider = new SubIndexTreeProvider(`chapterwiseCodexIndex${i}`);
-      subIndexProviders.push(provider);
-
-      const view = vscode.window.createTreeView(`chapterwiseCodexIndex${i}`, {
-        treeDataProvider: provider,
+      // Create master index tree provider
+      masterTreeProvider = new MasterIndexTreeProvider();
+      const masterView = vscode.window.createTreeView('chapterwiseCodexMaster', {
+        treeDataProvider: masterTreeProvider,
         showCollapseAll: true
       });
-      subIndexViews.push(view);
-      context.subscriptions.push(view);
+      context.subscriptions.push(masterView);
+
+      // Create sub-index tree providers (8 slots)
+      for (let i = 0; i < 8; i++) {
+        const provider = new SubIndexTreeProvider(`chapterwiseCodexIndex${i}`);
+        subIndexProviders.push(provider);
+
+        const view = vscode.window.createTreeView(`chapterwiseCodexIndex${i}`, {
+          treeDataProvider: provider,
+          showCollapseAll: true
+        });
+        subIndexViews.push(view);
+        context.subscriptions.push(view);
+      }
+      outputChannel.appendLine('Multi-index tree views created');
+    } catch (error) {
+      outputChannel.appendLine(`[WARNING] Multi-index initialization failed (non-critical): ${error}`);
+      console.warn('Multi-index initialization failed:', error);
     }
-    outputChannel.appendLine('Multi-index tree views created');
 
     // Initialize Writer View manager
     writerViewManager = new WriterViewManager(context);
@@ -240,25 +245,29 @@ export function activate(context: vscode.ExtensionContext): void {
     registerScrivenerImport(context);
     outputChannel.appendLine('Scrivener import command registered');
 
-    // Initialize search status bar
-    initializeSearchStatusBar(context);
-    outputChannel.appendLine('Search status bar initialized');
+    // Initialize search (non-critical - continue if fails)
+    try {
+      initializeSearchStatusBar(context);
+      outputChannel.appendLine('Search status bar initialized');
 
-    // Initialize search index manager
-    searchIndexManager = new SearchIndexManager();
+      searchIndexManager = new SearchIndexManager();
 
-    searchIndexManager.onBuildProgress(progress => {
-      updateSearchStatusBar('building', progress);
-    });
+      searchIndexManager.onBuildProgress(progress => {
+        updateSearchStatusBar('building', progress);
+      });
 
-    searchIndexManager.onIndexReady(index => {
-      updateSearchStatusBar('ready');
-    });
+      searchIndexManager.onIndexReady(index => {
+        updateSearchStatusBar('ready');
+      });
 
-    context.subscriptions.push({
-      dispose: () => searchIndexManager?.dispose()
-    });
-    outputChannel.appendLine('Search index manager initialized');
+      context.subscriptions.push({
+        dispose: () => searchIndexManager?.dispose()
+      });
+      outputChannel.appendLine('Search index manager initialized');
+    } catch (error) {
+      outputChannel.appendLine(`[WARNING] Search initialization failed (non-critical): ${error}`);
+      console.warn('Search initialization failed:', error);
+    }
 
     // Search command
     context.subscriptions.push(
