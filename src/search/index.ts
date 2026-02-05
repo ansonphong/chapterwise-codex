@@ -13,3 +13,11 @@ export {
   SearchResult,
   createEmptyIndex
 } from './searchIndex';
+
+// Tokenizer
+export {
+  tokenize,
+  levenshteinDistance,
+  fuzzyMatch,
+  escapeRegex
+} from './tokenizer';
