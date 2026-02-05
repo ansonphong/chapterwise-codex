@@ -4,6 +4,7 @@
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 const fsPromises = fs.promises;
 import * as path from 'path';
 import * as YAML from 'yaml';
@@ -1611,6 +1612,16 @@ export class WriterViewManager {
     }
 
     return YAML.isMap(current) ? current : null;
+  }
+
+  /**
+   * Calculate SHA256 hash of a file
+   */
+  private async calculateFileHash(filePath: string): Promise<string> {
+    const fileBuffer = await fsPromises.readFile(filePath);
+    const hashSum = crypto.createHash('sha256');
+    hashSum.update(fileBuffer);
+    return hashSum.digest('hex');
   }
 
   /**
