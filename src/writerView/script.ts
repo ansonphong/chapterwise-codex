@@ -1188,6 +1188,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
             updateImagesGallery();
             closeBrowserModal();
           }
+          showToast('Image added successfully', 'success');
           break;
 
         case 'imagesAdded':
@@ -1196,6 +1197,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
             updateImagesGallery();
             closeBrowserModal();
           }
+          showToast(\`\${message.images.length} image(s) imported\`, 'success');
           break;
 
         case 'imageDeleted':
@@ -1206,12 +1208,14 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
             updateImagesGallery();
             closeImageModal();
           }
+          showToast('Image removed', 'success');
           break;
 
         case 'imagesReordered':
           // Order saved successfully
           imagesDirty = false;
           checkAllClean();
+          showToast('Images reordered', 'success');
           break;
 
         case 'imageAddError':
