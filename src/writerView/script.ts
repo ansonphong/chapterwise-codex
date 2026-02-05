@@ -1321,23 +1321,69 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       });
     }
 
-    // Delete image button
+    // Custom confirm modal elements
+    const confirmModal = document.getElementById('confirmModal');
+    const confirmBackdrop = document.getElementById('confirmBackdrop');
+    const confirmCancel = document.getElementById('confirmCancel');
+    const confirmOk = document.getElementById('confirmOk');
+    const confirmTitle = document.getElementById('confirmTitle');
+    const confirmMessage = document.getElementById('confirmMessage');
+
+    let pendingDeleteCallback = null;
+
+    function showConfirmModal(title, message, onConfirm) {
+      if (confirmTitle) confirmTitle.textContent = title;
+      if (confirmMessage) confirmMessage.textContent = message;
+      pendingDeleteCallback = onConfirm;
+      if (confirmModal) {
+        confirmModal.style.display = 'flex';
+        // Focus the cancel button for accessibility
+        if (confirmCancel) confirmCancel.focus();
+      }
+    }
+
+    function hideConfirmModal() {
+      if (confirmModal) confirmModal.style.display = 'none';
+      pendingDeleteCallback = null;
+    }
+
+    if (confirmCancel) {
+      confirmCancel.addEventListener('click', hideConfirmModal);
+    }
+    if (confirmBackdrop) {
+      confirmBackdrop.addEventListener('click', hideConfirmModal);
+    }
+    if (confirmOk) {
+      confirmOk.addEventListener('click', () => {
+        if (pendingDeleteCallback) pendingDeleteCallback();
+        hideConfirmModal();
+      });
+    }
+
+    // Escape key closes confirm modal
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && confirmModal && confirmModal.style.display !== 'none') {
+        hideConfirmModal();
+      }
+    });
+
     const modalDelete = document.getElementById('modalDelete');
     if (modalDelete) {
       modalDelete.addEventListener('click', () => {
         const img = localImages[currentModalIndex];
         if (!img) return;
 
-        // Confirm deletion
-        const confirmed = confirm('Delete this image reference?\\n\\nNote: The image file will NOT be deleted from disk.');
-        if (!confirmed) return;
-
-        // Send delete message
-        vscode.postMessage({
-          type: 'deleteImage',
-          url: img.url,
-          index: currentModalIndex
-        });
+        showConfirmModal(
+          'Delete Image',
+          'Delete this image reference? The image file will NOT be deleted from disk.',
+          () => {
+            vscode.postMessage({
+              type: 'deleteImage',
+              url: img.url,
+              index: currentModalIndex
+            });
+          }
+        );
       });
     }
 

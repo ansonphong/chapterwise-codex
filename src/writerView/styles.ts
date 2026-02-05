@@ -1357,6 +1357,81 @@ export function getWriterViewStyles(): string {
       border-color: rgba(255, 100, 100, 0.6);
     }
 
+    /* === CONFIRM MODAL === */
+
+    .confirm-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 1002;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .confirm-content {
+      position: relative;
+      background: var(--bg-primary);
+      border-radius: 8px;
+      padding: 24px;
+      max-width: 400px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      text-align: center;
+    }
+
+    .confirm-content h3 {
+      margin: 0 0 12px 0;
+      color: var(--text-primary);
+      font-size: 1.1rem;
+    }
+
+    .confirm-content p {
+      margin: 0 0 20px 0;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .confirm-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+
+    .confirm-btn {
+      padding: 8px 20px;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .confirm-cancel {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+    }
+
+    .confirm-cancel:hover {
+      background: var(--bg-tertiary, var(--bg-secondary));
+    }
+
+    .confirm-ok {
+      background: #e53935;
+      border: none;
+      color: white;
+    }
+
+    .confirm-ok:hover {
+      background: #c62828;
+    }
+
+    .confirm-btn:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
     .modal-nav {
       position: absolute;
       top: 50%;

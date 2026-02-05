@@ -79,6 +79,17 @@ export function renderImageModal(): string {
         <button class="modal-nav modal-next" id="modalNext" title="Next (→)">›</button>
       </div>
     </div>
+    <div class="confirm-modal" id="confirmModal" style="display: none;">
+      <div class="modal-backdrop" id="confirmBackdrop"></div>
+      <div class="confirm-content" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+        <h3 id="confirmTitle">Confirm</h3>
+        <p id="confirmMessage">Are you sure?</p>
+        <div class="confirm-buttons">
+          <button class="confirm-btn confirm-cancel" id="confirmCancel">Cancel</button>
+          <button class="confirm-btn confirm-ok" id="confirmOk">Delete</button>
+        </div>
+      </div>
+    </div>
   `;
 }
 
