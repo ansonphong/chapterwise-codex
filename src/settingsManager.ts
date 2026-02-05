@@ -14,6 +14,91 @@ import * as fs from 'fs';
 import * as YAML from 'yaml';
 import { CodexDocument } from './codexModel';
 
+// Valid enum values for settings
+const VALID_CHILD_MODES = ['inline', 'separate-file', 'ask'] as const;
+const VALID_STRATEGIES = ['organized', 'data-folder', 'flat'] as const;
+const VALID_FORMATS = ['string', 'object'] as const;
+const VALID_SEPARATORS = ['-', '_', ' ', '.'] as const;
+
+/**
+ * Validate dataFolderPath - prevent path traversal
+ * Rejects: "..", absolute paths, backslashes
+ */
+function validateDataFolderPath(pathValue: string | undefined): string {
+  const defaultPath = 'Files/Data';
+  if (!pathValue || typeof pathValue !== 'string') {
+    return defaultPath;
+  }
+
+  // Reject path traversal attempts
+  if (pathValue.includes('..')) {
+    console.warn(`[Settings] Invalid dataFolderPath contains "..": ${pathValue}, using default`);
+    return defaultPath;
+  }
+
+  // Reject absolute paths (Unix or Windows)
+  if (pathValue.startsWith('/') || /^[A-Za-z]:/.test(pathValue)) {
+    console.warn(`[Settings] Invalid dataFolderPath is absolute: ${pathValue}, using default`);
+    return defaultPath;
+  }
+
+  // Reject backslashes (normalize to forward slashes)
+  if (pathValue.includes('\\')) {
+    console.warn(`[Settings] dataFolderPath contains backslashes, normalizing: ${pathValue}`);
+    pathValue = pathValue.replace(/\\/g, '/');
+  }
+
+  return pathValue;
+}
+
+/**
+ * Validate separator - only allow safe single characters
+ */
+function validateSeparator(sep: string | undefined): string {
+  const defaultSep = '-';
+  if (!sep || typeof sep !== 'string') {
+    return defaultSep;
+  }
+
+  // Only allow single safe characters
+  if (!VALID_SEPARATORS.includes(sep as any)) {
+    console.warn(`[Settings] Invalid separator "${sep}", using default "-"`);
+    return defaultSep;
+  }
+
+  return sep;
+}
+
+/**
+ * Validate defaultChildMode enum
+ */
+function validateChildMode(mode: string | undefined): 'inline' | 'separate-file' | 'ask' {
+  if (mode && VALID_CHILD_MODES.includes(mode as any)) {
+    return mode as 'inline' | 'separate-file' | 'ask';
+  }
+  return 'ask';
+}
+
+/**
+ * Validate strategy enum
+ */
+function validateStrategy(strategy: string | undefined): 'organized' | 'data-folder' | 'flat' {
+  if (strategy && VALID_STRATEGIES.includes(strategy as any)) {
+    return strategy as 'organized' | 'data-folder' | 'flat';
+  }
+  return 'organized';
+}
+
+/**
+ * Validate format enum
+ */
+function validateFormat(format: string | undefined): 'string' | 'object' {
+  if (format && VALID_FORMATS.includes(format as any)) {
+    return format as 'string' | 'object';
+  }
+  return 'string';
+}
+
 /**
  * Navigator settings interface
  */
