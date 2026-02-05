@@ -1220,6 +1220,10 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
         case 'imageReorderError':
           showToast(message.message, 'error');
           break;
+
+        case 'duplicateFound':
+          showDuplicateModal(message.filePath, message.existingPath, message.previewUrl);
+          break;
       }
     });
 
@@ -1402,6 +1406,76 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && confirmModal && confirmModal.style.display !== 'none') {
         hideConfirmModal();
+      }
+    });
+
+    // Duplicate modal elements
+    const duplicateModal = document.getElementById('duplicateModal');
+    const duplicateBackdrop = document.getElementById('duplicateBackdrop');
+    const duplicatePath = document.getElementById('duplicatePath');
+    const duplicatePreview = document.getElementById('duplicatePreview') as HTMLImageElement | null;
+    const duplicateUseExisting = document.getElementById('duplicateUseExisting');
+    const duplicateImportAnyway = document.getElementById('duplicateImportAnyway');
+    const duplicateCancel = document.getElementById('duplicateCancel');
+
+    let pendingDuplicateFile: string | null = null;
+    let pendingDuplicateExistingPath: string | null = null;
+
+    function showDuplicateModal(filePath: string, existingPath: string, previewUrl: string) {
+      if (duplicatePath) duplicatePath.textContent = existingPath;
+      if (duplicatePreview) duplicatePreview.src = previewUrl;
+      pendingDuplicateFile = filePath;
+      pendingDuplicateExistingPath = existingPath;
+      if (duplicateModal) {
+        duplicateModal.style.display = 'flex';
+        if (duplicateUseExisting) duplicateUseExisting.focus();
+      }
+    }
+
+    function hideDuplicateModal() {
+      if (duplicateModal) duplicateModal.style.display = 'none';
+      pendingDuplicateFile = null;
+      pendingDuplicateExistingPath = null;
+    }
+
+    if (duplicateCancel) {
+      duplicateCancel.addEventListener('click', () => {
+        vscode.postMessage({ type: 'duplicateResolved', action: 'cancel' });
+        hideDuplicateModal();
+      });
+    }
+    if (duplicateBackdrop) {
+      duplicateBackdrop.addEventListener('click', () => {
+        vscode.postMessage({ type: 'duplicateResolved', action: 'cancel' });
+        hideDuplicateModal();
+      });
+    }
+    if (duplicateUseExisting) {
+      duplicateUseExisting.addEventListener('click', () => {
+        vscode.postMessage({
+          type: 'duplicateResolved',
+          action: 'useExisting',
+          existingPath: pendingDuplicateExistingPath
+        });
+        hideDuplicateModal();
+      });
+    }
+    if (duplicateImportAnyway) {
+      duplicateImportAnyway.addEventListener('click', () => {
+        vscode.postMessage({
+          type: 'duplicateResolved',
+          action: 'importAnyway',
+          filePath: pendingDuplicateFile
+        });
+        hideDuplicateModal();
+      });
+    }
+
+    // Escape key closes duplicate modal
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && duplicateModal && duplicateModal.style.display !== 'none') {
+        vscode.postMessage({ type: 'duplicateResolved', action: 'cancel' });
+        hideDuplicateModal();
       }
     });
 
