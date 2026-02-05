@@ -1479,6 +1479,21 @@ export function getWriterViewStyles(): string {
       }
     }
 
+    @keyframes toast-out {
+      from {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+      to {
+        opacity: 0;
+        transform: translateX(-50%) translateY(20px);
+      }
+    }
+
+    .toast.fade-out {
+      animation: toast-out 0.3s ease forwards;
+    }
+
     /* === DUPLICATE IMAGE MODAL === */
 
     .duplicate-modal {

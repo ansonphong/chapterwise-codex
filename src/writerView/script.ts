@@ -17,7 +17,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     const nodeNameEdit = document.getElementById('nodeNameEdit');
 
     // Toast notification function
-    function showToast(message, type = 'info') {
+    function showToast(message: string, type = 'info') {
       const existing = document.querySelector('.toast');
       if (existing) existing.remove();
 
@@ -27,8 +27,11 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       document.body.appendChild(toast);
 
       setTimeout(() => {
-        toast.remove();
-      }, 3000);
+        toast.classList.add('fade-out');
+        setTimeout(() => {
+          toast.remove();
+        }, 300);
+      }, 2700);
     }
 
     // Overview mode prose editors
