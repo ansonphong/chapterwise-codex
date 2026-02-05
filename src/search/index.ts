@@ -21,3 +21,11 @@ export {
   fuzzyMatch,
   escapeRegex
 } from './tokenizer';
+
+// Query Parser
+export {
+  ParsedQuery,
+  FieldFilter,
+  parseQuery,
+  isEmptyQuery
+} from './queryParser';
