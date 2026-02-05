@@ -1479,6 +1479,118 @@ export function getWriterViewStyles(): string {
       }
     }
 
+    /* === DUPLICATE IMAGE MODAL === */
+
+    .duplicate-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 1002;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .duplicate-content {
+      position: relative;
+      background: var(--bg-primary);
+      border-radius: 8px;
+      padding: 24px;
+      max-width: 500px;
+      width: 90%;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      text-align: center;
+    }
+
+    .duplicate-content h3 {
+      margin: 0 0 8px 0;
+      color: var(--text-primary);
+      font-size: 1.1rem;
+    }
+
+    .duplicate-content p {
+      margin: 0 0 12px 0;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .duplicate-path {
+      background: var(--bg-secondary);
+      border-radius: 4px;
+      padding: 8px 12px;
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+      word-break: break-all;
+    }
+
+    .duplicate-preview {
+      margin-bottom: 20px;
+      max-height: 200px;
+      overflow: hidden;
+      border-radius: 4px;
+      background: var(--bg-secondary);
+    }
+
+    .duplicate-preview img {
+      max-width: 100%;
+      max-height: 200px;
+      object-fit: contain;
+    }
+
+    .duplicate-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .duplicate-btn {
+      padding: 10px 20px;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .duplicate-use-existing {
+      background: var(--accent);
+      border: none;
+      color: white;
+    }
+
+    .duplicate-use-existing:hover {
+      filter: brightness(1.1);
+    }
+
+    .duplicate-import {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+    }
+
+    .duplicate-import:hover {
+      background: var(--bg-tertiary, var(--bg-secondary));
+    }
+
+    .duplicate-cancel {
+      background: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+    }
+
+    .duplicate-cancel:hover {
+      background: var(--bg-secondary);
+    }
+
+    .duplicate-btn:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
     .modal-nav {
       position: absolute;
       top: 50%;
