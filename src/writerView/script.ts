@@ -34,6 +34,35 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       }, 2700);
     }
 
+    function trapFocus(container: HTMLElement | null) {
+      if (!container) return;
+
+      container.addEventListener('keydown', (e) => {
+        if (e.key !== 'Tab') return;
+
+        const focusableElements = container.querySelectorAll(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+
+        if (focusableElements.length === 0) return;
+
+        const firstFocusable = focusableElements[0] as HTMLElement;
+        const lastFocusable = focusableElements[focusableElements.length - 1] as HTMLElement;
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstFocusable) {
+            e.preventDefault();
+            lastFocusable.focus();
+          }
+        } else {
+          if (document.activeElement === lastFocusable) {
+            e.preventDefault();
+            firstFocusable.focus();
+          }
+        }
+      });
+    }
+
     // Overview mode prose editors
     const summaryEditorContent = document.getElementById('summaryEditorContent');
     const bodyEditorContent = document.getElementById('bodyEditorContent');
@@ -1408,6 +1437,11 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
         hideConfirmModal();
       });
     }
+
+    // Apply focus traps to modals
+    trapFocus(document.querySelector('.confirm-content'));
+    trapFocus(document.querySelector('.duplicate-content'));
+    trapFocus(document.querySelector('.image-browser-content'));
 
     // Escape key closes confirm modal
     document.addEventListener('keydown', (e) => {
