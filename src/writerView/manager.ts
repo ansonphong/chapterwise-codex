@@ -549,35 +549,9 @@ export class WriterViewManager {
             await this.handleAddExistingImage(panel, documentUri, node, workspaceRoot, message.imagePath);
             break;
 
-          case 'importImage': {
-            const result = await vscode.window.showOpenDialog({
-              canSelectMany: true,
-              filters: {
-                'Images': ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']
-              },
-              title: 'Select Images to Add'
-            });
-
-            if (result && result.length > 0) {
-              try {
-                const addedImages = await this.importImages(result, documentUri, node, workspaceRoot);
-
-                // Resolve URLs for the added images
-                const resolvedImages = addedImages.map(img => ({
-                  ...img,
-                  url: this.resolveImageUrlForWebview(panel.webview, img.url, workspaceRoot)
-                }));
-
-                panel.webview.postMessage({
-                  type: 'imagesAdded',
-                  images: resolvedImages
-                });
-              } catch (error) {
-                vscode.window.showErrorMessage(`Failed to import images: ${error}`);
-              }
-            }
+          case 'importImage':
+            await this.handleImportImage(panel, documentUri, node, workspaceRoot);
             break;
-          }
 
           case 'deleteImage': {
             const { url, index } = message;
@@ -1021,35 +995,9 @@ export class WriterViewManager {
             await this.handleAddExistingImage(panel, documentUri, node, workspaceRoot, message.imagePath);
             break;
 
-          case 'importImage': {
-            const result = await vscode.window.showOpenDialog({
-              canSelectMany: true,
-              filters: {
-                'Images': ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']
-              },
-              title: 'Select Images to Add'
-            });
-
-            if (result && result.length > 0) {
-              try {
-                const addedImages = await this.importImages(result, documentUri, node, workspaceRoot);
-
-                // Resolve URLs for the added images
-                const resolvedImages = addedImages.map(img => ({
-                  ...img,
-                  url: this.resolveImageUrlForWebview(panel.webview, img.url, workspaceRoot)
-                }));
-
-                panel.webview.postMessage({
-                  type: 'imagesAdded',
-                  images: resolvedImages
-                });
-              } catch (error) {
-                vscode.window.showErrorMessage(`Failed to import images: ${error}`);
-              }
-            }
+          case 'importImage':
+            await this.handleImportImage(panel, documentUri, node, workspaceRoot);
             break;
-          }
 
           case 'deleteImage': {
             const { url, index } = message;
@@ -1657,6 +1605,42 @@ export class WriterViewManager {
       }
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to add image: ${error}`);
+    }
+  }
+
+  /**
+   * Handle importImage message from webview
+   */
+  private async handleImportImage(
+    panel: vscode.WebviewPanel,
+    documentUri: vscode.Uri,
+    node: CodexNode,
+    workspaceRoot: string
+  ): Promise<void> {
+    const result = await vscode.window.showOpenDialog({
+      canSelectMany: true,
+      filters: {
+        'Images': ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']
+      },
+      title: 'Select Images to Add'
+    });
+
+    if (result && result.length > 0) {
+      try {
+        const addedImages = await this.importImages(result, documentUri, node, workspaceRoot);
+
+        const resolvedImages = addedImages.map(img => ({
+          ...img,
+          url: this.resolveImageUrlForWebview(panel.webview, img.url, workspaceRoot)
+        }));
+
+        panel.webview.postMessage({
+          type: 'imagesAdded',
+          images: resolvedImages
+        });
+      } catch (error) {
+        vscode.window.showErrorMessage(`Failed to import images: ${error}`);
+      }
     }
   }
 
