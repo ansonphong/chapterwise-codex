@@ -1504,7 +1504,7 @@ export class WriterViewManager {
 
     if (result && result.length > 0) {
       try {
-        const addedImages = await this.importImages(result, documentUri, node, workspaceRoot);
+        const addedImages = await this.importImages(result, documentUri, node, workspaceRoot, panel);
 
         const resolvedImages = addedImages.map(img => ({
           ...img,
@@ -1821,7 +1821,8 @@ export class WriterViewManager {
     files: vscode.Uri[],
     documentUri: vscode.Uri,
     node: CodexNode,
-    workspaceRoot: string
+    workspaceRoot: string,
+    panel: vscode.WebviewPanel
   ): Promise<CodexImage[]> {
     const addedImages: CodexImage[] = [];
 
@@ -1837,6 +1838,33 @@ export class WriterViewManager {
       let targetPath: string;
       let filename = path.basename(file.fsPath);
 
+      // Check for duplicate by content hash
+      const duplicate = await this.findDuplicateImage(file.fsPath, workspaceRoot);
+
+      if (duplicate.found && duplicate.existingPath) {
+        // Ask user what to do
+        const resolution = await this.promptDuplicateResolution(
+          panel,
+          file.fsPath,
+          duplicate.existingPath,
+          workspaceRoot
+        );
+
+        if (resolution.type === 'useExisting') {
+          // Use the existing image path
+          addedImages.push({
+            url: duplicate.existingPath,
+            caption: '',
+            featured: addedImages.length === 0 && (!node.images || node.images.length === 0)
+          });
+          continue;
+        } else if (resolution.type === 'cancel') {
+          // Skip this file
+          continue;
+        }
+        // Otherwise fall through to import as copy
+      }
+
       // Check if file is already in workspace
       if (file.fsPath.startsWith(workspaceRoot)) {
         // Already in workspace - ask if user wants to copy or reference
@@ -1848,7 +1876,14 @@ export class WriterViewManager {
         if (action === 'Reference original location') {
           // Use original path
           const relativePath = '/' + path.relative(workspaceRoot, file.fsPath).replace(/\\/g, '/');
-          addedImages.push({ url: relativePath, caption: '', featured: addedImages.length === 0 });
+          addedImages.push({
+            url: relativePath,
+            caption: '',
+            featured: addedImages.length === 0 && (!node.images || node.images.length === 0)
+          });
+          continue;
+        } else if (!action) {
+          // User cancelled
           continue;
         }
       }
@@ -1872,7 +1907,7 @@ export class WriterViewManager {
       addedImages.push({
         url: relativePath,
         caption: '',
-        featured: addedImages.length === 0 // First image is featured
+        featured: addedImages.length === 0 && (!node.images || node.images.length === 0)
       });
     }
 
