@@ -90,6 +90,22 @@ export function renderImageModal(): string {
         </div>
       </div>
     </div>
+    <div class="duplicate-modal" id="duplicateModal" style="display: none;">
+      <div class="modal-backdrop" id="duplicateBackdrop"></div>
+      <div class="duplicate-content" role="dialog" aria-modal="true" aria-labelledby="duplicateTitle" aria-describedby="duplicateMessage">
+        <h3 id="duplicateTitle">Duplicate Image Found</h3>
+        <p id="duplicateMessage">This image already exists in your workspace:</p>
+        <div class="duplicate-path" id="duplicatePath"></div>
+        <div class="duplicate-preview">
+          <img id="duplicatePreview" src="" alt="Duplicate image preview" />
+        </div>
+        <div class="duplicate-buttons">
+          <button class="duplicate-btn duplicate-use-existing" id="duplicateUseExisting">Use Existing</button>
+          <button class="duplicate-btn duplicate-import" id="duplicateImportAnyway">Import as Copy</button>
+          <button class="duplicate-btn duplicate-cancel" id="duplicateCancel">Cancel</button>
+        </div>
+      </div>
+    </div>
   `;
 }
 
