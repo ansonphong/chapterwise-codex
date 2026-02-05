@@ -1161,6 +1161,10 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
         case 'workspaceImages':
           allWorkspaceImages = message.images || [];
           renderWorkspaceImages(allWorkspaceImages);
+          // Enable search after loading
+          if (imageSearch) {
+            imageSearch.disabled = false;
+          }
           break;
 
         case 'imageAdded':
@@ -1407,6 +1411,15 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       if (imageBrowserModal) {
         imageBrowserModal.style.display = 'flex';
         document.body.style.overflow = 'hidden';
+        // Show loading state
+        if (imageBrowserGrid) {
+          imageBrowserGrid.innerHTML = '<div class="browser-loading">Scanning workspace for images...</div>';
+        }
+        // Disable search while loading
+        if (imageSearch) {
+          imageSearch.disabled = true;
+          imageSearch.value = '';
+        }
         // Request workspace images
         vscode.postMessage({ type: 'openImageBrowser' });
       }
@@ -1416,6 +1429,10 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       if (imageBrowserModal) {
         imageBrowserModal.style.display = 'none';
         document.body.style.overflow = '';
+        // Reset search to enabled state
+        if (imageSearch) {
+          imageSearch.disabled = false;
+        }
       }
     }
 

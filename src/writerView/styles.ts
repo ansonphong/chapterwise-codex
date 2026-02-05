@@ -1596,6 +1596,22 @@ export function getWriterViewStyles(): string {
       font-style: italic;
     }
 
+    .browser-loading::before {
+      content: '';
+      display: block;
+      width: 32px;
+      height: 32px;
+      margin: 0 auto 12px;
+      border: 3px solid var(--border-color);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
     .browser-empty {
       grid-column: 1 / -1;
       text-align: center;
