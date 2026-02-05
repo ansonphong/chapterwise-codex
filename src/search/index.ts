@@ -29,3 +29,12 @@ export {
   parseQuery,
   isEmptyQuery
 } from './queryParser';
+
+// Scoring
+export {
+  calculateBM25,
+  scoreDocument,
+  BOOST_FACTORS,
+  getDepthBoost,
+  getFieldBoost
+} from './scoring';
