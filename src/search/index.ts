@@ -44,3 +44,10 @@ export {
   SearchOptions,
   executeSearch
 } from './searchEngine';
+
+// Search UI
+export {
+  initializeStatusBar,
+  updateStatusBar,
+  openSearchUI
+} from './searchUI';
