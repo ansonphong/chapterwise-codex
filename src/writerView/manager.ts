@@ -1865,6 +1865,21 @@ export class WriterViewManager {
         // Otherwise fall through to import as copy
       }
 
+      // Check file size (limit to 10MB)
+      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+      try {
+        const stats = await fsPromises.stat(file.fsPath);
+        if (stats.size > MAX_FILE_SIZE) {
+          const sizeMB = (stats.size / (1024 * 1024)).toFixed(1);
+          vscode.window.showWarningMessage(
+            `Skipped "${filename}" (${sizeMB}MB) - exceeds 10MB limit`
+          );
+          continue;
+        }
+      } catch {
+        // If we can't stat, let it fail later during copy
+      }
+
       // Check if file is already in workspace
       if (file.fsPath.startsWith(workspaceRoot)) {
         // Already in workspace - ask if user wants to copy or reference
