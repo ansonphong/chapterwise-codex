@@ -38,6 +38,10 @@ export class WriterViewManager {
   private wordCountStatusBarItem: vscode.StatusBarItem;
   private panelStats: Map<string, WriterPanelStats> = new Map();
   private treeProvider: CodexTreeProvider | null = null;
+  private pendingDuplicateResolvers: Map<string, {
+    resolve: (action: { type: string; existingPath?: string }) => void;
+    panel: vscode.WebviewPanel;
+  }> = new Map();
 
   constructor(private readonly context: vscode.ExtensionContext) {
     // Create word count status bar item
@@ -562,6 +566,19 @@ export class WriterViewManager {
           case 'reorderImages':
             await this.handleReorderImages(panel, documentUri, node, message.order);
             break;
+
+          case 'duplicateResolved': {
+            const resolverKey = (panel as any).__duplicateResolverKey;
+            if (resolverKey) {
+              const resolver = this.pendingDuplicateResolvers.get(resolverKey);
+              if (resolver) {
+                resolver.resolve({ type: message.action, existingPath: message.existingPath });
+                this.pendingDuplicateResolvers.delete(resolverKey);
+              }
+              delete (panel as any).__duplicateResolverKey;
+            }
+            break;
+          }
         }
       },
       undefined,
@@ -607,6 +624,12 @@ export class WriterViewManager {
       themeChangeDisposable.dispose();
       configChangeDisposable.dispose();
       viewStateDisposable.dispose();
+
+      // Clean up any pending duplicate resolver
+      const resolverKey = (panel as any).__duplicateResolverKey;
+      if (resolverKey) {
+        this.pendingDuplicateResolvers.delete(resolverKey);
+      }
     });
   }
 
@@ -924,6 +947,19 @@ export class WriterViewManager {
           case 'reorderImages':
             await this.handleReorderImages(panel, documentUri, node, message.order);
             break;
+
+          case 'duplicateResolved': {
+            const resolverKey = (panel as any).__duplicateResolverKey;
+            if (resolverKey) {
+              const resolver = this.pendingDuplicateResolvers.get(resolverKey);
+              if (resolver) {
+                resolver.resolve({ type: message.action, existingPath: message.existingPath });
+                this.pendingDuplicateResolvers.delete(resolverKey);
+              }
+              delete (panel as any).__duplicateResolverKey;
+            }
+            break;
+          }
         }
       },
       undefined,
@@ -969,6 +1005,12 @@ export class WriterViewManager {
       themeChangeDisposable2.dispose();
       configChangeDisposable2.dispose();
       viewStateDisposable2.dispose();
+
+      // Clean up any pending duplicate resolver
+      const resolverKey = (panel as any).__duplicateResolverKey;
+      if (resolverKey) {
+        this.pendingDuplicateResolvers.delete(resolverKey);
+      }
     });
   }
   private async handleSave(
@@ -1681,6 +1723,34 @@ export class WriterViewManager {
       // On any error, assume no duplicate
       return { found: false };
     }
+  }
+
+  /**
+   * Show duplicate modal and wait for user decision
+   */
+  private async promptDuplicateResolution(
+    panel: vscode.WebviewPanel,
+    filePath: string,
+    existingPath: string,
+    workspaceRoot: string
+  ): Promise<{ type: string; existingPath?: string }> {
+    return new Promise((resolve) => {
+      // Store resolver with unique key
+      const resolverKey = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      (panel as any).__duplicateResolverKey = resolverKey;
+      this.pendingDuplicateResolvers.set(resolverKey, { resolve, panel });
+
+      // Resolve preview URL for webview
+      const previewUrl = this.resolveImageUrlForWebview(panel.webview, existingPath, workspaceRoot);
+
+      // Send message to show modal
+      panel.webview.postMessage({
+        type: 'duplicateFound',
+        filePath,
+        existingPath,
+        previewUrl
+      });
+    });
   }
 
   /**
