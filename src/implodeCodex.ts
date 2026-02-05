@@ -243,6 +243,13 @@ export class CodexImploder {
     parentDir: string,
     options: ImplodeOptions
   ): Promise<Record<string, unknown> | null> {
+    // === SECURITY: Validate include path doesn't escape parent directory ===
+    // Reject absolute paths (starting with drive letter on Windows or / on Unix)
+    if (path.isAbsolute(includePath) && !includePath.startsWith('/')) {
+      this.errors.push(`Absolute include paths not allowed: ${includePath}`);
+      return null;
+    }
+
     // Resolve the path relative to parent directory
     // Include paths typically start with / which means relative to parent dir
     let fullPath: string;
@@ -250,6 +257,14 @@ export class CodexImploder {
       fullPath = path.join(parentDir, includePath);
     } else {
       fullPath = path.resolve(parentDir, includePath);
+    }
+
+    // === SECURITY: Validate resolved path stays within parent directory ===
+    const normalizedFull = path.normalize(fullPath);
+    const normalizedParent = path.normalize(parentDir);
+    if (!normalizedFull.startsWith(normalizedParent + path.sep) && normalizedFull !== normalizedParent) {
+      this.errors.push(`Include path escapes parent directory boundary: ${includePath}`);
+      return null;
     }
 
     // Validate file exists
