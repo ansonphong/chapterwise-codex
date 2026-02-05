@@ -210,6 +210,11 @@
         "command": "chapterwiseCodex.search",
         "title": "ChapterWise Codex: Search",
         "icon": "$(search)"
+      },
+      {
+        "command": "chapterwiseCodex.rebuildSearchIndex",
+        "title": "ChapterWise Codex: Rebuild Search Index",
+        "icon": "$(sync)"
       }
     ],
     "viewsContainers": {
@@ -472,6 +477,10 @@
         {
           "command": "chapterwiseCodex.importScrivener",
           "when": "true"
+        },
+        {
+          "command": "chapterwiseCodex.rebuildSearchIndex",
+          "when": "chapterwiseCodex.hasContext"
         }
       ]
     },
