@@ -1625,6 +1625,65 @@ export class WriterViewManager {
   }
 
   /**
+   * Find duplicate image in workspace by content hash
+   * Uses file size as pre-filter for performance
+   */
+  private async findDuplicateImage(
+    sourceFilePath: string,
+    workspaceRoot: string
+  ): Promise<{ found: boolean; existingPath?: string }> {
+    try {
+      // Get source file stats
+      const sourceStats = await fsPromises.stat(sourceFilePath);
+      const sourceSize = sourceStats.size;
+
+      // Scan workspace for images
+      const workspaceImages = await this.scanWorkspaceImages(workspaceRoot);
+
+      // Filter to images with similar size (within 1KB tolerance for metadata differences)
+      const sizeTolerance = 1024;
+      const candidates: string[] = [];
+
+      for (const img of workspaceImages) {
+        try {
+          const stats = await fsPromises.stat(img.fullPath);
+          if (Math.abs(stats.size - sourceSize) <= sizeTolerance) {
+            candidates.push(img.fullPath);
+          }
+        } catch {
+          // Skip files that can't be stat'd
+        }
+      }
+
+      // If no size matches, no duplicate
+      if (candidates.length === 0) {
+        return { found: false };
+      }
+
+      // Calculate source hash
+      const sourceHash = await this.calculateFileHash(sourceFilePath);
+
+      // Check candidates for hash match
+      for (const candidatePath of candidates) {
+        try {
+          const candidateHash = await this.calculateFileHash(candidatePath);
+          if (candidateHash === sourceHash) {
+            const relativePath = '/' + path.relative(workspaceRoot, candidatePath).replace(/\\/g, '/');
+            return { found: true, existingPath: relativePath };
+          }
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+
+      return { found: false };
+    } catch {
+      // On any error, assume no duplicate
+      return { found: false };
+    }
+  }
+
+  /**
    * Scan workspace for image files (async)
    */
   private async scanWorkspaceImages(workspaceRoot: string): Promise<{ relativePath: string; fullPath: string }[]> {
