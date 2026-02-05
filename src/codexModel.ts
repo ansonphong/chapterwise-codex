@@ -1161,8 +1161,13 @@ export function validateCodex(codexDoc: CodexDocument | null, text: string): Cod
   }
   // Note: We accept any format version for forward/backward compatibility
   
+  // UUID v4 validation pattern
+  const uuidV4Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
   // Check for nodes without IDs (skip include directives - they don't need IDs)
   const seenIds = new Set<string>();
+  let hasInvalidUuids = false;
+
   for (const node of codexDoc.allNodes) {
     if (!node.id && node.type !== 'unknown' && !node.isInclude) {
       issues.push({
@@ -1172,7 +1177,18 @@ export function validateCodex(codexDoc: CodexDocument | null, text: string): Cod
         path: node.path,
       });
     }
-    
+
+    // Check for invalid UUID format
+    if (node.id && !uuidV4Pattern.test(node.id)) {
+      hasInvalidUuids = true;
+      issues.push({
+        message: `Node '${node.name || node.type}' has invalid UUID format: '${node.id}'. Run Auto-Fix to correct.`,
+        severity: 'warning',
+        line: node.lineNumber,
+        path: node.path,
+      });
+    }
+
     // Check for duplicate IDs
     if (node.id) {
       if (seenIds.has(node.id)) {

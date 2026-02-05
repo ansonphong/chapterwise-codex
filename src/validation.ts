@@ -117,6 +117,8 @@ function validateDocument(document: vscode.TextDocument): void {
       diagnostic.code = 'missing-id';
     } else if (issue.message.includes('formatVersion')) {
       diagnostic.code = 'missing-format-version';
+    } else if (issue.message.includes('invalid UUID format')) {
+      diagnostic.code = 'invalid-uuid';
     }
     
     return diagnostic;
@@ -195,10 +197,33 @@ class CodexCodeActionProvider implements vscode.CodeActionProvider {
         case 'legacy-format':
           actions.push(this.createConvertFromLegacyAction(document, diagnostic));
           break;
+        case 'invalid-uuid':
+          actions.push(this.createRunAutoFixAction(document, diagnostic));
+          break;
       }
     }
-    
+
     return actions;
+  }
+
+  private createRunAutoFixAction(
+    document: vscode.TextDocument,
+    diagnostic: vscode.Diagnostic
+  ): vscode.CodeAction {
+    const action = new vscode.CodeAction(
+      'Run Auto-Fix to correct invalid UUIDs',
+      vscode.CodeActionKind.QuickFix
+    );
+    action.diagnostics = [diagnostic];
+    action.isPreferred = true;
+
+    // Use command instead of edit - auto-fixer handles the complexity
+    action.command = {
+      title: 'Run Auto-Fix',
+      command: 'chapterwiseCodex.autoFix'
+    };
+
+    return action;
   }
   
   private createAddMetadataAction(

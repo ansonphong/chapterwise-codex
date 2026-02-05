@@ -45,6 +45,30 @@ function showTransientMessage(message: string, duration: number = 3000): void {
   vscode.window.setStatusBarMessage(message, duration);
 }
 
+/**
+ * Validate UUID v4 format
+ * Used for security validation of node IDs before processing
+ */
+function isValidUuid(uuidStr: string): boolean {
+  if (!uuidStr || typeof uuidStr !== 'string') {
+    return false;
+  }
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidPattern.test(uuidStr);
+}
+
+/**
+ * Validate index file JSON structure
+ * Returns true if the structure is valid for tree operations
+ */
+function isValidIndexStructure(data: unknown): data is { children: unknown[] } {
+  if (!data || typeof data !== 'object') {
+    return false;
+  }
+  const obj = data as Record<string, unknown>;
+  return Array.isArray(obj.children);
+}
+
 let treeProvider: CodexTreeProvider;
 let treeView: vscode.TreeView<CodexTreeItemType>;
 let writerViewManager: WriterViewManager;
@@ -363,6 +387,12 @@ async function autoDiscoverIndexFiles(): Promise<void> {
     const entries = fs.readdirSync(workspaceRoot, { withFileTypes: true });
 
     for (const entry of entries) {
+      // Security: Skip symlinks to prevent scanning outside workspace
+      if (entry.isSymbolicLink()) {
+        console.log(`[ChapterWise Codex] Skipping symlink during discovery: ${entry.name}`);
+        continue;
+      }
+
       if (entry.isDirectory() && !entry.name.startsWith('.')) {
         const folderPath = path.join(workspaceRoot, entry.name);
         const indexPath = path.join(folderPath, 'index.codex.yaml');
@@ -2043,48 +2073,97 @@ async function flushExpandedUpdates(): Promise<void> {
 
 /**
  * Update the expansion state in an index file
+ * Security: Validates JSON structure and UUID format before processing
  */
 async function updateIndexFileExpansionState(
   indexPath: string,
   updates: Array<{ nodeId: string; expanded: boolean }>
 ): Promise<void> {
-  // Read index file
-  const content = fs.readFileSync(indexPath, 'utf-8');
-  const indexData = JSON.parse(content);
+  // Read and parse index file with error handling
+  let content: string;
+  let indexData: unknown;
 
-  if (!indexData || !indexData.children) {
+  try {
+    content = fs.readFileSync(indexPath, 'utf-8');
+  } catch (error) {
+    outputChannel.appendLine(`[updateIndexFileExpansionState] Failed to read index file: ${indexPath}`);
     return;
   }
 
-  // Apply all updates
+  try {
+    indexData = JSON.parse(content);
+  } catch (error) {
+    outputChannel.appendLine(`[updateIndexFileExpansionState] Invalid JSON in index file: ${indexPath}`);
+    return;
+  }
+
+  // Security: Validate index structure before processing
+  if (!isValidIndexStructure(indexData)) {
+    outputChannel.appendLine(`[updateIndexFileExpansionState] Invalid index structure in: ${indexPath}`);
+    return;
+  }
+
+  // Filter to only valid UUID updates (security: prevent injection)
+  const validUpdates = updates.filter(update => {
+    if (!isValidUuid(update.nodeId)) {
+      outputChannel.appendLine(`[updateIndexFileExpansionState] Skipping invalid nodeId: ${update.nodeId}`);
+      return false;
+    }
+    return true;
+  });
+
+  if (validUpdates.length === 0) {
+    return;
+  }
+
+  // Apply all valid updates
   let changesApplied = 0;
-  for (const update of updates) {
-    if (updateExpandedInTree(indexData.children, update.nodeId, update.expanded)) {
+  for (const update of validUpdates) {
+    if (updateExpandedInTree(indexData.children as unknown[], update.nodeId, update.expanded)) {
       changesApplied++;
     }
   }
 
   if (changesApplied > 0) {
     // Write back to file
-    fs.writeFileSync(indexPath, JSON.stringify(indexData, null, 2), 'utf-8');
+    try {
+      fs.writeFileSync(indexPath, JSON.stringify(indexData, null, 2), 'utf-8');
+    } catch (error) {
+      outputChannel.appendLine(`[updateIndexFileExpansionState] Failed to write index file: ${indexPath}`);
+    }
   }
 }
 
 /**
  * Recursively search tree and update expanded property
+ * Security: Only processes nodes with valid structure
  */
 function updateExpandedInTree(
-  children: any[],
+  children: unknown[],
   targetId: string,
   expanded: boolean
 ): boolean {
+  if (!Array.isArray(children)) {
+    return false;
+  }
+
   for (const child of children) {
-    if (child.id === targetId) {
-      child.expanded = expanded;
+    // Validate child is an object with expected properties
+    if (!child || typeof child !== 'object') {
+      continue;
+    }
+
+    const node = child as Record<string, unknown>;
+
+    // Check if this is the target node (id must be a string)
+    if (typeof node.id === 'string' && node.id === targetId) {
+      node.expanded = expanded;
       return true;
     }
-    if (child.children && Array.isArray(child.children)) {
-      if (updateExpandedInTree(child.children, targetId, expanded)) {
+
+    // Recurse into children if they exist and are an array
+    if (Array.isArray(node.children)) {
+      if (updateExpandedInTree(node.children, targetId, expanded)) {
         return true;
       }
     }
