@@ -2094,6 +2094,47 @@ function determineIndexFileForNode(
  * Extension deactivation
  */
 export function deactivate(): void {
+  outputChannel?.appendLine('ChapterWise Codex extension deactivating...');
+
+  // Clear debounce state
+  if (expandedUpdateTimeout) {
+    clearTimeout(expandedUpdateTimeout);
+    expandedUpdateTimeout = null;
+  }
+  expandedUpdateQueue.clear();
+
+  // Dispose tree views (not in subscriptions)
+  try {
+    treeView?.dispose();
+  } catch (e) {
+    console.error('Error disposing tree view:', e);
+  }
+
+  // Dispose sub-index views
+  for (const view of subIndexViews) {
+    try {
+      view.dispose();
+    } catch (e) {
+      console.error('Error disposing sub-index view:', e);
+    }
+  }
+  subIndexViews.length = 0;
+  subIndexProviders.length = 0;
+
+  // Dispose managers
+  try {
+    (multiIndexManager as any)?.dispose?.();
+  } catch (e) {
+    console.error('Error disposing multi-index manager:', e);
+  }
+
+  try {
+    (masterTreeProvider as any)?.dispose?.();
+  } catch (e) {
+    console.error('Error disposing master tree provider:', e);
+  }
+
+  // Dispose writer view and other modules
   writerViewManager?.dispose();
   disposeAutoFixer();
   disposeExplodeCodex();
@@ -2103,6 +2144,7 @@ export function deactivate(): void {
   disposeConvertFormat();
   disposeGitSetup();
   disposeScrivenerImport();
+
   outputChannel?.appendLine('ChapterWise Codex extension deactivated');
   outputChannel?.dispose();
 }
