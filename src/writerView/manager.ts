@@ -4,6 +4,7 @@
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+const fsPromises = fs.promises;
 import * as path from 'path';
 import * as YAML from 'yaml';
 import {
@@ -1609,18 +1610,18 @@ export class WriterViewManager {
   }
 
   /**
-   * Scan workspace for image files
+   * Scan workspace for image files (async)
    */
   private async scanWorkspaceImages(workspaceRoot: string): Promise<{ relativePath: string; fullPath: string }[]> {
     const images: { relativePath: string; fullPath: string }[] = [];
     const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
     const skipDirs = ['node_modules', '.git', '.vscode', 'out', 'dist', 'build'];
 
-    const scanDir = (dir: string, depth: number = 0) => {
+    const scanDir = async (dir: string, depth: number = 0): Promise<void> => {
       if (depth > 5) return; // Limit recursion depth
 
       try {
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        const entries = await fsPromises.readdir(dir, { withFileTypes: true });
 
         for (const entry of entries) {
           const fullPath = path.join(dir, entry.name);
@@ -1628,7 +1629,7 @@ export class WriterViewManager {
           if (entry.isDirectory()) {
             // Skip hidden and build directories
             if (!entry.name.startsWith('.') && !skipDirs.includes(entry.name)) {
-              scanDir(fullPath, depth + 1);
+              await scanDir(fullPath, depth + 1);
             }
           } else if (entry.isFile()) {
             const ext = path.extname(entry.name).toLowerCase();
@@ -1645,7 +1646,7 @@ export class WriterViewManager {
       }
     };
 
-    scanDir(workspaceRoot);
+    await scanDir(workspaceRoot);
     return images;
   }
 
