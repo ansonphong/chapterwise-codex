@@ -28,11 +28,11 @@ import { MultiIndexManager } from './multiIndexManager';
 import { SubIndexTreeProvider } from './subIndexTreeProvider';
 import { MasterIndexTreeProvider } from './masterIndexTreeProvider';
 import {
+  SearchIndexManager,
   initializeStatusBar as initializeSearchStatusBar,
   updateStatusBar as updateSearchStatusBar,
   openSearchUI,
-  SearchResult,
-  createEmptyIndex
+  SearchResult
 } from './search';
 
 /**
@@ -56,6 +56,9 @@ let multiIndexManager: MultiIndexManager | undefined;
 let masterTreeProvider: MasterIndexTreeProvider | undefined;
 const subIndexProviders: SubIndexTreeProvider[] = [];
 const subIndexViews: vscode.TreeView<CodexTreeItemType>[] = [];
+
+// Search index manager
+let searchIndexManager: SearchIndexManager | null = null;
 
 /**
  * Get the output channel for logging
@@ -210,31 +213,46 @@ export function activate(context: vscode.ExtensionContext): void {
     initializeSearchStatusBar(context);
     outputChannel.appendLine('Search status bar initialized');
 
+    // Initialize search index manager
+    searchIndexManager = new SearchIndexManager();
+
+    searchIndexManager.onBuildProgress(progress => {
+      updateSearchStatusBar('building', progress);
+    });
+
+    searchIndexManager.onIndexReady(index => {
+      updateSearchStatusBar('ready');
+    });
+
+    context.subscriptions.push({
+      dispose: () => searchIndexManager?.dispose()
+    });
+    outputChannel.appendLine('Search index manager initialized');
+
     // Search command
     context.subscriptions.push(
       vscode.commands.registerCommand('chapterwiseCodex.search', async () => {
-        const contextFolder = treeProvider?.getContextFolder();
-        const workspaceRoot = treeProvider?.getWorkspaceRoot();
+        if (!searchIndexManager) {
+          vscode.window.showErrorMessage('Search not initialized');
+          return;
+        }
 
-        if (!contextFolder || !workspaceRoot) {
+        const index = searchIndexManager.getIndex();
+        if (!index) {
           vscode.window.showWarningMessage(
-            'Set a context folder first (right-click a folder → Set as Codex Context)'
+            'Search index not ready. Set a context folder first.'
           );
           return;
         }
 
-        // For now, use empty index - will be populated by IndexManager in Phase 3
-        const index = createEmptyIndex(contextFolder);
+        const workspaceRoot = treeProvider?.getWorkspaceRoot();
 
         await openSearchUI(index, async (result: SearchResult) => {
-          // Navigate to result
           const isStructural = ['folder', 'book', 'index'].includes(result.type.toLowerCase());
 
           if (isStructural) {
-            // Reveal in tree
-            vscode.window.showInformationMessage(`Would reveal: ${result.name}`);
-          } else {
-            // Open in Writer View
+            vscode.window.showInformationMessage(`Reveal: ${result.name}`);
+          } else if (workspaceRoot) {
             const fullPath = path.join(workspaceRoot, result.path);
             await vscode.commands.executeCommand(
               'chapterwiseCodex.openWriterView',
@@ -245,6 +263,24 @@ export function activate(context: vscode.ExtensionContext): void {
       })
     );
     outputChannel.appendLine('Search command registered');
+
+    // Rebuild search index command
+    context.subscriptions.push(
+      vscode.commands.registerCommand('chapterwiseCodex.rebuildSearchIndex', async () => {
+        if (!searchIndexManager) return;
+
+        await vscode.window.withProgress({
+          location: vscode.ProgressLocation.Notification,
+          title: 'Rebuilding search index...',
+          cancellable: false
+        }, async () => {
+          await searchIndexManager!.forceRebuild();
+        });
+
+        vscode.window.showInformationMessage('Search index rebuilt.');
+      })
+    );
+    outputChannel.appendLine('Rebuild search index command registered');
 
     // Update status bar based on active editor
     updateStatusBar();
@@ -2074,4 +2110,8 @@ export function deactivate(): void {
 // Export for use by other modules
 export function log(message: string): void {
   outputChannel?.appendLine(message);
+}
+
+export function getSearchIndexManager(): SearchIndexManager | null {
+  return searchIndexManager;
 }
