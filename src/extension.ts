@@ -27,6 +27,13 @@ import { registerScrivenerImport, disposeScrivenerImport } from './scrivenerImpo
 import { MultiIndexManager } from './multiIndexManager';
 import { SubIndexTreeProvider } from './subIndexTreeProvider';
 import { MasterIndexTreeProvider } from './masterIndexTreeProvider';
+import {
+  initializeStatusBar as initializeSearchStatusBar,
+  updateStatusBar as updateSearchStatusBar,
+  openSearchUI,
+  SearchResult,
+  createEmptyIndex
+} from './search';
 
 /**
  * Notification Helper - Show transient messages that auto-dismiss
@@ -198,6 +205,46 @@ export function activate(context: vscode.ExtensionContext): void {
     // Register Scrivener import command
     registerScrivenerImport(context);
     outputChannel.appendLine('Scrivener import command registered');
+
+    // Initialize search status bar
+    initializeSearchStatusBar(context);
+    outputChannel.appendLine('Search status bar initialized');
+
+    // Search command
+    context.subscriptions.push(
+      vscode.commands.registerCommand('chapterwiseCodex.search', async () => {
+        const contextFolder = treeProvider?.getContextFolder();
+        const workspaceRoot = treeProvider?.getWorkspaceRoot();
+
+        if (!contextFolder || !workspaceRoot) {
+          vscode.window.showWarningMessage(
+            'Set a context folder first (right-click a folder → Set as Codex Context)'
+          );
+          return;
+        }
+
+        // For now, use empty index - will be populated by IndexManager in Phase 3
+        const index = createEmptyIndex(contextFolder);
+
+        await openSearchUI(index, async (result: SearchResult) => {
+          // Navigate to result
+          const isStructural = ['folder', 'book', 'index'].includes(result.type.toLowerCase());
+
+          if (isStructural) {
+            // Reveal in tree
+            vscode.window.showInformationMessage(`Would reveal: ${result.name}`);
+          } else {
+            // Open in Writer View
+            const fullPath = path.join(workspaceRoot, result.path);
+            await vscode.commands.executeCommand(
+              'chapterwiseCodex.openWriterView',
+              { filePath: fullPath, nodePath: result.nodePath }
+            );
+          }
+        });
+      })
+    );
+    outputChannel.appendLine('Search command registered');
 
     // Update status bar based on active editor
     updateStatusBar();

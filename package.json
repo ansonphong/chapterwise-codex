@@ -205,6 +205,11 @@
         "command": "chapterwiseCodex.importScrivener",
         "title": "ChapterWise Codex: Import Scrivener Project",
         "icon": "$(file-add)"
+      },
+      {
+        "command": "chapterwiseCodex.search",
+        "title": "ChapterWise Codex: Search",
+        "icon": "$(search)"
       }
     ],
     "viewsContainers": {
@@ -321,19 +326,24 @@
       ],
       "view/title": [
         {
-          "command": "chapterwiseCodex.autoFix",
+          "command": "chapterwiseCodex.search",
           "when": "view == chapterwiseCodexNavigator",
           "group": "navigation@1"
         },
         {
-          "command": "chapterwiseCodex.filterByType",
+          "command": "chapterwiseCodex.autoFix",
           "when": "view == chapterwiseCodexNavigator",
           "group": "navigation@2"
         },
         {
-          "command": "chapterwiseCodex.refresh",
+          "command": "chapterwiseCodex.filterByType",
           "when": "view == chapterwiseCodexNavigator",
           "group": "navigation@3"
+        },
+        {
+          "command": "chapterwiseCodex.refresh",
+          "when": "view == chapterwiseCodexNavigator",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
@@ -466,6 +476,12 @@
       ]
     },
     "keybindings": [
+      {
+        "command": "chapterwiseCodex.search",
+        "key": "ctrl+shift+f",
+        "mac": "cmd+shift+f",
+        "when": "view.chapterwiseCodexNavigator.visible"
+      },
       {
         "command": "chapterwiseCodex.openWriterView",
         "key": "ctrl+shift+w",
