@@ -256,7 +256,7 @@ export class NavigatorSettingsManager {
     // Core behavior
     const defaultChildMode = config.get<string>('defaultChildMode');
     if (defaultChildMode) {
-      settings.defaultChildMode = defaultChildMode as any;
+      settings.defaultChildMode = validateChildMode(defaultChildMode);
     }
     
     // File organization
@@ -266,8 +266,8 @@ export class NavigatorSettingsManager {
     
     if (strategy || dataFolderPath !== undefined || useUuidFilenames !== undefined) {
       settings.fileOrganization = {
-        strategy: (strategy as any) || 'organized',
-        dataFolderPath: dataFolderPath || 'Files/Data',
+        strategy: validateStrategy(strategy),
+        dataFolderPath: validateDataFolderPath(dataFolderPath),
         useUuidFilenames: useUuidFilenames !== undefined ? useUuidFilenames : false
       };
     }
@@ -284,7 +284,7 @@ export class NavigatorSettingsManager {
       settings.naming = {
         slugify: slugify !== undefined ? slugify : true,
         preserveCase: preserveCase !== undefined ? preserveCase : false,
-        separator: separator || '-',
+        separator: validateSeparator(separator),
         includeType: includeType !== undefined ? includeType : false,
         includeParent: includeParent !== undefined ? includeParent : false
       };
@@ -297,7 +297,7 @@ export class NavigatorSettingsManager {
     if (preferRelative !== undefined || format) {
       settings.includes = {
         preferRelative: preferRelative !== undefined ? preferRelative : true,
-        format: (format as any) || 'string'
+        format: validateFormat(format)
       };
     }
     
