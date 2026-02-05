@@ -1156,6 +1156,18 @@ export function getWriterViewStyles(): string {
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     }
 
+    .image-thumbnail:focus,
+    .gallery-item:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .image-thumbnail:focus-visible,
+    .gallery-item:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
     .image-thumbnail img {
       width: 100%;
       height: 120px;

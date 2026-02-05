@@ -20,7 +20,7 @@ export function renderImagesGallery(images: CodexImage[], workspaceRoot: string)
     const featuredBadge = img.featured ? '<span class="featured-badge">★</span>' : '';
 
     return `
-      <div class="image-thumbnail" data-index="${index}" data-url="${escapeHtml(img.url)}">
+      <div class="image-thumbnail" data-index="${index}" data-url="${escapeHtml(img.url)}" tabindex="0" role="button" aria-label="View image ${index + 1}${img.caption ? ': ' + escapeHtml(img.caption) : ''}">
         ${featuredBadge}
         <img src="${resolvedUrl}" alt="${alt}" loading="lazy" />
         <div class="thumbnail-caption" title="${caption}">${caption || '&nbsp;'}</div>
@@ -46,7 +46,7 @@ export function renderImagesFullGallery(images: CodexImage[], workspaceRoot: str
     const featuredBadge = img.featured ? '<span class="featured-badge">★</span>' : '';
 
     return `
-      <div class="gallery-item" data-index="${index}" data-url="${escapeHtml(img.url)}">
+      <div class="gallery-item" data-index="${index}" data-url="${escapeHtml(img.url)}" tabindex="0" role="button" aria-label="View image ${index + 1}${img.caption ? ': ' + escapeHtml(img.caption) : ''}">
         ${featuredBadge}
         <img src="${resolvedUrl}" alt="${alt}" loading="lazy" />
         <div class="gallery-caption" title="${caption}">${caption || 'No caption'}</div>

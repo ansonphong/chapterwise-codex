@@ -1261,6 +1261,18 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       }
     });
 
+    // Thumbnail keyboard handler
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        const thumbnail = e.target.closest('.image-thumbnail, .gallery-item');
+        if (thumbnail) {
+          e.preventDefault();
+          const index = parseInt(thumbnail.dataset.index, 10);
+          openImageModal(index);
+        }
+      }
+    });
+
     // Modal close handlers
     if (modalClose) {
       modalClose.addEventListener('click', closeImageModal);
@@ -1539,7 +1551,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
           imagesContainer.innerHTML = '<div class="images-empty">No images</div>';
         } else {
           imagesContainer.innerHTML = \`<div class="images-grid">\${localImages.map((img, index) => \`
-            <div class="image-thumbnail" data-index="\${index}" data-url="\${img.url}">
+            <div class="image-thumbnail" data-index="\${index}" data-url="\${img.url}" tabindex="0" role="button" aria-label="View image \${index + 1}\${img.caption ? ': ' + escapeHtml(img.caption) : ''}">
               \${img.featured ? '<span class="featured-badge">★</span>' : ''}
               <img src="\${img.url}" alt="\${img.alt || img.caption || 'Image'}" loading="lazy" />
               <div class="thumbnail-caption" title="\${img.caption || ''}">\${img.caption || '&nbsp;'}</div>
