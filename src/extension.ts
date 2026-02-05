@@ -68,9 +68,32 @@ export function getOutputChannel(): vscode.OutputChannel | undefined {
 }
 
 /**
+ * Execute a promise with a timeout
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(errorMessage));
+    }, timeoutMs);
+
+    promise
+      .then((result) => {
+        clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
+/**
  * Restore the last saved Codex context on startup
  */
 async function restoreLastContext(context: vscode.ExtensionContext): Promise<void> {
+  const RESTORE_TIMEOUT_MS = 10000; // 10 second timeout
+
   try {
     const savedContextPath = context.workspaceState.get<string>('chapterwiseCodex.lastContextPath');
     const savedContextType = context.workspaceState.get<string>('chapterwiseCodex.lastContextType');
@@ -98,13 +121,21 @@ async function restoreLastContext(context: vscode.ExtensionContext): Promise<voi
       return;
     }
 
-    // Restore the context by calling the appropriate command
+    // Restore the context by calling the appropriate command (with timeout)
     if (savedContextType === 'folder') {
       outputChannel.appendLine(`[restoreLastContext] Restoring folder context: ${savedContextPath}`);
-      await vscode.commands.executeCommand('chapterwiseCodex.setContextFolder', uri);
+      await withTimeout(
+        vscode.commands.executeCommand('chapterwiseCodex.setContextFolder', uri),
+        RESTORE_TIMEOUT_MS,
+        'Timeout restoring folder context'
+      );
     } else if (savedContextType === 'file') {
       outputChannel.appendLine(`[restoreLastContext] Restoring file context: ${savedContextPath}`);
-      await vscode.commands.executeCommand('chapterwiseCodex.setContextFile', uri);
+      await withTimeout(
+        vscode.commands.executeCommand('chapterwiseCodex.setContextFile', uri),
+        RESTORE_TIMEOUT_MS,
+        'Timeout restoring file context'
+      );
     }
   } catch (error) {
     outputChannel.appendLine(`[restoreLastContext] Error restoring context: ${error}`);
