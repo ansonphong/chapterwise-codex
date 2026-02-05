@@ -456,11 +456,112 @@ export class SearchIndexManager {
       : 100;
   }
 
+  /**
+   * Set up file watcher for incremental updates
+   */
   private setupFileWatcher(): void {
-    // Placeholder - implemented in Task 10
+    if (!this.workspaceRoot || !this.contextFolder) return;
+
+    this.fileWatcher?.dispose();
+
+    const pattern = new vscode.RelativePattern(
+      path.join(this.workspaceRoot, this.contextFolder),
+      '**/*.{codex.yaml,codex.json,md}'
+    );
+
+    this.fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
+
+    const queueUpdate = (uri: vscode.Uri) => {
+      if (uri.fsPath.includes('.index.')) return;
+
+      this.pendingUpdates.add(uri.fsPath);
+
+      if (this.updateDebounceTimer) {
+        clearTimeout(this.updateDebounceTimer);
+      }
+
+      this.updateDebounceTimer = setTimeout(() => {
+        this.processUpdates();
+      }, 500);
+    };
+
+    this.fileWatcher.onDidChange(queueUpdate);
+    this.fileWatcher.onDidCreate(queueUpdate);
+    this.fileWatcher.onDidDelete(uri => {
+      if (uri.fsPath.includes('.index.')) return;
+      this.removeFromIndex(uri.fsPath);
+      this.saveToCache();
+    });
   }
 
+  /**
+   * Process pending updates
+   */
+  private async processUpdates(): Promise<void> {
+    if (!this.index || this.pendingUpdates.size === 0) return;
+
+    const files = Array.from(this.pendingUpdates);
+    this.pendingUpdates.clear();
+
+    for (const file of files) {
+      this.removeFromIndex(file);
+      await this.indexFile(file);
+    }
+
+    this.buildInvertedIndex();
+    this.computeCorpusStats();
+    await this.saveToCache();
+
+    this._onIndexReady.fire(this.index);
+  }
+
+  /**
+   * Remove entries for a file from index
+   */
+  private removeFromIndex(filePath: string): void {
+    if (!this.index || !this.workspaceRoot) return;
+
+    const relativePath = path.relative(this.workspaceRoot, filePath);
+
+    this.index.titles = this.index.titles.filter(t => t.path !== relativePath);
+    this.index.metadata = this.index.metadata.filter(m => m.path !== relativePath);
+    this.index.content = this.index.content.filter(c => c.path !== relativePath);
+    delete this.index.fileHashes[relativePath];
+  }
+
+  /**
+   * Check for stale entries
+   */
   private async refreshStaleEntries(): Promise<void> {
-    // Placeholder - implemented in Task 10
+    if (!this.index || !this.workspaceRoot) return;
+
+    const staleFiles: string[] = [];
+
+    for (const [relativePath, storedHash] of Object.entries(this.index.fileHashes)) {
+      const fullPath = path.join(this.workspaceRoot, relativePath);
+
+      try {
+        if (!fs.existsSync(fullPath)) {
+          this.removeFromIndex(fullPath);
+          continue;
+        }
+
+        const content = await fs.promises.readFile(fullPath, 'utf-8');
+        const currentHash = this.hashContent(content);
+
+        if (currentHash !== storedHash) {
+          staleFiles.push(fullPath);
+        }
+      } catch {
+        this.removeFromIndex(fullPath);
+      }
+    }
+
+    if (staleFiles.length > 0) {
+      for (const file of staleFiles) {
+        this.pendingUpdates.add(file);
+      }
+      await this.processUpdates();
+    }
   }
 }
