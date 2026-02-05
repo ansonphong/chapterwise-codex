@@ -1175,7 +1175,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
 
         case 'workspaceImages':
           allWorkspaceImages = message.images || [];
-          renderWorkspaceImages(allWorkspaceImages);
+          renderWorkspaceImages(allWorkspaceImages, false);
           // Enable search after loading
           if (imageSearch) {
             imageSearch.disabled = false;
@@ -1484,11 +1484,15 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       }
     }
 
-    function renderWorkspaceImages(images) {
+    function renderWorkspaceImages(images, isSearchResult = false) {
       if (!imageBrowserGrid) return;
 
       if (images.length === 0) {
-        imageBrowserGrid.innerHTML = '<div class="browser-empty">No images found in workspace</div>';
+        if (isSearchResult) {
+          imageBrowserGrid.innerHTML = '<div class="browser-empty">No images match your search</div>';
+        } else {
+          imageBrowserGrid.innerHTML = '<div class="browser-empty">No images found in workspace</div>';
+        }
         return;
       }
 
@@ -1506,7 +1510,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
         img.filename.toLowerCase().includes(query.toLowerCase()) ||
         img.folder.toLowerCase().includes(query.toLowerCase())
       );
-      renderWorkspaceImages(filtered);
+      renderWorkspaceImages(filtered, query.length > 0);
     }
 
     // Add Image button click
