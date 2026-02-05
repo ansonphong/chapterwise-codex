@@ -51,3 +51,6 @@ export {
   updateStatusBar,
   openSearchUI
 } from './searchUI';
+
+// Index Manager
+export { SearchIndexManager } from './indexManager';
