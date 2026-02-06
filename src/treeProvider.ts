@@ -1098,11 +1098,11 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
 
         // If root has meaningful content, show it; otherwise show its children
         if (root.id || root.type !== 'unknown') {
-          items.push(new CodexTreeItem(root, uri, root.children.length > 0, true, nodeHasFields(root)));
+          items.push(new CodexTreeItem(root, uri, (root.children?.length ?? 0) > 0, true, nodeHasFields(root)));
         } else {
           // Root is just a container, show children directly
-          items.push(...root.children.map(
-            (child) => new CodexTreeItem(child, uri, child.children.length > 0, true, nodeHasFields(child))
+          items.push(...(root.children ?? []).map(
+            (child) => new CodexTreeItem(child, uri, (child.children?.length ?? 0) > 0, true, nodeHasFields(child))
           ));
         }
       }
@@ -1161,11 +1161,11 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
 
     // Add child nodes
     const childHasFields = showFields;
-    items.push(...node.children.map(
+    items.push(...(node.children ?? []).map(
       (child) => new CodexTreeItem(
         child,
         uri,
-        child.children.length > 0,
+        (child.children?.length ?? 0) > 0,
         false,
         childHasFields && (child.availableFields.length > 0 || child.hasAttributes || child.hasContentSections)
       )
@@ -1208,7 +1208,11 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
 
       // Add top-level children from index
       for (const child of this.indexDoc.children) {
-        items.push(this.createIndexTreeItem(child, workspaceRoot, uri));
+        try {
+          items.push(this.createIndexTreeItem(child, workspaceRoot, uri));
+        } catch (error) {
+          log(`[TreeProvider] Error creating tree item for ${child?.name || 'unknown'}: ${error}`);
+        }
       }
 
       return items;
@@ -1232,9 +1236,15 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
         }
 
         // Return children from the index (already includes nodes and fields from Phase 2)
-        return element.indexNode.children.map(child =>
-          this.createIndexTreeItem(child, workspaceRoot, uri)
-        );
+        const childItems: CodexTreeItemType[] = [];
+        for (const child of element.indexNode.children) {
+          try {
+            childItems.push(this.createIndexTreeItem(child, workspaceRoot, uri));
+          } catch (error) {
+            log(`[TreeProvider] Error creating child tree item for ${child?.name || 'unknown'}: ${error}`);
+          }
+        }
+        return childItems;
       }
 
       // Legacy: For backward compatibility with old indexes (pre-Phase 2)
@@ -1324,7 +1334,7 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
           new CodexTreeItem(
             child,
             fileUri,
-            child.children.length > 0,
+            (child.children?.length ?? 0) > 0,
             false, // Don't expand by default
             false  // Don't show fields for now (just the structure)
           )
