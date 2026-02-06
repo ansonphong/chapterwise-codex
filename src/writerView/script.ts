@@ -72,6 +72,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     let isDirty = false;
     let originalContent = editor.innerText;
     let saveTimeout = null;
+    let isSaving = false;
     let currentField = '${initialField}';
     let currentType = '${node.type}';
     let currentEditorMode = '${initialField === '__overview__' ? 'overview' : initialField === '__attributes__' ? 'attributes' : initialField === '__content__' ? 'content' : initialField === '__images__' ? 'images' : 'prose'}';
@@ -246,8 +247,15 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     // Save function - saves ALL pending changes
     function save() {
       const anyDirty = isDirty || attributesDirty || contentSectionsDirty || summaryDirty || bodyDirty;
-      if (!anyDirty) return;
+      if (!anyDirty || isSaving) return;
 
+      // Cancel pending auto-save to prevent double-fire
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+        saveTimeout = null;
+      }
+
+      isSaving = true;
       saveMenuBtn.disabled = true;
       saveMenuBtn.classList.remove('dirty');
       saveMenuBtn.title = 'Saving...';
@@ -1124,8 +1132,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       const message = event.data;
       switch (message.type) {
         case 'saved':
-          // Only mark prose as clean; attributes/content have their own tracking
           isDirty = false;
+          isSaving = false;
           checkAllClean();
           break;
         case 'nameUpdated':
@@ -1143,6 +1151,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
         case 'saveComplete':
           // All saves complete - mark everything clean
           markClean();
+          isSaving = false;
           saveMenuBtn.disabled = false;
           saveMenuBtn.classList.remove('dirty');
           saveMenuBtn.classList.add('saved-flash');
