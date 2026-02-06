@@ -458,7 +458,7 @@ async function mergePerFolderIndexes(
     if (fs.existsSync(perFolderIndexPath)) {
       try {
         const indexContent = fs.readFileSync(perFolderIndexPath, 'utf-8');
-        const indexData = YAML.parse(indexContent);
+        const indexData = JSON.parse(indexContent);
 
         if (indexData.children && Array.isArray(indexData.children)) {
           // Merge order values from per-folder index
@@ -1240,7 +1240,7 @@ export async function generatePerFolderIndex(
       if (fs.existsSync(subIndexPath)) {
         try {
           const subIndexContent = fs.readFileSync(subIndexPath, 'utf-8');
-          const subIndexData = YAML.parse(subIndexContent);
+          const subIndexData = JSON.parse(subIndexContent);
 
           if (subIndexData.children && Array.isArray(subIndexData.children)) {
             // Merge children from per-folder index
