@@ -11,6 +11,16 @@ import { parseIndexFile, parseIndexFileJSON, isIndexFile, IndexDocument, IndexCh
 import { getSearchIndexManager } from './extension';
 
 /**
+ * Validate that a resolved path stays within the workspace root.
+ * Prevents path traversal via malicious _computed_path values.
+ */
+function isPathWithinRoot(resolvedPath: string, rootPath: string): boolean {
+  const normalizedResolved = path.resolve(resolvedPath);
+  const normalizedRoot = path.resolve(rootPath);
+  return normalizedResolved.startsWith(normalizedRoot + path.sep) || normalizedResolved === normalizedRoot;
+}
+
+/**
  * Helper to log to the output channel
  */
 function log(message: string): void {
@@ -391,38 +401,41 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
    * Resolve the absolute file path for this node
    */
   getFilePath(): string {
-    console.log(`[getFilePath] Called for node: ${this.indexNode.name}`);
-    console.log(`[getFilePath] _computed_path: ${this.indexNode._computed_path}`);
-    console.log(`[getFilePath] _filename: ${this.indexNode._filename}`);
-    console.log(`[getFilePath] workspaceRoot: ${this.workspaceRoot}`);
+    if (!this.workspaceRoot) {
+      log('[getFilePath] No workspaceRoot set - returning empty string');
+      return '';
+    }
 
     if (this.indexNode._computed_path) {
-      // USE PATH RESOLVER if provided, otherwise fallback to old behavior
       if (this.pathResolver) {
-        const resolvedPath = this.pathResolver(this.indexNode._computed_path);
-        console.log(`[getFilePath] Using pathResolver, resolved to: ${resolvedPath}`);
-        return resolvedPath;
-      } else {
-        // Fallback: old behavior
-        const resolvedPath = path.join(this.workspaceRoot, this.indexNode._computed_path);
-        console.log(`[getFilePath] Using fallback (no resolver), resolved to: ${resolvedPath}`);
-        return resolvedPath;
+        return this.pathResolver(this.indexNode._computed_path);
       }
+      const resolvedPath = path.join(this.workspaceRoot, this.indexNode._computed_path);
+      if (!isPathWithinRoot(resolvedPath, this.workspaceRoot)) {
+        log(`[getFilePath] Path traversal rejected: ${this.indexNode._computed_path}`);
+        return '';
+      }
+      return resolvedPath;
     }
 
     // Fallback: build from parent chain
     const parts: string[] = [];
     let current: IndexChildNode | undefined = this.indexNode;
-
     while (current) {
       const fileName = current._filename || current.name;
+      if (fileName.includes('..')) {
+        log(`[getFilePath] Path traversal in filename rejected: ${fileName}`);
+        return '';
+      }
       parts.unshift(fileName);
       current = current.parent;
     }
 
     const fallbackPath = path.join(this.workspaceRoot, ...parts);
-    console.log(`[getFilePath] Using fallback path: ${fallbackPath}`);
-    console.log(`[getFilePath] Parts used: ${parts.join(', ')}`);
+    if (!isPathWithinRoot(fallbackPath, this.workspaceRoot)) {
+      log(`[getFilePath] Fallback path traversal rejected: ${fallbackPath}`);
+      return '';
+    }
     return fallbackPath;
   }
 }
@@ -599,14 +612,19 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
       return computedPath;
     }
 
+    // Reject obvious path traversal attempts
+    if (computedPath.includes('..')) {
+      log(`[ChapterWise] resolveFilePath: Rejected path with '..': ${computedPath}`);
+      return path.join(this.currentContext.workspaceRoot, path.basename(computedPath));
+    }
+
     const resolved = path.join(this.currentContext.workspaceRoot, computedPath);
 
-    log('[ChapterWise] resolveFilePath: ' + JSON.stringify({
-      input: computedPath,
-      workspaceRoot: this.currentContext.workspaceRoot,
-      contextFolder: this.currentContext.contextFolder,
-      resolved: resolved
-    }));
+    // Validate resolved path stays within workspace
+    if (!isPathWithinRoot(resolved, this.currentContext.workspaceRoot)) {
+      log(`[ChapterWise] resolveFilePath: Path traversal detected: ${computedPath} resolved to ${resolved}`);
+      return path.join(this.currentContext.workspaceRoot, path.basename(computedPath));
+    }
 
     return resolved;
   }
