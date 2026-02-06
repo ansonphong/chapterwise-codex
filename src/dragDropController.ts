@@ -9,6 +9,9 @@ import * as fs from 'fs';
 import * as YAML from 'yaml';
 import { CodexTreeItemType, IndexNodeTreeItem, CodexTreeItem, CodexFileHeaderItem, CodexTreeProvider } from './treeProvider';
 import { getStructureEditor } from './structureEditor';
+import { getSettingsManager } from './settingsManager';
+
+const fsPromises = fs.promises;
 
 /**
  * Serialized drag data
@@ -249,9 +252,11 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
             const targetPath = path.dirname(target.getFilePath());
             const sourceFile = item.filePath || '';
             
-            // We need to get settings, but for now use empty object
-            // TODO: Get actual settings from settingsManager
-            const settings = {} as any;
+            const settingsMgr = getSettingsManager();
+            const docUri = item.documentUri ? vscode.Uri.parse(item.documentUri) : undefined;
+            const settings = docUri
+              ? await settingsMgr.getSettings(docUri)
+              : settingsMgr.getWorkspaceSettings();
             
             const result = await editor.moveFileInIndex(
               workspaceRoot,
@@ -463,8 +468,21 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
       }
     }
     
-    // TODO: Check for duplicate names in target folder
-    
+    // Check for duplicate names in target folder
+    if (target instanceof IndexNodeTreeItem && item.type === 'index' && item.filePath) {
+      const targetPath = target.getFilePath();
+      const targetDir = path.dirname(targetPath);
+      const sourceFileName = path.basename(item.filePath);
+      const potentialTarget = path.join(targetDir, sourceFileName);
+      try {
+        if (fs.existsSync(potentialTarget) && potentialTarget !== item.filePath) {
+          return false; // Would overwrite existing file
+        }
+      } catch {
+        // If check fails, allow the drop - structureEditor will catch it
+      }
+    }
+
     return true;
   }
   
@@ -585,11 +603,13 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
       const folderPath = path.dirname(targetPath);
       const perFolderIndexPath = path.join(workspaceRoot, folderPath, '.index.codex.json');
       
-      if (!fs.existsSync(perFolderIndexPath)) {
+      try {
+        await fsPromises.access(perFolderIndexPath);
+      } catch {
         return [];
       }
-      
-      const indexContent = fs.readFileSync(perFolderIndexPath, 'utf-8');
+
+      const indexContent = await fsPromises.readFile(perFolderIndexPath, 'utf-8');
       const indexData = JSON.parse(indexContent);
 
       return indexData.children || [];
