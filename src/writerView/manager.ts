@@ -1819,7 +1819,7 @@ export class WriterViewManager {
       const previewUrl = this.resolveImageUrlForWebview(panel.webview, existingPath, workspaceRoot);
 
       // Send message to show modal
-      panel.webview.postMessage({
+      safePostMessage(panel, {
         type: 'duplicateFound',
         filePath,
         existingPath,
