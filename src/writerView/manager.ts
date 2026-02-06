@@ -192,6 +192,13 @@ export class WriterViewManager {
       fullPath = path.join(workspaceRoot, url);
     }
 
+    // Path traversal protection: ensure resolved path stays within workspace
+    const resolved = path.resolve(fullPath);
+    const resolvedRoot = path.resolve(workspaceRoot);
+    if (!resolved.startsWith(resolvedRoot + path.sep) && resolved !== resolvedRoot) {
+      return '';
+    }
+
     const fileUri = vscode.Uri.file(fullPath);
     return webview.asWebviewUri(fileUri).toString();
   }
