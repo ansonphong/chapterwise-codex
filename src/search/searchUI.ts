@@ -112,7 +112,7 @@ export async function openSearchUI(
           limit: 50,
           timeout: 2000
         });
-        quickPick.items = formatResults(results, value);
+        quickPick.items = formatResults(results);
       } catch (error) {
         console.error('[Search] Error:', error);
         quickPick.items = [{
@@ -199,7 +199,7 @@ function saveRecentSearch(query: string): void {
 /**
  * Format search results for QuickPick
  */
-function formatResults(results: SearchResult[], query: string): SearchResultItem[] {
+function formatResults(results: SearchResult[]): SearchResultItem[] {
   const items: SearchResultItem[] = [];
 
   const titleResults = results.filter(r => r.tier === 1);
@@ -212,7 +212,7 @@ function formatResults(results: SearchResult[], query: string): SearchResultItem
       label: 'Titles',
       kind: vscode.QuickPickItemKind.Separator
     });
-    items.push(...titleResults.map(r => formatResultItem(r, query)));
+    items.push(...titleResults.map(r => formatResultItem(r)));
   }
 
   // Metadata
@@ -221,7 +221,7 @@ function formatResults(results: SearchResult[], query: string): SearchResultItem
       label: 'Tags & Attributes',
       kind: vscode.QuickPickItemKind.Separator
     });
-    items.push(...metaResults.map(r => formatResultItem(r, query)));
+    items.push(...metaResults.map(r => formatResultItem(r)));
   }
 
   // Content
@@ -230,7 +230,7 @@ function formatResults(results: SearchResult[], query: string): SearchResultItem
       label: 'Content',
       kind: vscode.QuickPickItemKind.Separator
     });
-    items.push(...contentResults.map(r => formatResultItem(r, query)));
+    items.push(...contentResults.map(r => formatResultItem(r)));
   }
 
   // No results
@@ -247,9 +247,9 @@ function formatResults(results: SearchResult[], query: string): SearchResultItem
 /**
  * Format a single result item
  */
-function formatResultItem(result: SearchResult, query: string): SearchResultItem {
+function formatResultItem(result: SearchResult): SearchResultItem {
   const icon = getTypeIcon(result.type);
-  const highlightedName = highlightMatches(result.name, query);
+  const highlightedName = result.name;
 
   const breadcrumb = result.nodePath
     ? result.nodePath.join(' › ')
@@ -290,10 +290,3 @@ function getTypeIcon(type: string): string {
   return icons[type.toLowerCase()] || '$(symbol-misc)';
 }
 
-/**
- * Highlight matching terms in text using QuickPick highlight ranges
- * Returns the original text since QuickPick doesn't support inline markdown
- */
-function highlightMatches(text: string, _query: string): string {
-  return text;
-}
