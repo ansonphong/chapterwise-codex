@@ -186,8 +186,10 @@ export class MultiIndexManager {
       }
 
       for (const coveredPath of index.coveredPaths) {
-        // === SECURITY: Use path separator to prevent partial directory name matches ===
-        if (filePath === coveredPath || filePath.startsWith(coveredPath + path.sep)) {
+        // Use path.relative for path-boundary-aware comparison
+        // A file is "under" a covered path if relative doesn't start with '..'
+        const relative = path.relative(coveredPath, filePath);
+        if (!relative.startsWith('..') && !path.isAbsolute(relative)) {
           return true;
         }
       }
