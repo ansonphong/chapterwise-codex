@@ -21,6 +21,44 @@ function isPathWithinRoot(resolvedPath: string, rootPath: string): boolean {
 }
 
 /**
+ * Safe accessors for IndexChildNode runtime-added properties.
+ * These properties are added by the index generator (Phase 3) but not
+ * defined in the IndexChildNode interface. Using accessors avoids
+ * unsafe `as any` casts throughout the tree provider.
+ */
+function getNodeKind(node: IndexChildNode): string | undefined {
+  return (node as Record<string, unknown>)._node_kind as string | undefined;
+}
+
+function getNodeParentFile(node: IndexChildNode): string | undefined {
+  return (node as Record<string, unknown>)._parent_file as string | undefined;
+}
+
+function getNodeFieldName(node: IndexChildNode): string | undefined {
+  return (node as Record<string, unknown>)._field_name as string | undefined;
+}
+
+function getNodeFieldType(node: IndexChildNode): string | undefined {
+  return (node as Record<string, unknown>)._field_type as string | undefined;
+}
+
+function getNodeParentEntity(node: IndexChildNode): string | undefined {
+  return (node as Record<string, unknown>)._parent_entity as string | undefined;
+}
+
+function getNodeDepth(node: IndexChildNode): number | undefined {
+  return (node as Record<string, unknown>)._depth as number | undefined;
+}
+
+function getNodeErrorMessage(node: IndexChildNode): string | undefined {
+  return (node as Record<string, unknown>)._error_message as string | undefined;
+}
+
+function getNodeOriginalInclude(node: IndexChildNode): string | undefined {
+  return (node as Record<string, unknown>)._original_include as string | undefined;
+}
+
+/**
  * Helper to log to the output channel
  */
 function log(message: string): void {
@@ -156,7 +194,7 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
     const displayName = indexNode.title || indexNode.name;
 
     // Phase 3: Use discriminator to determine node kind
-    const nodeKind = (indexNode as any)._node_kind;
+    const nodeKind = getNodeKind(indexNode);
     const isFile = nodeKind === 'file';
     const isNode = nodeKind === 'node';
     const isField = nodeKind === 'field';
@@ -214,7 +252,7 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
 
     // Set resource URI for nodes and fields to enable inline actions
     if (isNode || isField) {
-      const parentFile = (indexNode as any)._parent_file;
+      const parentFile = getNodeParentFile(indexNode);
       if (parentFile && workspaceRoot) {
         const fullPath = path.join(workspaceRoot, parentFile);
         this.resourceUri = vscode.Uri.file(fullPath);
@@ -265,48 +303,55 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
 
   private createTooltip(): vscode.MarkdownString {
     const md = new vscode.MarkdownString();
-    const node = this.indexNode as any;
     md.appendMarkdown(`**${this.indexNode.title || this.indexNode.name}**\n\n`);
 
     // Phase 3: Enhanced tooltip based on node kind
-    const nodeKind = node._node_kind;
+    const nodeKind = getNodeKind(this.indexNode);
 
     if (nodeKind === 'error') {
-      md.appendMarkdown(`⚠️ **Error**\n\n`);
-      if (node._error_message) {
-        md.appendMarkdown(`\`\`\`\n${node._error_message}\n\`\`\`\n`);
+      md.appendMarkdown(`\u26a0\ufe0f **Error**\n\n`);
+      const errorMsg = getNodeErrorMessage(this.indexNode);
+      if (errorMsg) {
+        md.appendMarkdown(`\`\`\`\n${errorMsg}\n\`\`\`\n`);
       }
-      if (node._original_include) {
-        md.appendMarkdown(`\nInclude: \`${node._original_include}\`\n`);
+      const origInclude = getNodeOriginalInclude(this.indexNode);
+      if (origInclude) {
+        md.appendMarkdown(`\nInclude: \`${origInclude}\`\n`);
       }
     } else if (nodeKind === 'missing') {
-      md.appendMarkdown(`⚠️ **Missing File**\n\n`);
-      if (node._original_include) {
-        md.appendMarkdown(`Include: \`${node._original_include}\`\n`);
+      md.appendMarkdown(`\u26a0\ufe0f **Missing File**\n\n`);
+      const origInclude = getNodeOriginalInclude(this.indexNode);
+      if (origInclude) {
+        md.appendMarkdown(`Include: \`${origInclude}\`\n`);
       }
-      if (node._computed_path) {
-        md.appendMarkdown(`Expected path: \`${node._computed_path}\`\n`);
+      if (this.indexNode._computed_path) {
+        md.appendMarkdown(`Expected path: \`${this.indexNode._computed_path}\`\n`);
       }
     } else if (nodeKind === 'field') {
-      md.appendMarkdown(`- Field: \`${node._field_name}\`\n`);
-      md.appendMarkdown(`- Type: \`${node._field_type}\`\n`);
-      if (node._parent_entity) {
-        md.appendMarkdown(`- Parent: \`${node._parent_entity}\`\n`);
+      md.appendMarkdown(`- Field: \`${getNodeFieldName(this.indexNode) || 'unknown'}\`\n`);
+      md.appendMarkdown(`- Type: \`${getNodeFieldType(this.indexNode) || 'unknown'}\`\n`);
+      const parentEntity = getNodeParentEntity(this.indexNode);
+      if (parentEntity) {
+        md.appendMarkdown(`- Parent: \`${parentEntity}\`\n`);
       }
-      if (node._parent_file) {
-        md.appendMarkdown(`- File: \`${node._parent_file}\`\n`);
+      const parentFile = getNodeParentFile(this.indexNode);
+      if (parentFile) {
+        md.appendMarkdown(`- File: \`${parentFile}\`\n`);
       }
     } else if (nodeKind === 'node') {
       md.appendMarkdown(`- Type: \`${this.indexNode.type}\`\n`);
       md.appendMarkdown(`- ID: \`${this.indexNode.id}\`\n`);
-      if (node._depth !== undefined) {
-        md.appendMarkdown(`- Depth: \`${node._depth}\`\n`);
+      const depth = getNodeDepth(this.indexNode);
+      if (depth !== undefined) {
+        md.appendMarkdown(`- Depth: \`${depth}\`\n`);
       }
-      if (node._parent_file) {
-        md.appendMarkdown(`- File: \`${node._parent_file}\`\n`);
+      const parentFile = getNodeParentFile(this.indexNode);
+      if (parentFile) {
+        md.appendMarkdown(`- File: \`${parentFile}\`\n`);
       }
-      if (node._parent_entity) {
-        md.appendMarkdown(`- Parent Node: \`${node._parent_entity}\`\n`);
+      const parentEntity = getNodeParentEntity(this.indexNode);
+      if (parentEntity) {
+        md.appendMarkdown(`- Parent Node: \`${parentEntity}\`\n`);
       }
     } else {
       // Default (file, folder)
@@ -321,8 +366,7 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
   }
 
   private getIcon(): vscode.ThemeIcon {
-    const node = this.indexNode as any;
-    const nodeKind = node._node_kind;
+    const nodeKind = getNodeKind(this.indexNode);
 
     // Phase 3: Handle special state icons first
     if (nodeKind === 'missing') {
@@ -348,7 +392,7 @@ export class IndexNodeTreeItem extends vscode.TreeItem {
         images: ['file-media', 'symbolIcon.colorForeground'],
       };
 
-      const fieldName = node._field_name;
+      const fieldName = getNodeFieldName(this.indexNode) || '';
       const config = fieldIconMap[fieldName] || ['symbol-misc', 'symbolIcon.fieldForeground'];
       return new vscode.ThemeIcon(config[0], new vscode.ThemeColor(config[1]));
     }
@@ -1225,8 +1269,7 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
 
     // Index node expansion
     if (element instanceof IndexNodeTreeItem) {
-      const node = element.indexNode as any;
-      const nodeKind = node._node_kind;
+      const nodeKind = getNodeKind(element.indexNode);
       const isFolder = element.indexNode.type === 'folder' || nodeKind === 'folder';
 
       // Phase 3: Nodes and files with children show them directly from the index

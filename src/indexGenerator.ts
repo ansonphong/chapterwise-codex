@@ -1126,7 +1126,7 @@ export async function runGenerateIndex(): Promise<void> {
 
         // Count files
         const content = fs.readFileSync(outputPath, 'utf-8');
-        const data = YAML.parse(content);
+        const data = JSON.parse(content);
         const fileCount = countFiles(data.children);
 
       const action = await vscode.window.showInformationMessage(
