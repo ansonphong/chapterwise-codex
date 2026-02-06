@@ -528,97 +528,10 @@ export class WriterViewManager {
             safePostMessage(panel, { type: 'saveComplete' });
             break;
 
-          case 'updateImageCaption': {
-            if (typeof message.url !== 'string') { return; }
-            const { url, caption } = message;
-
-            try {
-              // Read fresh file content
-              const text = await fsPromises.readFile(documentUri.fsPath, 'utf-8');
-              const doc = YAML.parseDocument(text);
-
-              // Find the node in the document (handle nested nodes)
-              const targetNode = this.findNodeInYamlDoc(doc, node);
-              if (!targetNode) {
-                vscode.window.showErrorMessage('Could not find node in document');
-                return;
-              }
-
-              // Find images array
-              const images = targetNode.get('images');
-              if (!images || !YAML.isSeq(images)) {
-                return;
-              }
-
-              // Find image by URL
-              for (const item of images.items) {
-                if (YAML.isMap(item)) {
-                  const itemUrl = item.get('url');
-                  if (itemUrl === url) {
-                    if (caption) {
-                      item.set('caption', caption);
-                    } else {
-                      item.delete('caption');
-                    }
-                    break;
-                  }
-                }
-              }
-
-              // Write back
-              await fsPromises.writeFile(documentUri.fsPath, doc.toString());
-
-              // Confirm save
-              safePostMessage(panel, { type: 'imageCaptionSaved', url });
-            } catch (error) {
-              console.error('Failed to save caption:', error);
-              vscode.window.showErrorMessage('Failed to save image caption.');
-            }
+          default:
+            // Delegate image-related messages to shared handler
+            await this.handleImageMessage(message, panel, documentUri, node, workspaceRoot);
             break;
-          }
-
-          case 'openImageBrowser':
-            await this.handleOpenImageBrowser(panel, workspaceRoot);
-            break;
-
-          case 'addExistingImage': {
-            if (typeof message.imagePath !== 'string') { return; }
-            // Validate image path is within workspace root
-            if (!isPathWithinWorkspace(message.imagePath, workspaceRoot)) {
-              vscode.window.showErrorMessage('Image path must be within the workspace');
-              return;
-            }
-            await this.handleAddExistingImage(panel, documentUri, node, workspaceRoot, message.imagePath);
-            break;
-          }
-
-          case 'importImage':
-            await this.handleImportImage(panel, documentUri, node, workspaceRoot);
-            break;
-
-          case 'deleteImage':
-            if (typeof message.url !== 'string') { return; }
-            await this.handleDeleteImage(panel, documentUri, node, message.url, message.index);
-            break;
-
-          case 'reorderImages':
-            if (!Array.isArray(message.order)) { return; }
-            await this.handleReorderImages(panel, documentUri, node, message.order);
-            break;
-
-          case 'duplicateResolved': {
-            if (typeof message.action !== 'string') { return; }
-            const resolverKey = this.panelResolverKeys.get(panel);
-            if (resolverKey) {
-              const resolver = this.pendingDuplicateResolvers.get(resolverKey);
-              if (resolver) {
-                resolver.resolve({ type: message.action, existingPath: message.existingPath });
-                this.pendingDuplicateResolvers.delete(resolverKey);
-              }
-              this.panelResolverKeys.delete(panel);
-            }
-            break;
-          }
         }
       },
       undefined,
@@ -942,97 +855,10 @@ export class WriterViewManager {
             safePostMessage(panel, { type: 'saveComplete' });
             break;
 
-          case 'updateImageCaption': {
-            if (typeof message.url !== 'string') { return; }
-            const { url, caption } = message;
-
-            try {
-              // Read fresh file content
-              const text = await fsPromises.readFile(documentUri.fsPath, 'utf-8');
-              const doc = YAML.parseDocument(text);
-
-              // Find the node in the document (handle nested nodes)
-              const targetNode = this.findNodeInYamlDoc(doc, node);
-              if (!targetNode) {
-                vscode.window.showErrorMessage('Could not find node in document');
-                return;
-              }
-
-              // Find images array
-              const images = targetNode.get('images');
-              if (!images || !YAML.isSeq(images)) {
-                return;
-              }
-
-              // Find image by URL
-              for (const item of images.items) {
-                if (YAML.isMap(item)) {
-                  const itemUrl = item.get('url');
-                  if (itemUrl === url) {
-                    if (caption) {
-                      item.set('caption', caption);
-                    } else {
-                      item.delete('caption');
-                    }
-                    break;
-                  }
-                }
-              }
-
-              // Write back
-              await fsPromises.writeFile(documentUri.fsPath, doc.toString());
-
-              // Confirm save
-              safePostMessage(panel, { type: 'imageCaptionSaved', url });
-            } catch (error) {
-              console.error('Failed to save caption:', error);
-              vscode.window.showErrorMessage('Failed to save image caption.');
-            }
+          default:
+            // Delegate image-related messages to shared handler
+            await this.handleImageMessage(message, panel, documentUri, node, workspaceRoot);
             break;
-          }
-
-          case 'openImageBrowser':
-            await this.handleOpenImageBrowser(panel, workspaceRoot);
-            break;
-
-          case 'addExistingImage': {
-            if (typeof message.imagePath !== 'string') { return; }
-            // Validate image path is within workspace root
-            if (!isPathWithinWorkspace(message.imagePath, workspaceRoot)) {
-              vscode.window.showErrorMessage('Image path must be within the workspace');
-              return;
-            }
-            await this.handleAddExistingImage(panel, documentUri, node, workspaceRoot, message.imagePath);
-            break;
-          }
-
-          case 'importImage':
-            await this.handleImportImage(panel, documentUri, node, workspaceRoot);
-            break;
-
-          case 'deleteImage':
-            if (typeof message.url !== 'string') { return; }
-            await this.handleDeleteImage(panel, documentUri, node, message.url, message.index);
-            break;
-
-          case 'reorderImages':
-            if (!Array.isArray(message.order)) { return; }
-            await this.handleReorderImages(panel, documentUri, node, message.order);
-            break;
-
-          case 'duplicateResolved': {
-            if (typeof message.action !== 'string') { return; }
-            const resolverKey = this.panelResolverKeys.get(panel);
-            if (resolverKey) {
-              const resolver = this.pendingDuplicateResolvers.get(resolverKey);
-              if (resolver) {
-                resolver.resolve({ type: message.action, existingPath: message.existingPath });
-                this.pendingDuplicateResolvers.delete(resolverKey);
-              }
-              this.panelResolverKeys.delete(panel);
-            }
-            break;
-          }
         }
       },
       undefined,
@@ -1524,6 +1350,128 @@ export class WriterViewManager {
       type: 'workspaceImages',
       images: imagesForBrowser
     });
+  }
+
+  /**
+   * Serialize async operations on a per-file basis to prevent race conditions
+   */
+  private async withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
+    const normalized = path.resolve(filePath);
+    const existing = this.fileLocks.get(normalized) ?? Promise.resolve();
+    let release: () => void;
+    const newLock = new Promise<void>(resolve => { release = resolve; });
+    this.fileLocks.set(normalized, existing.then(() => newLock));
+    await existing;
+    try {
+      return await fn();
+    } finally {
+      release!();
+      if (this.fileLocks.get(normalized) === newLock) {
+        this.fileLocks.delete(normalized);
+      }
+    }
+  }
+
+  /**
+   * Handle image-related messages from webview (shared between openWriterView and openWriterViewForField)
+   * Returns true if the message was handled, false otherwise.
+   */
+  private async handleImageMessage(
+    message: any,
+    panel: vscode.WebviewPanel,
+    documentUri: vscode.Uri,
+    node: CodexNode,
+    workspaceRoot: string
+  ): Promise<boolean> {
+    switch (message.type) {
+      case 'updateImageCaption': {
+        if (typeof message.url !== 'string') { return true; }
+        const { url, caption } = message;
+        await this.withFileLock(documentUri.fsPath, async () => {
+          try {
+            const text = await fsPromises.readFile(documentUri.fsPath, 'utf-8');
+            const doc = YAML.parseDocument(text);
+            const targetNode = this.findNodeInYamlDoc(doc, node);
+            if (!targetNode) {
+              vscode.window.showErrorMessage('Could not find node in document');
+              return;
+            }
+            const images = targetNode.get('images');
+            if (!images || !YAML.isSeq(images)) { return; }
+            for (const item of images.items) {
+              if (YAML.isMap(item)) {
+                const itemUrl = item.get('url');
+                if (itemUrl === url) {
+                  if (caption) {
+                    item.set('caption', caption);
+                  } else {
+                    item.delete('caption');
+                  }
+                  break;
+                }
+              }
+            }
+            await fsPromises.writeFile(documentUri.fsPath, doc.toString());
+            safePostMessage(panel, { type: 'imageCaptionSaved', url });
+          } catch (error) {
+            console.error('Failed to save caption:', error);
+            vscode.window.showErrorMessage('Failed to save image caption.');
+          }
+        });
+        return true;
+      }
+
+      case 'openImageBrowser':
+        await this.handleOpenImageBrowser(panel, workspaceRoot);
+        return true;
+
+      case 'addExistingImage': {
+        if (typeof message.imagePath !== 'string') { return true; }
+        if (!isPathWithinWorkspace(message.imagePath, workspaceRoot)) {
+          vscode.window.showErrorMessage('Image path must be within the workspace');
+          return true;
+        }
+        await this.withFileLock(documentUri.fsPath, () =>
+          this.handleAddExistingImage(panel, documentUri, node, workspaceRoot, message.imagePath)
+        );
+        return true;
+      }
+
+      case 'importImage':
+        await this.handleImportImage(panel, documentUri, node, workspaceRoot);
+        return true;
+
+      case 'deleteImage':
+        if (typeof message.url !== 'string') { return true; }
+        await this.withFileLock(documentUri.fsPath, () =>
+          this.handleDeleteImage(panel, documentUri, node, message.url, message.index)
+        );
+        return true;
+
+      case 'reorderImages':
+        if (!Array.isArray(message.order)) { return true; }
+        await this.withFileLock(documentUri.fsPath, () =>
+          this.handleReorderImages(panel, documentUri, node, message.order)
+        );
+        return true;
+
+      case 'duplicateResolved': {
+        if (typeof message.action !== 'string') { return true; }
+        const resolverKey = this.panelResolverKeys.get(panel);
+        if (resolverKey) {
+          const resolver = this.pendingDuplicateResolvers.get(resolverKey);
+          if (resolver) {
+            resolver.resolve({ type: message.action, existingPath: message.existingPath });
+            this.pendingDuplicateResolvers.delete(resolverKey);
+          }
+          this.panelResolverKeys.delete(panel);
+        }
+        return true;
+      }
+
+      default:
+        return false;
+    }
   }
 
   /**

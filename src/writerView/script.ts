@@ -455,7 +455,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     }
     
     function escapeHtml(str) {
-      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
     }
 
     function safeParseInt(value, fallback) {
@@ -1652,7 +1652,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
 
       imageBrowserGrid.innerHTML = images.map(img => \`
         <div class="browser-image-item" data-path="\${escapeHtml(img.path)}" title="\${escapeHtml(img.path)}">
-          <img src="\${img.thumbnail}" alt="\${escapeHtml(img.filename)}" loading="lazy" />
+          <img src="\${escapeHtml(img.thumbnail)}" alt="\${escapeHtml(img.filename)}" loading="lazy" />
           <div class="browser-image-name">\${escapeHtml(img.filename)}</div>
           <div class="browser-image-folder">\${escapeHtml(img.folder)}</div>
         </div>
