@@ -19,6 +19,18 @@ import { CodexNode, PathSegment } from './codexModel';
 import { NavigatorSettings } from './settingsManager';
 import { generateIndex, generatePerFolderIndex, cascadeRegenerateIndexes } from './indexGenerator';
 
+const fsPromises = fs.promises;
+
+/** Check if a file/directory exists (async) */
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fsPromises.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Validate that a resolved path stays within the workspace root.
  * Prevents path traversal via malicious file paths.
@@ -73,30 +85,30 @@ export class CodexStructureEditor {
       }
 
       // Check if source exists
-      if (!fs.existsSync(sourceFull)) {
+      if (!await fileExists(sourceFull)) {
         return {
           success: false,
           message: `Source file not found: ${sourceFilePath}`
         };
       }
-      
+
       // Check if target directory exists
       const targetDir = path.dirname(targetFull);
-      if (!fs.existsSync(targetDir)) {
+      if (!await fileExists(targetDir)) {
         // Create target directory
-        fs.mkdirSync(targetDir, { recursive: true });
+        await fsPromises.mkdir(targetDir, { recursive: true });
       }
-      
+
       // Check if target already exists
-      if (fs.existsSync(targetFull)) {
+      if (await fileExists(targetFull)) {
         return {
           success: false,
           message: `Target file already exists: ${path.join(targetParentPath, fileName)}`
         };
       }
-      
+
       // Move the file
-      fs.renameSync(sourceFull, targetFull);
+      await fsPromises.rename(sourceFull, targetFull);
       
       // Update include paths
       const affectedFiles = await this.updateIncludePaths(
@@ -172,24 +184,24 @@ export class CodexStructureEditor {
       }
 
       // Check if source exists
-      if (!fs.existsSync(oldFull)) {
+      if (!await fileExists(oldFull)) {
         return {
           success: false,
           message: `Source file not found: ${oldPath}`
         };
       }
-      
+
       // Check if target already exists
-      if (fs.existsSync(newFull) && oldFull !== newFull) {
+      if (oldFull !== newFull && await fileExists(newFull)) {
         return {
           success: false,
           message: `File already exists: ${newFileName}`
         };
       }
-      
+
       // Rename the file
       if (oldFull !== newFull) {
-        fs.renameSync(oldFull, newFull);
+        await fsPromises.rename(oldFull, newFull);
       }
       
       // Update include paths
@@ -254,13 +266,13 @@ export class CodexStructureEditor {
       }
 
       // Check if file exists
-      if (!fs.existsSync(fullPath)) {
+      if (!await fileExists(fullPath)) {
         return {
           success: false,
           message: `File not found: ${filePath}`
         };
       }
-      
+
       // Confirm if configured
       if (settings.safety.confirmDelete) {
         const action = permanent ? 'permanently delete' : 'move to trash';
@@ -281,7 +293,7 @@ export class CodexStructureEditor {
       // Backup if configured
       if (settings.safety.backupBeforeDestruct && permanent) {
         const backupPath = `${fullPath}.backup`;
-        fs.copyFileSync(fullPath, backupPath);
+        await fsPromises.copyFile(fullPath, backupPath);
       }
       
       // Delete the file
@@ -662,21 +674,19 @@ export class CodexStructureEditor {
   ): Promise<boolean> {
     try {
       const indexPath = path.join(workspaceRoot, '.index.codex.json');
-      
+
       // Check if index exists
-      if (!fs.existsSync(indexPath)) {
-        console.log('No index file found, skipping surgical update');
+      if (!await fileExists(indexPath)) {
         return false;
       }
-      
+
       // Parse index JSON
-      const indexContent = fs.readFileSync(indexPath, 'utf-8');
+      const indexContent = await fsPromises.readFile(indexPath, 'utf-8');
       const indexData = JSON.parse(indexContent);
 
       // Get children array
       const children = indexData.children;
       if (!Array.isArray(children)) {
-        console.warn('Index children is not an array');
         return false;
       }
 
@@ -688,14 +698,11 @@ export class CodexStructureEditor {
       );
 
       if (!updated) {
-        console.log(`File entry not found in index: ${oldPath}`);
         return false;
       }
 
       // Write back to disk
-      fs.writeFileSync(indexPath, JSON.stringify(indexData, null, 2), 'utf-8');
-      
-      console.log(`✓ Surgically updated index: ${oldPath} → ${newPath}`);
+      await fsPromises.writeFile(indexPath, JSON.stringify(indexData, null, 2), 'utf-8');
       return true;
     } catch (error) {
       console.error('Surgical index update failed:', error);
@@ -716,12 +723,12 @@ export class CodexStructureEditor {
   ): Promise<boolean> {
     try {
       const indexPath = path.join(workspaceRoot, '.index.codex.json');
-      
-      if (!fs.existsSync(indexPath)) {
+
+      if (!await fileExists(indexPath)) {
         return false;
       }
-      
-      const indexContent = fs.readFileSync(indexPath, 'utf-8');
+
+      const indexContent = await fsPromises.readFile(indexPath, 'utf-8');
       const indexData = JSON.parse(indexContent);
 
       const children = indexData.children;
@@ -733,14 +740,11 @@ export class CodexStructureEditor {
       const removed = this.findAndRemoveFileEntry(children, filePath);
 
       if (!removed) {
-        console.log(`File entry not found in index for removal: ${filePath}`);
         return false;
       }
 
       // Write back
-      fs.writeFileSync(indexPath, JSON.stringify(indexData, null, 2), 'utf-8');
-      
-      console.log(`✓ Surgically removed from index: ${filePath}`);
+      await fsPromises.writeFile(indexPath, JSON.stringify(indexData, null, 2), 'utf-8');
       return true;
     } catch (error) {
       console.error('Surgical index removal failed:', error);
@@ -869,8 +873,8 @@ export class CodexStructureEditor {
       );
       
       for (const fileUri of files) {
-        const content = fs.readFileSync(fileUri.fsPath, 'utf-8');
-        
+        const content = await fsPromises.readFile(fileUri.fsPath, 'utf-8');
+
         // Check if this file includes the moved file
         if (content.includes(oldPath)) {
           // Update include paths
@@ -878,9 +882,9 @@ export class CodexStructureEditor {
             new RegExp(oldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
             newPath
           );
-          
+
           if (updated !== content) {
-            fs.writeFileSync(fileUri.fsPath, updated, 'utf-8');
+            await fsPromises.writeFile(fileUri.fsPath, updated, 'utf-8');
             affectedFiles.push(path.relative(workspaceRoot, fileUri.fsPath));
           }
         }
@@ -908,7 +912,7 @@ export class CodexStructureEditor {
       );
       
       for (const fileUri of files) {
-        const content = fs.readFileSync(fileUri.fsPath, 'utf-8');
+        const content = await fsPromises.readFile(fileUri.fsPath, 'utf-8');
         if (content.includes(filePath)) {
           affectedFiles.push(path.relative(workspaceRoot, fileUri.fsPath));
         }
@@ -1015,14 +1019,13 @@ export class CodexStructureEditor {
       );
       
       // Check if per-folder index exists
-      if (!fs.existsSync(perFolderIndexPath)) {
+      if (!await fileExists(perFolderIndexPath)) {
         // Generate per-folder index first
-        const { generatePerFolderIndex } = require('./indexGenerator');
         await generatePerFolderIndex(workspaceRoot, folderPath);
       }
-      
+
       // Read per-folder index
-      const indexContent = fs.readFileSync(perFolderIndexPath, 'utf-8');
+      const indexContent = await fsPromises.readFile(perFolderIndexPath, 'utf-8');
       const indexData = JSON.parse(indexContent);
 
       // Find the file node in children
@@ -1052,10 +1055,9 @@ export class CodexStructureEditor {
       }
 
       // Write back per-folder index
-      fs.writeFileSync(perFolderIndexPath, JSON.stringify(indexData, null, 2), 'utf-8');
-      
+      await fsPromises.writeFile(perFolderIndexPath, JSON.stringify(indexData, null, 2), 'utf-8');
+
       // Cascade regenerate all parent indexes
-      const { cascadeRegenerateIndexes } = require('./indexGenerator');
       await cascadeRegenerateIndexes(workspaceRoot, folderPath);
       
       return {
@@ -1093,15 +1095,15 @@ export class CodexStructureEditor {
       );
       
       // Check if per-folder index exists
-      if (!fs.existsSync(perFolderIndexPath)) {
+      if (!await fileExists(perFolderIndexPath)) {
         return {
           success: false,
           message: 'Index file not found. Generate index first.'
         };
       }
-      
+
       // Read per-folder index
-      const indexContent = fs.readFileSync(perFolderIndexPath, 'utf-8');
+      const indexContent = await fsPromises.readFile(perFolderIndexPath, 'utf-8');
       const indexData = JSON.parse(indexContent);
 
       // Find the file node in children
@@ -1148,10 +1150,9 @@ export class CodexStructureEditor {
       previousNode.order = currentOrder;
 
       // Write back per-folder index
-      fs.writeFileSync(perFolderIndexPath, JSON.stringify(indexData, null, 2), 'utf-8');
-      
+      await fsPromises.writeFile(perFolderIndexPath, JSON.stringify(indexData, null, 2), 'utf-8');
+
       // Cascade regenerate all parent indexes
-      const { cascadeRegenerateIndexes } = require('./indexGenerator');
       await cascadeRegenerateIndexes(workspaceRoot, folderPath);
       
       return {
@@ -1189,15 +1190,15 @@ export class CodexStructureEditor {
       );
       
       // Check if per-folder index exists
-      if (!fs.existsSync(perFolderIndexPath)) {
+      if (!await fileExists(perFolderIndexPath)) {
         return {
           success: false,
           message: 'Index file not found. Generate index first.'
         };
       }
-      
+
       // Read per-folder index
-      const indexContent = fs.readFileSync(perFolderIndexPath, 'utf-8');
+      const indexContent = await fsPromises.readFile(perFolderIndexPath, 'utf-8');
       const indexData = JSON.parse(indexContent);
 
       // Find the file node in children
@@ -1244,10 +1245,9 @@ export class CodexStructureEditor {
       nextNode.order = currentOrder;
 
       // Write back per-folder index
-      fs.writeFileSync(perFolderIndexPath, JSON.stringify(indexData, null, 2), 'utf-8');
-      
+      await fsPromises.writeFile(perFolderIndexPath, JSON.stringify(indexData, null, 2), 'utf-8');
+
       // Cascade regenerate all parent indexes
-      const { cascadeRegenerateIndexes } = require('./indexGenerator');
       await cascadeRegenerateIndexes(workspaceRoot, folderPath);
       
       return {
@@ -1304,29 +1304,15 @@ export class CodexStructureEditor {
       console.log(`[autofixFolderOrder] Looking for index at: ${indexPath}`);
       
       // Check if index exists
-      if (!fs.existsSync(indexPath)) {
-        console.error(`[autofixFolderOrder] Index file not found at: ${indexPath}`);
-        
-        // List directory contents to help debug
-        const searchDir = parentPath 
-          ? path.join(workspaceRoot, parentPath)
-          : workspaceRoot;
-        
-        if (fs.existsSync(searchDir) && fs.statSync(searchDir).isDirectory()) {
-          const contents = fs.readdirSync(searchDir);
-          console.error(`[autofixFolderOrder] Directory contents: ${contents.join(', ')}`);
-        }
-        
+      if (!await fileExists(indexPath)) {
         return {
           success: false,
           message: `Index file not found at: ${indexPath}`
         };
       }
-      
-      console.log(`[autofixFolderOrder] Found index at: ${indexPath}`);
-      
+
       // Read index
-      const indexContent = fs.readFileSync(indexPath, 'utf-8');
+      const indexContent = await fsPromises.readFile(indexPath, 'utf-8');
       const indexData = JSON.parse(indexContent);
 
       // Find the folder node within the index
@@ -1394,12 +1380,7 @@ export class CodexStructureEditor {
       });
 
       // Write back to index
-      fs.writeFileSync(indexPath, JSON.stringify(indexData, null, 2), 'utf-8');
-      console.log(`[autofixFolderOrder] Wrote updated index to: ${indexPath}`);
-      
-      // Cascade regenerate parent indexes (if needed)
-      // For now, just log - the cascade is optional
-      console.log(`[autofixFolderOrder] Consider cascading to parent indexes if needed`);
+      await fsPromises.writeFile(indexPath, JSON.stringify(indexData, null, 2), 'utf-8');
       
       return {
         success: true,
