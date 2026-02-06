@@ -528,19 +528,21 @@ function resolveIncludePath(
   parentFilePath: string,
   workspaceRoot: string
 ): string {
-  // If absolute path (starts with /), resolve from workspace root
-  if (includePath.startsWith('/')) {
-    return path.join(workspaceRoot, includePath.substring(1));
-  }
+  let resolved: string;
 
-  // Otherwise, resolve relative to parent file's directory
-  const parentDir = path.dirname(parentFilePath);
-  const resolved = path.resolve(parentDir, includePath);
+  if (includePath.startsWith('/')) {
+    // Absolute path: resolve from workspace root
+    resolved = path.join(workspaceRoot, includePath.substring(1));
+  } else {
+    // Relative path: resolve from parent file's directory
+    const parentDir = path.dirname(parentFilePath);
+    resolved = path.resolve(parentDir, includePath);
+  }
 
   // Normalize to remove .. and . segments
   const normalized = path.normalize(resolved);
 
-  // Security check: ensure resolved path is within workspace
+  // Security check: ensure resolved path is within workspace (covers BOTH branches)
   const relative = path.relative(workspaceRoot, normalized);
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new Error(`Include path escapes workspace root: ${includePath}`);
