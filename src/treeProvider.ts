@@ -849,7 +849,13 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
         log('[ChapterWise Codex] Context folder index loaded and displayed');
       } catch (error) {
         log(`[TreeProvider] Error loading context index: ${error}`);
-        vscode.window.showErrorMessage(`Failed to load index: ${error}`);
+        // Clear stale state on failure
+        this.indexDoc = null;
+        this.isIndexMode = false;
+        this.isLoading = false;
+        this.loadingMessage = null;
+        vscode.window.showErrorMessage(`Failed to load index: ${error instanceof Error ? error.message : String(error)}`);
+        this.refresh();
       }
     } else {
       // Reset to workspace root or FILES mode
@@ -1017,11 +1023,19 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
 
     // No active document and no index - show welcome message
     if (!this.activeDocument && !this.indexDoc) {
-      return [];
+      return [new CodexFileHeaderItem(
+        vscode.Uri.file(''),
+        false,
+        'Right-click a folder \u2192 Set as Codex Context'
+      )];
     }
 
-    // Document failed to parse
-    return [];
+    // Document failed to parse - show error state
+    return [new CodexFileHeaderItem(
+      vscode.Uri.file(''),
+      false,
+      'Failed to parse document'
+    )];
   }
 
   /**
