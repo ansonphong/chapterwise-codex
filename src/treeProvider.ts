@@ -582,6 +582,8 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     contextFolder: null
   };
 
+  private disposables: vscode.Disposable[] = [];
+
   /**
    * CENTRALIZED CONTEXT CHANGE METHOD
    * ALL context changes MUST go through this method
@@ -640,29 +642,44 @@ export class CodexTreeProvider implements vscode.TreeDataProvider<CodexTreeItemT
     console.log('[ChapterWise Codex] TreeProvider constructor called');
 
     // Watch for document changes
-    vscode.workspace.onDidChangeTextDocument((e) => {
-      if (this.activeDocument && e.document.uri.toString() === this.activeDocument.uri.toString()) {
-        this.updateCodexDoc();
-      }
-    });
+    this.disposables.push(
+      vscode.workspace.onDidChangeTextDocument((e) => {
+        try {
+          if (this.activeDocument && e.document.uri.toString() === this.activeDocument.uri.toString()) {
+            this.updateCodexDoc();
+          }
+        } catch (error) {
+          console.error('[ChapterWise] Error in onDidChangeTextDocument:', error);
+        }
+      })
+    );
 
     // Watch for active editor changes - DON'T auto-switch context
-    // Context should ONLY change when user explicitly sets it (right-click → Set as Codex Context)
-    vscode.window.onDidChangeActiveTextEditor((editor) => {
-      console.log('[ChapterWise Codex] Active editor changed:', editor?.document?.fileName);
-      // Removed automatic setActiveDocument - user must explicitly set context
-    });
+    this.disposables.push(
+      vscode.window.onDidChangeActiveTextEditor((_editor) => {
+        // Context should ONLY change when user explicitly sets it
+      })
+    );
 
     // Watch for documents opening - DON'T auto-switch context
-    // Context should ONLY change when user explicitly sets it
-    vscode.workspace.onDidOpenTextDocument((doc) => {
-      console.log('[ChapterWise Codex] Document opened:', doc.fileName);
-      // Removed automatic setActiveDocument - user must explicitly set context
-    });
+    this.disposables.push(
+      vscode.workspace.onDidOpenTextDocument((_doc) => {
+        // Context should ONLY change when user explicitly sets it
+      })
+    );
 
-    // REMOVED: initializeActiveDocument() - NO automatic context switching
-    // Context will remain empty until user explicitly right-clicks and sets it
     console.log('[ChapterWise Codex] TreeProvider initialized - context empty until explicitly set');
+  }
+
+  /**
+   * Dispose all event listeners and resources
+   */
+  dispose(): void {
+    for (const d of this.disposables) {
+      d.dispose();
+    }
+    this.disposables.length = 0;
+    this._onDidChangeTreeData.dispose();
   }
 
   /**
