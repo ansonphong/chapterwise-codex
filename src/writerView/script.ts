@@ -448,7 +448,13 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     function escapeHtml(str) {
       return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
-    
+
+    function safeParseInt(value, fallback) {
+      if (value == null) return fallback;
+      const parsed = parseInt(value, 10);
+      return isNaN(parsed) ? fallback : parsed;
+    }
+
     // Track editing state for attributes
     const attrEditingState = new Map(); // index -> { isEditing: bool, isSubmitting: bool }
     
@@ -539,7 +545,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       const target = e.target;
       if (target.classList.contains('attr-value-input')) {
         const card = target.closest('.attr-card');
-        const index = parseInt(card.dataset.index);
+        const index = safeParseInt(card.dataset.index, -1);
+        if (index < 0) return;
         // Update local state instantly (no network call!)
         if (localAttributes[index]) {
           localAttributes[index].value = target.value;
@@ -549,7 +556,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
         }
       } else if (target.classList.contains('type-select')) {
         const card = target.closest('.attr-card');
-        const index = parseInt(card.dataset.index);
+        const index = safeParseInt(card.dataset.index, -1);
+        if (index < 0) return;
         // Update local state instantly
         if (localAttributes[index]) {
           localAttributes[index].dataType = target.value || undefined;
@@ -564,7 +572,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       if (nameSpan) {
         e.stopPropagation();
         e.preventDefault();
-        const index = parseInt(nameSpan.dataset.index);
+        const index = safeParseInt(nameSpan.dataset.index, -1);
+        if (index < 0) return;
         enterAttrEdit(index);
         return;
       }
@@ -589,7 +598,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       if (deleteItem) {
         e.stopPropagation();
         e.preventDefault();
-        const index = parseInt(deleteItem.dataset.index);
+        const index = safeParseInt(deleteItem.dataset.index, -1);
+        if (index < 0) return;
         // Remove from local state instantly (no confirm - it doesn't work in webviews)
         localAttributes.splice(index, 1);
         markAttributesDirty();
@@ -606,9 +616,10 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     attributesContainer.addEventListener('keydown', (e) => {
       const editSpan = e.target.closest('.attr-name-edit');
       if (!editSpan) return;
-      
-      const index = parseInt(editSpan.dataset.index);
-      
+
+      const index = safeParseInt(editSpan.dataset.index, -1);
+      if (index < 0) return;
+
       if (e.key === 'Enter') {
         e.preventDefault();
         submitAttrEdit(index);
@@ -624,7 +635,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       const editSpan = e.target.closest('.attr-name-edit');
       if (!editSpan) return;
       
-      const index = parseInt(editSpan.dataset.index);
+      const index = safeParseInt(editSpan.dataset.index, -1);
+      if (index < 0) return;
       const key = \`attr-\${index}\`;
       if (attrEditingState.get(key)?.isEditing) {
         submitAttrEdit(index);
@@ -866,7 +878,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       if (nameSpan && nameSpan.classList.contains('inline-editable')) {
         e.stopPropagation();
         e.preventDefault();
-        const index = parseInt(nameSpan.dataset.index);
+        const index = safeParseInt(nameSpan.dataset.index, -1);
+        if (index < 0) return;
         enterContentSectionEdit(index, 'name');
         return;
       } else if (nameSpan) {
@@ -895,7 +908,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       if (deleteItem) {
         e.stopPropagation();
         e.preventDefault();
-        const index = parseInt(deleteItem.dataset.index);
+        const index = safeParseInt(deleteItem.dataset.index, -1);
+        if (index < 0) return;
         // Remove from local state instantly (no confirm - it doesn't work in webviews)
         localContentSections.splice(index, 1);
         markContentSectionsDirty();
@@ -930,7 +944,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     
     contentContainer.addEventListener('input', (e) => {
       if (e.target.classList.contains('content-textarea')) {
-        const index = parseInt(e.target.dataset.index);
+        const index = safeParseInt(e.target.dataset.index, -1);
+        if (index < 0) return;
         localContentSections[index].value = e.target.value;
         markContentSectionsDirty();
         // Auto-resize as user types
@@ -941,10 +956,11 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     contentContainer.addEventListener('keydown', (e) => {
       const editSpan = e.target.closest('.content-section-name-edit');
       if (!editSpan) return;
-      
-      const index = parseInt(editSpan.dataset.index);
+
+      const index = safeParseInt(editSpan.dataset.index, -1);
+      if (index < 0) return;
       const field = 'name';
-      
+
       if (e.key === 'Enter') {
         e.preventDefault();
         submitContentSectionEdit(index, field);
@@ -960,9 +976,10 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       const editSpan = e.target.closest('.content-section-name-edit');
       if (!editSpan) return;
       
-      const index = parseInt(editSpan.dataset.index);
+      const index = safeParseInt(editSpan.dataset.index, -1);
+      if (index < 0) return;
       const field = 'name';
-      
+
       const key = \`\${index}-\${field}\`;
       if (editingState.get(key)?.isEditing) {
         submitContentSectionEdit(index, field);
@@ -1327,7 +1344,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     document.addEventListener('click', (e) => {
       const thumbnail = e.target.closest('.image-thumbnail, .gallery-item');
       if (thumbnail) {
-        const index = parseInt(thumbnail.dataset.index, 10);
+        const index = safeParseInt(thumbnail.dataset.index, -1);
+        if (index < 0) return;
         openImageModal(index);
       }
     });
@@ -1338,7 +1356,8 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
         const thumbnail = e.target.closest('.image-thumbnail, .gallery-item');
         if (thumbnail) {
           e.preventDefault();
-          const index = parseInt(thumbnail.dataset.index, 10);
+          const index = safeParseInt(thumbnail.dataset.index, -1);
+          if (index < 0) return;
           openImageModal(index);
         }
       }
