@@ -43,6 +43,8 @@ export class WriterViewManager {
     resolve: (action: { type: string; existingPath?: string }) => void;
     panel: vscode.WebviewPanel;
   }> = new Map();
+  private panelResolverKeys: WeakMap<vscode.WebviewPanel, string> = new WeakMap();
+  private fileLocks: Map<string, Promise<void>> = new Map();
 
   constructor(private readonly context: vscode.ExtensionContext) {
     // Create word count status bar item
@@ -397,8 +399,8 @@ export class WriterViewManager {
         switch (message.type) {
           case 'save': {
             if (typeof message.text !== 'string') { return; }
-            const fieldToSave = message.field || currentField;
-            const typeToSave = message.newType || currentType;
+            const fieldToSave = (typeof message.field === 'string') ? message.field : currentField;
+            const typeToSave = (typeof message.newType === 'string') ? message.newType : currentType;
             await this.handleSave(documentUri, node, message.text, fieldToSave, typeToSave);
 
             // Update stored stats
@@ -606,14 +608,14 @@ export class WriterViewManager {
 
           case 'duplicateResolved': {
             if (typeof message.action !== 'string') { return; }
-            const resolverKey = (panel as any).__duplicateResolverKey;
+            const resolverKey = this.panelResolverKeys.get(panel);
             if (resolverKey) {
               const resolver = this.pendingDuplicateResolvers.get(resolverKey);
               if (resolver) {
                 resolver.resolve({ type: message.action, existingPath: message.existingPath });
                 this.pendingDuplicateResolvers.delete(resolverKey);
               }
-              delete (panel as any).__duplicateResolverKey;
+              this.panelResolverKeys.delete(panel);
             }
             break;
           }
@@ -664,9 +666,14 @@ export class WriterViewManager {
       viewStateDisposable.dispose();
 
       // Clean up any pending duplicate resolver
-      const resolverKey = (panel as any).__duplicateResolverKey;
+      const resolverKey = this.panelResolverKeys.get(panel);
       if (resolverKey) {
+        const resolver = this.pendingDuplicateResolvers.get(resolverKey);
+        if (resolver) {
+          resolver.resolve({ type: 'cancel' });
+        }
         this.pendingDuplicateResolvers.delete(resolverKey);
+        this.panelResolverKeys.delete(panel);
       }
     });
   }
@@ -821,8 +828,8 @@ export class WriterViewManager {
         switch (message.type) {
           case 'save': {
             if (typeof message.text !== 'string') { return; }
-            const fieldToSave = message.field || currentField;
-            const typeToSave = message.newType || currentType;
+            const fieldToSave = (typeof message.field === 'string') ? message.field : currentField;
+            const typeToSave = (typeof message.newType === 'string') ? message.newType : currentType;
             await this.handleSave(documentUri, node, message.text, fieldToSave, typeToSave);
 
             // Update stored stats
@@ -1015,14 +1022,14 @@ export class WriterViewManager {
 
           case 'duplicateResolved': {
             if (typeof message.action !== 'string') { return; }
-            const resolverKey = (panel as any).__duplicateResolverKey;
+            const resolverKey = this.panelResolverKeys.get(panel);
             if (resolverKey) {
               const resolver = this.pendingDuplicateResolvers.get(resolverKey);
               if (resolver) {
                 resolver.resolve({ type: message.action, existingPath: message.existingPath });
                 this.pendingDuplicateResolvers.delete(resolverKey);
               }
-              delete (panel as any).__duplicateResolverKey;
+              this.panelResolverKeys.delete(panel);
             }
             break;
           }
@@ -1073,9 +1080,14 @@ export class WriterViewManager {
       viewStateDisposable2.dispose();
 
       // Clean up any pending duplicate resolver
-      const resolverKey = (panel as any).__duplicateResolverKey;
+      const resolverKey = this.panelResolverKeys.get(panel);
       if (resolverKey) {
+        const resolver = this.pendingDuplicateResolvers.get(resolverKey);
+        if (resolver) {
+          resolver.resolve({ type: 'cancel' });
+        }
         this.pendingDuplicateResolvers.delete(resolverKey);
+        this.panelResolverKeys.delete(panel);
       }
     });
   }
@@ -1569,7 +1581,7 @@ export class WriterViewManager {
     const result = await vscode.window.showOpenDialog({
       canSelectMany: true,
       filters: {
-        'Images': ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']
+        'Images': ['png', 'jpg', 'jpeg', 'gif', 'webp']
       },
       title: 'Select Images to Add'
     });
@@ -1812,7 +1824,7 @@ export class WriterViewManager {
     return new Promise((resolve) => {
       // Store resolver with unique key
       const resolverKey = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      (panel as any).__duplicateResolverKey = resolverKey;
+      this.panelResolverKeys.set(panel, resolverKey);
       this.pendingDuplicateResolvers.set(resolverKey, { resolve, panel });
 
       // Resolve preview URL for webview
