@@ -231,7 +231,7 @@ export class WriterViewManager {
 
     // Read file directly - DON'T open in VS Code text editor
     const fileName = documentUri.fsPath;
-    const text = fs.readFileSync(fileName, 'utf-8');
+    const text = await fsPromises.readFile(fileName, 'utf-8');
 
     // Use appropriate parser based on file type
     const codexDoc = isMarkdownFile(fileName)
@@ -445,7 +445,7 @@ export class WriterViewManager {
             if (message.field !== '__attributes__' && message.field !== '__content__') {
               // Read file directly - DON'T open in VS Code text editor
               const filePath = documentUri.fsPath;
-              const text = fs.readFileSync(filePath, 'utf-8');
+              const text = await fsPromises.readFile(filePath, 'utf-8');
 
               const parsed = isMarkdownFile(fileName)
                 ? parseMarkdownAsCodex(text, fileName)
@@ -477,7 +477,7 @@ export class WriterViewManager {
           case 'requestContent': {
             // Read file directly - DON'T open in VS Code text editor
             const filePathReq = documentUri.fsPath;
-            const textReq = fs.readFileSync(filePathReq, 'utf-8');
+            const textReq = await fsPromises.readFile(filePathReq, 'utf-8');
             const parsedReq = isMarkdownFile(fileName)
               ? parseMarkdownAsCodex(textReq, fileName)
               : parseCodex(textReq);
@@ -525,7 +525,7 @@ export class WriterViewManager {
 
             try {
               // Read fresh file content
-              const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
+              const text = await fsPromises.readFile(documentUri.fsPath, 'utf-8');
               const doc = YAML.parseDocument(text);
 
               // Find the node in the document (handle nested nodes)
@@ -557,7 +557,7 @@ export class WriterViewManager {
               }
 
               // Write back
-              fs.writeFileSync(documentUri.fsPath, doc.toString());
+              await fsPromises.writeFile(documentUri.fsPath, doc.toString());
 
               // Confirm save
               safePostMessage(panel, { type: 'imageCaptionSaved', url });
@@ -684,7 +684,7 @@ export class WriterViewManager {
 
     // Read file directly - DON'T open in VS Code text editor
     const fileName = documentUri.fsPath;
-    const text = fs.readFileSync(fileName, 'utf-8');
+    const text = await fsPromises.readFile(fileName, 'utf-8');
 
     // Use appropriate parser based on file type
     const codexDoc = isMarkdownFile(fileName)
@@ -857,7 +857,7 @@ export class WriterViewManager {
             if (message.field !== '__attributes__' && message.field !== '__content__') {
               // Read file directly - DON'T open in VS Code text editor
               const filePath = documentUri.fsPath;
-              const text = fs.readFileSync(filePath, 'utf-8');
+              const text = await fsPromises.readFile(filePath, 'utf-8');
 
               const parsed = isMarkdownFile(fileName)
                 ? parseMarkdownAsCodex(text, fileName)
@@ -889,7 +889,7 @@ export class WriterViewManager {
           case 'requestContent': {
             // Read file directly - DON'T open in VS Code text editor
             const filePathReq = documentUri.fsPath;
-            const textReq = fs.readFileSync(filePathReq, 'utf-8');
+            const textReq = await fsPromises.readFile(filePathReq, 'utf-8');
             const parsedReq = isMarkdownFile(fileName)
               ? parseMarkdownAsCodex(textReq, fileName)
               : parseCodex(textReq);
@@ -933,7 +933,7 @@ export class WriterViewManager {
 
             try {
               // Read fresh file content
-              const text = fs.readFileSync(documentUri.fsPath, 'utf-8');
+              const text = await fsPromises.readFile(documentUri.fsPath, 'utf-8');
               const doc = YAML.parseDocument(text);
 
               // Find the node in the document (handle nested nodes)
@@ -965,7 +965,7 @@ export class WriterViewManager {
               }
 
               // Write back
-              fs.writeFileSync(documentUri.fsPath, doc.toString());
+              await fsPromises.writeFile(documentUri.fsPath, doc.toString());
 
               // Confirm save
               safePostMessage(panel, { type: 'imageCaptionSaved', url });
@@ -1171,7 +1171,7 @@ export class WriterViewManager {
       }
 
       // Read current file content
-      const content = fs.readFileSync(currentPath, 'utf-8');
+      const content = await fsPromises.readFile(currentPath, 'utf-8');
 
       // Parse and update metadata
       const isJson = newPath.fsPath.toLowerCase().endsWith('.json');
@@ -1206,10 +1206,10 @@ export class WriterViewManager {
           newContent = doc.toString({ lineWidth: 120 });
         }
 
-        fs.writeFileSync(newPath.fsPath, newContent, 'utf-8');
+        await fsPromises.writeFile(newPath.fsPath, newContent, 'utf-8');
       } else {
         // For markdown or other files, just copy as-is
-        fs.writeFileSync(newPath.fsPath, content, 'utf-8');
+        await fsPromises.writeFile(newPath.fsPath, content, 'utf-8');
       }
 
       // Show success and ask if user wants to open new file
@@ -1247,7 +1247,7 @@ export class WriterViewManager {
     try {
       const filePath = documentUri.fsPath;
       const fileName = filePath.toLowerCase();
-      const originalText = fs.readFileSync(filePath, 'utf-8');
+      const originalText = await fsPromises.readFile(filePath, 'utf-8');
       let newDocText: string | null = null;
 
       if (isMarkdownFile(fileName)) {
@@ -1267,7 +1267,7 @@ export class WriterViewManager {
         return;
       }
 
-      fs.writeFileSync(filePath, newDocText, 'utf-8');
+      await fsPromises.writeFile(filePath, newDocText, 'utf-8');
 
       // Update in-memory node and panel title for consistency
       node.name = trimmed;
@@ -1887,9 +1887,7 @@ export class WriterViewManager {
     const imagesDir = this.getImagesDirectory(documentUri, node, workspaceRoot);
 
     // Create images folder if needed
-    if (!fs.existsSync(imagesDir)) {
-      fs.mkdirSync(imagesDir, { recursive: true });
-    }
+    await fsPromises.mkdir(imagesDir, { recursive: true });
 
     for (const file of files) {
       let targetPath: string;
@@ -1963,7 +1961,8 @@ export class WriterViewManager {
       // Handle duplicate filenames
       targetPath = path.join(imagesDir, filename);
       let counter = 1;
-      while (fs.existsSync(targetPath)) {
+      const fileExists = async (p: string): Promise<boolean> => { try { await fsPromises.access(p); return true; } catch { return false; } };
+      while (await fileExists(targetPath)) {
         const ext = path.extname(filename);
         const base = path.basename(filename, ext);
         targetPath = path.join(imagesDir, `${base}-${counter}${ext}`);
@@ -1971,7 +1970,7 @@ export class WriterViewManager {
       }
 
       // Copy file to images folder
-      fs.copyFileSync(file.fsPath, targetPath);
+      await fsPromises.copyFile(file.fsPath, targetPath);
 
       // Calculate relative path from workspace root
       const relativePath = '/' + path.relative(workspaceRoot, targetPath).replace(/\\/g, '/');
