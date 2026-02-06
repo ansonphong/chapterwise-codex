@@ -1583,14 +1583,14 @@ export class WriterViewManager {
           url: this.resolveImageUrlForWebview(panel.webview, img.url, workspaceRoot)
         }));
 
-        panel.webview.postMessage({
+        safePostMessage(panel, {
           type: 'imagesAdded',
           images: resolvedImages
         });
       } catch (error) {
         console.error('Failed to import images:', error);
         vscode.window.showErrorMessage('Failed to import images.');
-        panel.webview.postMessage({ type: 'imageImportError', message: 'Failed to import images' });
+        safePostMessage(panel, { type: 'imageImportError', message: 'Failed to import images' });
       }
     }
   }
@@ -1640,11 +1640,11 @@ export class WriterViewManager {
 
       await fsPromises.writeFile(documentUri.fsPath, doc.toString());
 
-      panel.webview.postMessage({ type: 'imageDeleted', url, index });
+      safePostMessage(panel, { type: 'imageDeleted', url, index });
     } catch (error) {
       console.error('Failed to delete image:', error);
       vscode.window.showErrorMessage('Failed to delete image.');
-      panel.webview.postMessage({ type: 'imageDeleteError', message: 'Failed to delete image' });
+      safePostMessage(panel, { type: 'imageDeleteError', message: 'Failed to delete image' });
     }
   }
 
@@ -1694,11 +1694,11 @@ export class WriterViewManager {
 
       await fsPromises.writeFile(documentUri.fsPath, doc.toString());
 
-      panel.webview.postMessage({ type: 'imagesReordered' });
+      safePostMessage(panel, { type: 'imagesReordered' });
     } catch (error) {
       console.error('Failed to reorder images:', error);
       vscode.window.showErrorMessage('Failed to reorder images.');
-      panel.webview.postMessage({ type: 'imageReorderError', message: 'Failed to reorder images' });
+      safePostMessage(panel, { type: 'imageReorderError', message: 'Failed to reorder images' });
     }
   }
 
@@ -1907,6 +1907,8 @@ export class WriterViewManager {
     // Create images folder if needed
     await fsPromises.mkdir(imagesDir, { recursive: true });
 
+    const fileExists = async (p: string): Promise<boolean> => { try { await fsPromises.access(p); return true; } catch { return false; } };
+
     for (const file of files) {
       let targetPath: string;
       let filename = path.basename(file.fsPath);
@@ -1979,7 +1981,6 @@ export class WriterViewManager {
       // Handle duplicate filenames
       targetPath = path.join(imagesDir, filename);
       let counter = 1;
-      const fileExists = async (p: string): Promise<boolean> => { try { await fsPromises.access(p); return true; } catch { return false; } };
       while (await fileExists(targetPath)) {
         const ext = path.extname(filename);
         const base = path.basename(filename, ext);
