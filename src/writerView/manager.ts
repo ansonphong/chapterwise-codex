@@ -562,7 +562,8 @@ export class WriterViewManager {
               // Confirm save
               safePostMessage(panel, { type: 'imageCaptionSaved', url });
             } catch (error) {
-              vscode.window.showErrorMessage(`Failed to save caption: ${error}`);
+              console.error('Failed to save caption:', error);
+              vscode.window.showErrorMessage('Failed to save image caption.');
             }
             break;
           }
@@ -970,7 +971,8 @@ export class WriterViewManager {
               // Confirm save
               safePostMessage(panel, { type: 'imageCaptionSaved', url });
             } catch (error) {
-              vscode.window.showErrorMessage(`Failed to save caption: ${error}`);
+              console.error('Failed to save caption:', error);
+              vscode.window.showErrorMessage('Failed to save image caption.');
             }
             break;
           }
@@ -1139,7 +1141,8 @@ export class WriterViewManager {
         vscode.window.showErrorMessage('Failed to save changes');
       }
     } catch (error) {
-      vscode.window.showErrorMessage(`Save failed: ${error}`);
+      console.error('Save failed:', error);
+      vscode.window.showErrorMessage('Failed to save changes.');
     }
   }
 
@@ -1225,7 +1228,8 @@ export class WriterViewManager {
       }
 
     } catch (error) {
-      vscode.window.showErrorMessage(`Save As failed: ${error}`);
+      console.error('Save As failed:', error);
+      vscode.window.showErrorMessage('Failed to save file copy.');
     }
   }
 
@@ -1312,7 +1316,8 @@ export class WriterViewManager {
         vscode.window.setStatusBarMessage('✓ Attributes saved', 2000);
       }
     } catch (error) {
-      vscode.window.showErrorMessage(`Save failed: ${error}`);
+      console.error('Failed to save attributes:', error);
+      vscode.window.showErrorMessage('Failed to save attributes.');
     }
   }
 
@@ -1348,7 +1353,8 @@ export class WriterViewManager {
         vscode.window.setStatusBarMessage('✓ Content saved', 2000);
       }
     } catch (error) {
-      vscode.window.showErrorMessage(`Save failed: ${error}`);
+      console.error('Failed to save content sections:', error);
+      vscode.window.showErrorMessage('Failed to save content sections.');
     }
   }
 
@@ -1474,7 +1480,8 @@ export class WriterViewManager {
         }
       }
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to add field: ${error}`);
+      console.error('Failed to add field:', error);
+      vscode.window.showErrorMessage('Failed to add field.');
     }
   }
 
@@ -1537,7 +1544,8 @@ export class WriterViewManager {
         }
       }
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to add image: ${error}`);
+      console.error('Failed to add image:', error);
+      vscode.window.showErrorMessage('Failed to add image.');
       panel.webview.postMessage({ type: 'imageAddError', message: 'Failed to add image' });
     }
   }
@@ -1573,7 +1581,8 @@ export class WriterViewManager {
           images: resolvedImages
         });
       } catch (error) {
-        vscode.window.showErrorMessage(`Failed to import images: ${error}`);
+        console.error('Failed to import images:', error);
+        vscode.window.showErrorMessage('Failed to import images.');
         panel.webview.postMessage({ type: 'imageImportError', message: 'Failed to import images' });
       }
     }
@@ -1626,7 +1635,8 @@ export class WriterViewManager {
 
       panel.webview.postMessage({ type: 'imageDeleted', url, index });
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to delete image: ${error}`);
+      console.error('Failed to delete image:', error);
+      vscode.window.showErrorMessage('Failed to delete image.');
       panel.webview.postMessage({ type: 'imageDeleteError', message: 'Failed to delete image' });
     }
   }
@@ -1679,7 +1689,8 @@ export class WriterViewManager {
 
       panel.webview.postMessage({ type: 'imagesReordered' });
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to reorder images: ${error}`);
+      console.error('Failed to reorder images:', error);
+      vscode.window.showErrorMessage('Failed to reorder images.');
       panel.webview.postMessage({ type: 'imageReorderError', message: 'Failed to reorder images' });
     }
   }
