@@ -347,7 +347,7 @@ export class CodexStructureEditor {
       
       if (!surgicalSuccess) {
         // Surgical update failed - fall back to full regeneration
-        console.warn('Surgical index removal failed, performing full regeneration');
+        // Surgical removal failed - fall back to full regeneration
         await generateIndex({ workspaceRoot });
       }
       
@@ -861,7 +861,7 @@ export class CodexStructureEditor {
           child.name = newBaseName;
         }
         
-        console.log(`  Updated: ${child.name} (${oldPath} → ${newPath})`);
+        // Entry updated successfully
         return true;
       }
       
@@ -906,7 +906,7 @@ export class CodexStructureEditor {
       if (childPath === filePath || child._filename === fileName) {
         // Remove from array
         children.splice(i, 1);
-        console.log(`  Removed: ${child.name} (${filePath})`);
+        // Entry removed successfully
         return true;
       }
       
@@ -1346,32 +1346,21 @@ export class CodexStructureEditor {
     folderPath: string
   ): Promise<StructureOperationResult> {
     try {
-      console.log(`[autofixFolderOrder] Starting for folderPath: ${folderPath}`);
-      console.log(`[autofixFolderOrder] Workspace root: ${workspaceRoot}`);
-      
-      // STRATEGY: Find the parent index that contains this folder
+      // Find the parent index that contains this folder
       // For "E02/chapters", look in "E02/.index.codex.json"
       // For "E02", look in workspace root ".index.codex.json"
-      
       const folderParts = folderPath.split(path.sep);
-      const folderName = folderParts[folderParts.length - 1]; // "chapters"
-      const parentPath = folderParts.slice(0, -1).join(path.sep); // "E02"
-      
-      console.log(`[autofixFolderOrder] Folder name: ${folderName}`);
-      console.log(`[autofixFolderOrder] Parent path: ${parentPath || '(workspace root)'}`);
-      
+      const folderName = folderParts[folderParts.length - 1];
+      const parentPath = folderParts.slice(0, -1).join(path.sep);
+
       // Find the index file that contains this folder
       let indexPath: string;
       if (parentPath) {
-        // Look for parent/.index.codex.json
         indexPath = path.join(workspaceRoot, parentPath, '.index.codex.json');
       } else {
-        // Look in workspace root
         indexPath = path.join(workspaceRoot, '.index.codex.json');
       }
-      
-      console.log(`[autofixFolderOrder] Looking for index at: ${indexPath}`);
-      
+
       // Check if index exists
       if (!await fileExists(indexPath)) {
         return {
@@ -1393,23 +1382,17 @@ export class CodexStructureEditor {
         };
       }
 
-      console.log(`[autofixFolderOrder] Searching for folder node: ${folderName}`);
-
       // Find the folder node by name or _computed_path
       let folderNode: any = null;
       for (const child of rootChildren) {
-        console.log(`[autofixFolderOrder] Checking child: type=${child.type}, name=${child.name}, path=${child._computed_path}`);
-
         if (child.type === 'folder' &&
             (child.name === folderName || child._computed_path === folderPath)) {
           folderNode = child;
-          console.log(`[autofixFolderOrder] Found folder node!`);
           break;
         }
       }
 
       if (!folderNode) {
-        console.error(`[autofixFolderOrder] Folder node not found in index`);
         return {
           success: false,
           message: `Folder "${folderName}" not found in index at ${indexPath}`
@@ -1419,15 +1402,12 @@ export class CodexStructureEditor {
       // Get children of the folder
       const folderChildren = folderNode.children;
       if (!folderChildren || !Array.isArray(folderChildren) || folderChildren.length === 0) {
-        console.log(`[autofixFolderOrder] Folder has no children, nothing to renormalize`);
         return {
           success: true,
           message: `Folder "${folderName}" has no children`,
           affectedFiles: []
         };
       }
-
-      console.log(`[autofixFolderOrder] Found ${folderChildren.length} children in folder`);
 
       // Sort children by current order, then by name
       folderChildren.sort((a: any, b: any) => {
@@ -1441,11 +1421,8 @@ export class CodexStructureEditor {
       });
 
       // Renormalize: assign 0, 1, 2, ...
-      console.log(`[autofixFolderOrder] Renormalizing order values...`);
       folderChildren.forEach((child: any, index: number) => {
-        const oldOrder = child.order;
         child.order = index;
-        console.log(`[autofixFolderOrder]   ${child.name}: ${oldOrder} -> ${index}`);
       });
 
       // Write back to index
