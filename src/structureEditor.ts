@@ -13,10 +13,21 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import * as YAML from 'yaml';
 import { CodexNode, PathSegment } from './codexModel';
 import { NavigatorSettings } from './settingsManager';
 import { generateIndex, generatePerFolderIndex, cascadeRegenerateIndexes } from './indexGenerator';
+
+/**
+ * Validate that a resolved path stays within the workspace root.
+ * Prevents path traversal via malicious file paths.
+ */
+function isPathWithinRoot(resolvedPath: string, rootPath: string): boolean {
+  const normalizedResolved = path.resolve(resolvedPath);
+  const normalizedRoot = path.resolve(rootPath);
+  return normalizedResolved.startsWith(normalizedRoot + path.sep) || normalizedResolved === normalizedRoot;
+}
 
 /**
  * Result of a structure operation
@@ -52,7 +63,15 @@ export class CodexStructureEditor {
       const sourceFull = path.join(workspaceRoot, sourceFilePath);
       const fileName = path.basename(sourceFilePath);
       const targetFull = path.join(workspaceRoot, targetParentPath, fileName);
-      
+
+      // Validate paths stay within workspace
+      if (!isPathWithinRoot(sourceFull, workspaceRoot) || !isPathWithinRoot(targetFull, workspaceRoot)) {
+        return {
+          success: false,
+          message: 'Path traversal detected: paths must stay within workspace'
+        };
+      }
+
       // Check if source exists
       if (!fs.existsSync(sourceFull)) {
         return {
@@ -143,7 +162,15 @@ export class CodexStructureEditor {
       const newFileName = `${sanitizedName}${ext}`;
       const newPath = path.join(dir, newFileName);
       const newFull = path.join(workspaceRoot, newPath);
-      
+
+      // Validate paths stay within workspace
+      if (!isPathWithinRoot(oldFull, workspaceRoot) || !isPathWithinRoot(newFull, workspaceRoot)) {
+        return {
+          success: false,
+          message: 'Path traversal detected: renamed path must stay within workspace'
+        };
+      }
+
       // Check if source exists
       if (!fs.existsSync(oldFull)) {
         return {
@@ -217,7 +244,15 @@ export class CodexStructureEditor {
   ): Promise<StructureOperationResult> {
     try {
       const fullPath = path.join(workspaceRoot, filePath);
-      
+
+      // Validate path stays within workspace
+      if (!isPathWithinRoot(fullPath, workspaceRoot)) {
+        return {
+          success: false,
+          message: 'Path traversal detected: path must stay within workspace'
+        };
+      }
+
       // Check if file exists
       if (!fs.existsSync(fullPath)) {
         return {
@@ -935,6 +970,8 @@ export class CodexStructureEditor {
     // Replace spaces and special chars with separator
     slug = slug.replace(/[\s_]+/g, namingSettings.separator);
     slug = slug.replace(/[^a-zA-Z0-9-]/g, '');
+    // Remove path traversal sequences
+    slug = slug.replace(/\.\./g, '');
     
     // Remove leading/trailing separators
     const separatorPattern = new RegExp(`^${namingSettings.separator}+|${namingSettings.separator}+$`, 'g');
@@ -951,11 +988,7 @@ export class CodexStructureEditor {
    * Generate a UUID (simplified version)
    */
   private generateUuid(): string {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
+    return crypto.randomUUID();
   }
   
   /**
