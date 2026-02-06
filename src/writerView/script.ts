@@ -1612,10 +1612,10 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       }
 
       imageBrowserGrid.innerHTML = images.map(img => \`
-        <div class="browser-image-item" data-path="\${img.path}" title="\${img.path}">
-          <img src="\${img.thumbnail}" alt="\${img.filename}" loading="lazy" />
-          <div class="browser-image-name">\${img.filename}</div>
-          <div class="browser-image-folder">\${img.folder}</div>
+        <div class="browser-image-item" data-path="\${escapeHtml(img.path)}" title="\${escapeHtml(img.path)}">
+          <img src="\${img.thumbnail}" alt="\${escapeHtml(img.filename)}" loading="lazy" />
+          <div class="browser-image-name">\${escapeHtml(img.filename)}</div>
+          <div class="browser-image-folder">\${escapeHtml(img.folder)}</div>
         </div>
       \`).join('');
     }
@@ -1692,10 +1692,10 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
           imagesContainer.innerHTML = '<div class="images-empty">No images</div>';
         } else {
           imagesContainer.innerHTML = \`<div class="images-grid">\${localImages.map((img, index) => \`
-            <div class="image-thumbnail" data-index="\${index}" data-url="\${img.url}" tabindex="0" role="button" aria-label="View image \${index + 1}\${img.caption ? ': ' + escapeHtml(img.caption) : ''}">
+            <div class="image-thumbnail" data-index="\${index}" data-url="\${escapeHtml(img.url)}" tabindex="0" role="button" aria-label="View image \${index + 1}\${img.caption ? ': ' + escapeHtml(img.caption) : ''}">
               \${img.featured ? '<span class="featured-badge">★</span>' : ''}
-              <img src="\${img.url}" alt="\${img.alt || img.caption || 'Image'}" loading="lazy" />
-              <div class="thumbnail-caption" title="\${img.caption || ''}">\${img.caption || '&nbsp;'}</div>
+              <img src="\${img.url}" alt="\${escapeHtml(img.alt || img.caption || 'Image')}" loading="lazy" />
+              <div class="thumbnail-caption" title="\${escapeHtml(img.caption || '')}">\${escapeHtml(img.caption || '') || '&nbsp;'}</div>
             </div>
           \`).join('')}</div>\`;
         }
