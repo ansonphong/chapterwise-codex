@@ -176,9 +176,9 @@ export class WriterViewManager {
    * Resolve image URL for webview display
    */
   private resolveImageUrlForWebview(webview: vscode.Webview, url: string, workspaceRoot: string): string {
-    // If it's an absolute URL, use as-is
+    // Block external URLs - CSP restricts img-src to webview resources and data: URIs
     if (url.startsWith('http://') || url.startsWith('https://')) {
-      return url;
+      return '';
     }
 
     // For relative paths, convert to webview URI
@@ -629,7 +629,7 @@ export class WriterViewManager {
       const themeSetting = this.getThemeSetting();
 
       // Update this specific panel
-      panel.webview.postMessage({
+      safePostMessage(panel, {
         type: 'themeChanged',
         themeSetting: themeSetting,
         vscodeTheme: vscodeThemeKind
@@ -643,7 +643,7 @@ export class WriterViewManager {
         const vscodeThemeKind = this.getVSCodeThemeKind();
 
         // Update this specific panel
-        panel.webview.postMessage({
+        safePostMessage(panel, {
           type: 'themeChanged',
           themeSetting: themeSetting,
           vscodeTheme: vscodeThemeKind
@@ -683,7 +683,7 @@ export class WriterViewManager {
     if (existingPanel) {
       existingPanel.reveal(vscode.ViewColumn.Active);
       // If panel exists, send message to switch to the target field
-      existingPanel.webview.postMessage({
+      safePostMessage(existingPanel, {
         type: 'switchToField',
         field: targetField
       });
@@ -1038,7 +1038,7 @@ export class WriterViewManager {
       const themeSetting = this.getThemeSetting();
 
       // Update this specific panel
-      panel.webview.postMessage({
+      safePostMessage(panel, {
         type: 'themeChanged',
         themeSetting: themeSetting,
         vscodeTheme: vscodeThemeKind
@@ -1052,7 +1052,7 @@ export class WriterViewManager {
         const vscodeThemeKind = this.getVSCodeThemeKind();
 
         // Update this specific panel
-        panel.webview.postMessage({
+        safePostMessage(panel, {
           type: 'themeChanged',
           themeSetting: themeSetting,
           vscodeTheme: vscodeThemeKind
@@ -1251,7 +1251,7 @@ export class WriterViewManager {
   ): Promise<void> {
     const trimmed = (newName || '').trim();
     if (!trimmed) {
-      panel.webview.postMessage({ type: 'nameUpdateError', error: 'Name cannot be empty.' });
+      safePostMessage(panel, { type: 'nameUpdateError', error: 'Name cannot be empty.' });
       return;
     }
 
@@ -1267,14 +1267,14 @@ export class WriterViewManager {
       } else {
         const codexDoc = parseCodex(originalText);
         if (!codexDoc) {
-          panel.webview.postMessage({ type: 'nameUpdateError', error: 'Unable to parse document for renaming.' });
+          safePostMessage(panel, { type: 'nameUpdateError', error: 'Unable to parse document for renaming.' });
           return;
         }
         newDocText = setNodeName(codexDoc, node, trimmed);
       }
 
       if (!newDocText) {
-        panel.webview.postMessage({ type: 'nameUpdateError', error: 'Rename failed: could not update text.' });
+        safePostMessage(panel, { type: 'nameUpdateError', error: 'Rename failed: could not update text.' });
         return;
       }
 
@@ -1284,10 +1284,10 @@ export class WriterViewManager {
       node.name = trimmed;
       panel.title = `✍️ ${trimmed || 'Writer'}`;
 
-      panel.webview.postMessage({ type: 'nameUpdated', name: trimmed });
+      safePostMessage(panel, { type: 'nameUpdated', name: trimmed });
     } catch (error) {
       console.error('Rename failed:', error);
-      panel.webview.postMessage({ type: 'nameUpdateError', error: 'Failed to rename. See console for details.' });
+      safePostMessage(panel, { type: 'nameUpdateError', error: 'Failed to rename. See console for details.' });
     }
   }
 
@@ -1464,7 +1464,7 @@ export class WriterViewManager {
           }
 
           // Send message to webview to refresh and show the new field
-          panel.webview.postMessage({
+          safePostMessage(panel, {
             type: 'fieldAdded',
             fieldType: fieldType,
             addedField: addedField,
@@ -1480,7 +1480,7 @@ export class WriterViewManager {
       } else {
         // Field already exists, just switch to it
         if (addedField) {
-          panel.webview.postMessage({
+          safePostMessage(panel, {
             type: 'switchToField',
             field: addedField
           });
@@ -1508,7 +1508,7 @@ export class WriterViewManager {
       folder: path.dirname(img.relativePath).substring(1) || '/'
     }));
 
-    panel.webview.postMessage({
+    safePostMessage(panel, {
       type: 'workspaceImages',
       images: imagesForBrowser
     });
@@ -1541,7 +1541,7 @@ export class WriterViewManager {
         const updatedNode = parsedDoc.allNodes.find(n => n.id === node.id);
         if (updatedNode && updatedNode.images) {
           const newImage = updatedNode.images[updatedNode.images.length - 1];
-          panel.webview.postMessage({
+          safePostMessage(panel, {
             type: 'imageAdded',
             image: {
               ...newImage,
@@ -1553,7 +1553,7 @@ export class WriterViewManager {
     } catch (error) {
       console.error('Failed to add image:', error);
       vscode.window.showErrorMessage('Failed to add image.');
-      panel.webview.postMessage({ type: 'imageAddError', message: 'Failed to add image' });
+      safePostMessage(panel, { type: 'imageAddError', message: 'Failed to add image' });
     }
   }
 

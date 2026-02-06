@@ -73,6 +73,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
     let originalContent = editor.innerText;
     let saveTimeout = null;
     let isSaving = false;
+    let saveGuardTimer = null;
     let currentField = '${initialField}';
     let currentType = '${node.type}';
     let currentEditorMode = '${initialField === '__overview__' ? 'overview' : initialField === '__attributes__' ? 'attributes' : initialField === '__content__' ? 'content' : initialField === '__images__' ? 'images' : 'prose'}';
@@ -256,6 +257,14 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
       }
 
       isSaving = true;
+      // Safety net: reset isSaving if no response within 10 seconds
+      saveGuardTimer = setTimeout(() => {
+        if (isSaving) {
+          isSaving = false;
+          saveMenuBtn.disabled = false;
+          saveMenuBtn.title = 'Save may have failed - try again';
+        }
+      }, 10000);
       saveMenuBtn.disabled = true;
       saveMenuBtn.classList.remove('dirty');
       saveMenuBtn.title = 'Saving...';
@@ -1151,6 +1160,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
         case 'saved':
           isDirty = false;
           isSaving = false;
+          if (saveGuardTimer) { clearTimeout(saveGuardTimer); saveGuardTimer = null; }
           checkAllClean();
           break;
         case 'nameUpdated':
@@ -1169,6 +1179,7 @@ export function getWriterViewScript(node: CodexNode, initialField: string): stri
           // All saves complete - mark everything clean
           markClean();
           isSaving = false;
+          if (saveGuardTimer) { clearTimeout(saveGuardTimer); saveGuardTimer = null; }
           saveMenuBtn.disabled = false;
           saveMenuBtn.classList.remove('dirty');
           saveMenuBtn.classList.add('saved-flash');
