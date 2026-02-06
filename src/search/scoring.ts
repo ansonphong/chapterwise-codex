@@ -2,7 +2,7 @@
  * BM25 Scoring - Relevance ranking for search results
  */
 
-import { SearchIndex, PostingEntry } from './searchIndex';
+import { SearchIndex } from './searchIndex';
 
 // BM25 parameters (empirically tuned defaults)
 const K1 = 1.2;  // Term frequency saturation

@@ -16,7 +16,6 @@ export interface ParsedQuery {
       terms: string[];
     };
   };
-  scope: 'titles' | 'metadata' | 'all';
 }
 
 /**
@@ -45,8 +44,7 @@ export function parseQuery(input: string): ParsedQuery {
       types: [],
       fields: [],
       exclude: { types: [], terms: [] }
-    },
-    scope: 'all'
+    }
   };
 
   if (!input || typeof input !== 'string') {

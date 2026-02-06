@@ -5,13 +5,11 @@
 import {
   SearchIndex,
   SearchResult,
-  TitleEntry,
-  MetadataEntry,
-  ContentEntry
+  TitleEntry
 } from './searchIndex';
 import { ParsedQuery } from './queryParser';
 import { fuzzyMatch } from './tokenizer';
-import { scoreDocument, BOOST_FACTORS, getDepthBoost, getFieldBoost } from './scoring';
+import { scoreDocument, BOOST_FACTORS, getFieldBoost } from './scoring';
 
 /**
  * Search options
@@ -68,7 +66,7 @@ export async function executeSearch(
   }
 
   // TIER 3: Content
-  if (query.scope === 'all' || query.filters.fields.length > 0) {
+  {
     const contentResults = searchContent(query, index, titleMap);
     for (const r of contentResults) {
       const key = `${r.id}:${r.field || ''}`;

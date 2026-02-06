@@ -7,7 +7,6 @@ import * as path from 'path';
 import { SearchIndex, SearchResult } from './searchIndex';
 import { parseQuery, isEmptyQuery } from './queryParser';
 import { executeSearch } from './searchEngine';
-import { escapeRegex } from './tokenizer';
 
 /**
  * Extended QuickPickItem with search result data
@@ -66,7 +65,7 @@ export function updateStatusBar(
 
     case 'ready':
       statusBarItem.text = '$(search) Search';
-      statusBarItem.tooltip = 'Search nodes (Cmd+Shift+F)';
+      statusBarItem.tooltip = `Search nodes (${process.platform === 'darwin' ? 'Cmd' : 'Ctrl'}+Alt+F)`;
       statusBarItem.backgroundColor = undefined;
       statusBarItem.show();
       break;
@@ -292,23 +291,9 @@ function getTypeIcon(type: string): string {
 }
 
 /**
- * Highlight matching terms in text
+ * Highlight matching terms in text using QuickPick highlight ranges
+ * Returns the original text since QuickPick doesn't support inline markdown
  */
-function highlightMatches(text: string, query: string): string {
-  const terms = query
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(t => t.length >= 2 && !t.includes(':') && !t.startsWith('-') && !t.startsWith('"'));
-
-  let result = text;
-  for (const term of terms) {
-    try {
-      const regex = new RegExp(`(${escapeRegex(term)})`, 'gi');
-      result = result.replace(regex, '**$1**');
-    } catch {
-      // Invalid regex, skip
-    }
-  }
-
-  return result;
+function highlightMatches(text: string, _query: string): string {
+  return text;
 }

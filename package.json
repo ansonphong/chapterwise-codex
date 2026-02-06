@@ -487,8 +487,8 @@
     "keybindings": [
       {
         "command": "chapterwiseCodex.search",
-        "key": "ctrl+shift+f",
-        "mac": "cmd+shift+f",
+        "key": "ctrl+alt+f",
+        "mac": "cmd+alt+f",
         "when": "view.chapterwiseCodexNavigator.visible"
       },
       {
