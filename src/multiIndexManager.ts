@@ -111,12 +111,18 @@ export class MultiIndexManager {
     for (const child of children) {
       if (child.include) {
         const includePath = path.resolve(baseDir, child.include);
-        coveredPaths.add(includePath);
+        const normalized = path.normalize(includePath);
 
-        // If it's a directory include, add the directory
-        if (!child.include.includes('.')) {
-          coveredPaths.add(includePath);
+        // Security check: only add paths within workspace
+        if (this.workspaceRoot) {
+          const relative = path.relative(this.workspaceRoot, normalized);
+          if (relative.startsWith('..') || path.isAbsolute(relative)) {
+            console.warn(`[MultiIndexManager] Include path escapes workspace: ${child.include}`);
+            continue;
+          }
         }
+
+        coveredPaths.add(normalized);
       }
 
       if (child.children) {
@@ -152,13 +158,19 @@ export class MultiIndexManager {
         }
 
         // Check if any sub-index claims this path
-        const childPath = child.include
-          ? path.resolve(this.workspaceRoot!, child.include)
-          : null;
+        if (!child.include) return true; // Inline children are orphans
 
-        if (!childPath) return true; // Inline children are orphans
+        const childPath = path.resolve(this.workspaceRoot!, child.include);
+        const normalized = path.normalize(childPath);
 
-        return !this.isClaimedBySubIndex(childPath);
+        // Security check: skip paths outside workspace
+        const relative = path.relative(this.workspaceRoot!, normalized);
+        if (relative.startsWith('..') || path.isAbsolute(relative)) {
+          console.warn(`[MultiIndexManager] Orphan path escapes workspace: ${child.include}`);
+          return false;
+        }
+
+        return !this.isClaimedBySubIndex(normalized);
       })
       .map(child => child.include || child.name);
   }
@@ -174,7 +186,8 @@ export class MultiIndexManager {
       }
 
       for (const coveredPath of index.coveredPaths) {
-        if (filePath.startsWith(coveredPath)) {
+        // === SECURITY: Use path separator to prevent partial directory name matches ===
+        if (filePath === coveredPath || filePath.startsWith(coveredPath + path.sep)) {
           return true;
         }
       }
