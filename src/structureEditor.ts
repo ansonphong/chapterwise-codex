@@ -109,27 +109,39 @@ export class CodexStructureEditor {
 
       // Move the file
       await fsPromises.rename(sourceFull, targetFull);
-      
-      // Update include paths
-      const affectedFiles = await this.updateIncludePaths(
-        workspaceRoot,
-        sourceFilePath,
-        path.join(targetParentPath, fileName)
-      );
-      
+
+      // Update include paths (with rollback on failure)
+      let affectedFiles: string[] = [];
+      try {
+        affectedFiles = await this.updateIncludePaths(
+          workspaceRoot,
+          sourceFilePath,
+          path.join(targetParentPath, fileName)
+        );
+      } catch (includeError) {
+        // Attempt rollback - rename back to original
+        try {
+          await fsPromises.rename(targetFull, sourceFull);
+        } catch {
+          // Rollback failed - file is at new location but includes are broken
+        }
+        return {
+          success: false,
+          message: `Failed to update include paths (file restored): ${includeError}`
+        };
+      }
+
       // HYBRID APPROACH: Try surgical update first, fall back to full rescan
       const surgicalSuccess = await this.updateIndexEntrySurgically(
         workspaceRoot,
         sourceFilePath,
         path.join(targetParentPath, fileName)
       );
-      
+
       if (!surgicalSuccess) {
-        // Surgical update failed - fall back to full regeneration
-        console.warn('Surgical index update failed, performing full regeneration');
         await generateIndex({ workspaceRoot });
       }
-      
+
       return {
         success: true,
         message: `Moved ${fileName} to ${targetParentPath}`,
@@ -203,24 +215,38 @@ export class CodexStructureEditor {
       if (oldFull !== newFull) {
         await fsPromises.rename(oldFull, newFull);
       }
-      
-      // Update include paths
-      const affectedFiles = await this.updateIncludePaths(
-        workspaceRoot,
-        oldPath,
-        newPath
-      );
-      
+
+      // Update include paths (with rollback on failure)
+      let affectedFiles: string[] = [];
+      try {
+        affectedFiles = await this.updateIncludePaths(
+          workspaceRoot,
+          oldPath,
+          newPath
+        );
+      } catch (includeError) {
+        // Attempt rollback - rename back to original
+        if (oldFull !== newFull) {
+          try {
+            await fsPromises.rename(newFull, oldFull);
+          } catch {
+            // Rollback failed
+          }
+        }
+        return {
+          success: false,
+          message: `Failed to update include paths (file restored): ${includeError}`
+        };
+      }
+
       // HYBRID APPROACH: Try surgical update first, fall back to full rescan
       const surgicalSuccess = await this.updateIndexEntrySurgically(
         workspaceRoot,
         oldPath,
         newPath
       );
-      
+
       if (!surgicalSuccess) {
-        // Surgical update failed - fall back to full regeneration
-        console.warn('Surgical index update failed, performing full regeneration');
         await generateIndex({ workspaceRoot });
       }
       
@@ -609,6 +635,49 @@ export class CodexStructureEditor {
     }
   }
   
+  /**
+   * Rename a node within a document (FILES mode)
+   * Updates the node's 'name' field in YAML
+   */
+  async renameNodeInDocument(
+    document: vscode.TextDocument,
+    node: CodexNode,
+    newName: string
+  ): Promise<boolean> {
+    try {
+      const text = document.getText();
+      const yamlDoc = YAML.parseDocument(text);
+
+      const nodePath = this.buildYamlPath(node.path);
+      const nodeValue = yamlDoc.getIn(nodePath);
+
+      if (!nodeValue || typeof nodeValue !== 'object') {
+        vscode.window.showErrorMessage('Node not found in document');
+        return false;
+      }
+
+      // Update name field
+      yamlDoc.setIn([...nodePath, 'name'], newName);
+
+      // Apply edit
+      const newText = yamlDoc.toString();
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(
+        document.uri,
+        new vscode.Range(0, 0, document.lineCount, 0),
+        newText
+      );
+
+      await vscode.workspace.applyEdit(edit);
+      await document.save();
+
+      return true;
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to rename node: ${error}`);
+      return false;
+    }
+  }
+
   /**
    * Update reorder children in a document (FILES mode)
    */

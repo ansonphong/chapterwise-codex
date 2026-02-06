@@ -1550,10 +1550,27 @@ function registerCommands(context: vscode.ExtensionContext): void {
           placeHolder: 'New node name'
         });
 
-        if (!newName) return;
+        if (!newName || newName === treeItem.codexNode.name) return;
 
-        // TODO: Implement rename in structureEditor
-        vscode.window.showInformationMessage(`Rename functionality coming soon!`);
+        const document = treeProvider.getActiveTextDocument();
+        if (!document) {
+          vscode.window.showErrorMessage('No active document');
+          return;
+        }
+
+        const { getStructureEditor } = await import('./structureEditor');
+        const editor = getStructureEditor();
+
+        const success = await editor.renameNodeInDocument(
+          document,
+          treeItem.codexNode,
+          newName
+        );
+
+        if (success) {
+          treeProvider.setActiveDocument(document);
+          showTransientMessage(`✓ Renamed to: ${newName}`, 3000);
+        }
       }
     )
   );
