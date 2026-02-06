@@ -286,19 +286,33 @@ export function isSubIndexInclude(includePath: string): boolean {
   );
 }
 
+/** Maximum nesting depth for sub-index resolution (matches indexGenerator) */
+const MAX_SUB_INDEX_DEPTH = 8;
+
 /**
  * Resolve sub-index includes recursively.
  * Loads nested index.codex.yaml files and merges them into the tree.
  *
  * @param children - Array of child nodes (may contain include directives)
  * @param parentDir - Absolute path to the directory containing the parent index
+ * @param workspaceRoot - Workspace root for boundary validation
+ * @param parsedIndexes - Set of already-parsed index paths (circular reference detection)
+ * @param depth - Current recursion depth (enforces MAX_SUB_INDEX_DEPTH)
  * @returns Resolved children array with includes expanded
  */
 export function resolveSubIndexIncludes(
   children: any[],
   parentDir: string,
-  parsedIndexes: Set<string> = new Set()
+  workspaceRoot: string,
+  parsedIndexes: Set<string> = new Set(),
+  depth: number = 0
 ): IndexChildNode[] {
+  // Depth limit to prevent stack overflow from deep non-circular chains
+  if (depth >= MAX_SUB_INDEX_DEPTH) {
+    console.warn(`[IndexParser] Max sub-index depth ${MAX_SUB_INDEX_DEPTH} reached, stopping resolution`);
+    return [];
+  }
+
   const resolved: IndexChildNode[] = [];
 
   for (const child of children) {
@@ -310,10 +324,28 @@ export function resolveSubIndexIncludes(
         const subIndexPath = path.resolve(parentDir, includePath);
         const normalizedPath = path.normalize(subIndexPath);
 
+        // Security check: ensure resolved path is within workspace
+        const relative = path.relative(workspaceRoot, normalizedPath);
+        if (relative.startsWith('..') || path.isAbsolute(relative)) {
+          console.warn(`[IndexParser] Sub-index path escapes workspace: ${includePath}`);
+          continue;
+        }
+
         // Circular reference check
         if (parsedIndexes.has(normalizedPath)) {
           console.warn(`[IndexParser] Circular sub-index reference detected: ${subIndexPath}`);
           continue;
+        }
+
+        // Symlink check: skip symlinks to prevent reading outside workspace
+        try {
+          const stat = fs.lstatSync(subIndexPath);
+          if (stat.isSymbolicLink()) {
+            console.warn(`[IndexParser] Skipping symlink sub-index: ${subIndexPath}`);
+            continue;
+          }
+        } catch {
+          // File doesn't exist - fall through to existsSync check below
         }
 
         if (fs.existsSync(subIndexPath)) {
@@ -356,7 +388,9 @@ export function resolveSubIndexIncludes(
                 subNode.children = resolveSubIndexIncludes(
                   subData.children,
                   path.dirname(subIndexPath),
-                  parsedIndexes
+                  workspaceRoot,
+                  parsedIndexes,
+                  depth + 1
                 );
               }
 
@@ -370,6 +404,16 @@ export function resolveSubIndexIncludes(
         }
       } else {
         // Regular file include (e.g., ./chapter-01.md)
+        const resolvedIncludePath = path.resolve(parentDir, includePath);
+        const normalizedIncludePath = path.normalize(resolvedIncludePath);
+
+        // Security check: ensure resolved path is within workspace
+        const relative = path.relative(workspaceRoot, normalizedIncludePath);
+        if (relative.startsWith('..') || path.isAbsolute(relative)) {
+          console.warn(`[IndexParser] Include path escapes workspace: ${includePath}`);
+          continue;
+        }
+
         // Convert to a basic node with include path as filename
         const fileName = path.basename(includePath);
         const ext = path.extname(fileName);
@@ -380,7 +424,7 @@ export function resolveSubIndexIncludes(
           type: 'document', // Will be refined by content parsing
           name: baseName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
           _filename: fileName,
-          _subindex_path: path.resolve(parentDir, includePath),
+          _subindex_path: normalizedIncludePath,
           _format: ext === '.md' ? 'markdown' : ext === '.yaml' ? 'yaml' : 'json',
         });
       }
@@ -393,7 +437,7 @@ export function resolveSubIndexIncludes(
         const childDir = child._filename
           ? path.join(parentDir, path.dirname(child._filename))
           : parentDir;
-        node.children = resolveSubIndexIncludes(child.children, childDir, parsedIndexes);
+        node.children = resolveSubIndexIncludes(child.children, childDir, workspaceRoot, parsedIndexes, depth + 1);
       }
 
       resolved.push(node);
@@ -409,11 +453,14 @@ export function resolveSubIndexIncludes(
  *
  * @param content - YAML content of the index file
  * @param indexDir - Absolute path to the directory containing the index file
+ * @param workspaceRoot - Workspace root for boundary validation
+ * @param indexPath - Absolute path to the index file itself (for circular detection)
  * @returns Parsed and resolved IndexDocument
  */
 export function parseIndexFileWithIncludes(
   content: string,
   indexDir: string,
+  workspaceRoot: string,
   indexPath?: string
 ): IndexDocument | null {
   const doc = parseIndexFile(content);
@@ -427,7 +474,7 @@ export function parseIndexFileWithIncludes(
 
   // Resolve any include directives in children
   if (doc.children && Array.isArray(doc.children)) {
-    doc.children = resolveSubIndexIncludes(doc.children, indexDir, parsedIndexes);
+    doc.children = resolveSubIndexIncludes(doc.children, indexDir, workspaceRoot, parsedIndexes);
   }
 
   return doc;
