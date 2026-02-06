@@ -2,16 +2,13 @@
  * Utility helper functions for Writer View
  */
 
+import * as crypto from 'crypto';
+
 /**
- * Generate a nonce for Content Security Policy
+ * Generate a cryptographically secure nonce for Content Security Policy
  */
 export function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
+  return crypto.randomBytes(16).toString('hex');
 }
 
 /**
@@ -24,5 +21,28 @@ export function escapeHtml(str: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+/**
+ * Safely post a message to a webview panel, ignoring errors if the panel is disposed
+ */
+export function safePostMessage(panel: import('vscode').WebviewPanel, message: unknown): void {
+  try {
+    panel.webview.postMessage(message);
+  } catch {
+    // Panel was disposed between check and postMessage - ignore
+  }
+}
+
+/**
+ * Validate that a path resolves within the workspace root (prevents path traversal)
+ */
+export function isPathWithinWorkspace(targetPath: string, workspaceRoot: string): boolean {
+  if (!workspaceRoot) {
+    return false;
+  }
+  const path = require('path');
+  const resolved = path.resolve(workspaceRoot, targetPath.replace(/^\//, ''));
+  return resolved.startsWith(workspaceRoot + path.sep) || resolved === workspaceRoot;
 }
 

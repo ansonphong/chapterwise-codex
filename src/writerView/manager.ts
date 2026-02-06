@@ -29,6 +29,7 @@ import {
 import { CodexTreeItem, CodexTreeProvider } from '../treeProvider';
 import { WriterPanelStats, calculateStats } from './utils/stats';
 import { buildWebviewHtml } from './html/builder';
+import { safePostMessage, isPathWithinWorkspace } from './utils/helpers';
 
 /**
  * Manages Writer View webview panels
@@ -381,8 +382,14 @@ export class WriterViewManager {
     // Handle messages from webview (closure captures node and documentUri)
     panel.webview.onDidReceiveMessage(
       async (message) => {
+        // Validate message structure
+        if (!message || typeof message.type !== 'string') {
+          return;
+        }
+
         switch (message.type) {
-          case 'save':
+          case 'save': {
+            if (typeof message.text !== 'string') { return; }
             const fieldToSave = message.field || currentField;
             const typeToSave = message.newType || currentType;
             await this.handleSave(documentUri, node, message.text, fieldToSave, typeToSave);
@@ -391,39 +398,47 @@ export class WriterViewManager {
             const saveStats = calculateStats(message.text, node.name, fieldToSave);
             this.updateStatsForPanel(panelKey, panel, saveStats);
 
-            panel.webview.postMessage({ type: 'saved' });
+            safePostMessage(panel, { type: 'saved' });
             break;
+          }
 
           case 'saveAs':
             await this.handleSaveAs(documentUri);
             break;
 
-          case 'openFile':
+          case 'openFile': {
             // Open the file in normal code editor
             const doc = await vscode.workspace.openTextDocument(documentUri);
             await vscode.window.showTextDocument(doc, { preview: false });
             break;
+          }
 
           case 'typeChanged':
+            if (typeof message.newType !== 'string') { return; }
             // Store the new type value (will be saved with next save)
             currentType = message.newType;
             break;
 
-          case 'contentChanged':
+          case 'contentChanged': {
+            if (typeof message.text !== 'string') { return; }
             // New message type for real-time updates
             const contentStats = calculateStats(message.text, node.name, currentField);
             this.updateStatsForPanel(panelKey, panel, contentStats);
             break;
+          }
 
           case 'renameName':
+            if (typeof message.name !== 'string') { return; }
             await this.handleRenameName(documentUri, node, message.name, panel);
             break;
 
           case 'addField':
+            if (typeof message.fieldType !== 'string') { return; }
             await this.handleAddField(documentUri, node, message.fieldType, panel);
             break;
 
-          case 'switchField':
+          case 'switchField': {
+            if (typeof message.field !== 'string') { return; }
             currentField = message.field;
 
             // Only fetch prose content for regular fields (not attributes/content)
@@ -453,12 +468,13 @@ export class WriterViewManager {
                   fieldContent = getNodeProse(parsed, node, message.field);
                 }
 
-                panel.webview.postMessage({ type: 'fieldContent', text: fieldContent, field: message.field });
+                safePostMessage(panel, { type: 'fieldContent', text: fieldContent, field: message.field });
               }
             }
             break;
+          }
 
-          case 'requestContent':
+          case 'requestContent': {
             // Read file directly - DON'T open in VS Code text editor
             const filePathReq = documentUri.fsPath;
             const textReq = fs.readFileSync(filePathReq, 'utf-8');
@@ -480,27 +496,31 @@ export class WriterViewManager {
                 // For codex files, use getNodeProse
                 currentProse = getNodeProse(parsedReq, node, currentField);
               }
-              panel.webview.postMessage({ type: 'content', text: currentProse });
+              safePostMessage(panel, { type: 'content', text: currentProse });
             }
             break;
+          }
 
           // Attributes - batch save (local state is managed in webview for instant UI)
           case 'saveAttributes':
+            if (!Array.isArray(message.attributes)) { return; }
             // Receive full array from webview and save once
-            currentAttributes = message.attributes || [];
+            currentAttributes = message.attributes;
             await this.handleSaveAttributes(documentUri, node, currentAttributes);
-            panel.webview.postMessage({ type: 'saveComplete' });
+            safePostMessage(panel, { type: 'saveComplete' });
             break;
 
           // Content Sections - batch save (local state is managed in webview for instant UI)
           case 'saveContentSections':
+            if (!Array.isArray(message.sections)) { return; }
             // Receive full array from webview and save once
-            currentContentSections = message.sections || [];
+            currentContentSections = message.sections;
             await this.handleSaveContentSections(documentUri, node, currentContentSections);
-            panel.webview.postMessage({ type: 'saveComplete' });
+            safePostMessage(panel, { type: 'saveComplete' });
             break;
 
           case 'updateImageCaption': {
+            if (typeof message.url !== 'string') { return; }
             const { url, caption } = message;
 
             try {
@@ -540,7 +560,7 @@ export class WriterViewManager {
               fs.writeFileSync(documentUri.fsPath, doc.toString());
 
               // Confirm save
-              panel.webview.postMessage({ type: 'imageCaptionSaved', url });
+              safePostMessage(panel, { type: 'imageCaptionSaved', url });
             } catch (error) {
               vscode.window.showErrorMessage(`Failed to save caption: ${error}`);
             }
@@ -551,23 +571,33 @@ export class WriterViewManager {
             await this.handleOpenImageBrowser(panel, workspaceRoot);
             break;
 
-          case 'addExistingImage':
+          case 'addExistingImage': {
+            if (typeof message.imagePath !== 'string') { return; }
+            // Validate image path is within workspace root
+            if (!isPathWithinWorkspace(message.imagePath, workspaceRoot)) {
+              vscode.window.showErrorMessage('Image path must be within the workspace');
+              return;
+            }
             await this.handleAddExistingImage(panel, documentUri, node, workspaceRoot, message.imagePath);
             break;
+          }
 
           case 'importImage':
             await this.handleImportImage(panel, documentUri, node, workspaceRoot);
             break;
 
           case 'deleteImage':
+            if (typeof message.url !== 'string') { return; }
             await this.handleDeleteImage(panel, documentUri, node, message.url, message.index);
             break;
 
           case 'reorderImages':
+            if (!Array.isArray(message.order)) { return; }
             await this.handleReorderImages(panel, documentUri, node, message.order);
             break;
 
           case 'duplicateResolved': {
+            if (typeof message.action !== 'string') { return; }
             const resolverKey = (panel as any).__duplicateResolverKey;
             if (resolverKey) {
               const resolver = this.pendingDuplicateResolvers.get(resolverKey);
