@@ -239,6 +239,12 @@ async function scanWorkspace(
     const entries = fs.readdirSync(dir, { withFileTypes: true });
 
         for (const entry of entries) {
+      // Skip symlinks to prevent scanning outside workspace
+      if (entry.isSymbolicLink()) {
+        log(`[scanWorkspace] Skipping symlink: ${entry.name}`);
+        continue;
+      }
+
       const fullPath = path.join(dir, entry.name);
       const relativePath = path.relative(root, fullPath);
 
@@ -1189,6 +1195,12 @@ export async function generatePerFolderIndex(
       continue; // Skip hidden files and the index itself
     }
 
+    // Skip symlinks to prevent traversal outside workspace
+    if (entry.isSymbolicLink()) {
+      log(`[IndexGenerator] Skipping symlink in folder index: ${entry.name}`);
+      continue;
+    }
+
     // Check cancellation before processing each file
     if (progress?.token?.isCancellationRequested) {
       throw new Error('Index generation cancelled by user');
@@ -1343,6 +1355,11 @@ export async function generateFolderHierarchy(
       const entries = fs.readdirSync(folderPath, { withFileTypes: true });
 
       for (const entry of entries) {
+        // Skip symlinks to prevent traversal outside workspace
+        if (entry.isSymbolicLink()) {
+          log(`[IndexGenerator] Skipping symlink during folder collection: ${entry.name}`);
+          continue;
+        }
         if (entry.isDirectory() && !entry.name.startsWith('.')) {
           const subfolder = path.join(folderPath, entry.name);
           collectSubfolders(subfolder);
