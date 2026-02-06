@@ -12,7 +12,7 @@ export function tokenize(text: string): string[] {
 
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .split(/\s+/)
     .filter(token => token.length >= 2);
 }

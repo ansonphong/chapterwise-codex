@@ -33,6 +33,12 @@ export async function executeSearch(
   const seen = new Set<string>();
   const startTime = Date.now();
 
+  // Build title lookup map for O(1) access
+  const titleMap = new Map<string, TitleEntry>();
+  for (const t of index.titles) {
+    titleMap.set(t.id, t);
+  }
+
   // TIER 1: Titles (instant)
   const titleResults = searchTitles(query, index);
   for (const r of titleResults) {
@@ -48,7 +54,7 @@ export async function executeSearch(
   }
 
   // TIER 2: Metadata
-  const metaResults = searchMetadata(query, index);
+  const metaResults = searchMetadata(query, index, titleMap);
   for (const r of metaResults) {
     if (!seen.has(r.id)) {
       seen.add(r.id);
@@ -63,7 +69,7 @@ export async function executeSearch(
 
   // TIER 3: Content
   if (query.scope === 'all' || query.filters.fields.length > 0) {
-    const contentResults = searchContent(query, index);
+    const contentResults = searchContent(query, index, titleMap);
     for (const r of contentResults) {
       const key = `${r.id}:${r.field || ''}`;
       if (!seen.has(key)) {
@@ -141,7 +147,7 @@ function searchTitles(query: ParsedQuery, index: SearchIndex): SearchResult[] {
 /**
  * Search metadata (Tier 2)
  */
-function searchMetadata(query: ParsedQuery, index: SearchIndex): SearchResult[] {
+function searchMetadata(query: ParsedQuery, index: SearchIndex, titleMap: Map<string, TitleEntry>): SearchResult[] {
   const results: SearchResult[] = [];
 
   for (const entry of index.metadata) {
@@ -185,7 +191,7 @@ function searchMetadata(query: ParsedQuery, index: SearchIndex): SearchResult[] 
 
     if (matches) {
       // Get title entry for display name
-      const titleEntry = index.titles.find(t => t.id === entry.id);
+      const titleEntry = titleMap.get(entry.id);
       results.push({
         id: entry.id,
         name: titleEntry?.name || entry.id,
@@ -205,7 +211,7 @@ function searchMetadata(query: ParsedQuery, index: SearchIndex): SearchResult[] 
 /**
  * Search content (Tier 3)
  */
-function searchContent(query: ParsedQuery, index: SearchIndex): SearchResult[] {
+function searchContent(query: ParsedQuery, index: SearchIndex, titleMap: Map<string, TitleEntry>): SearchResult[] {
   const results: SearchResult[] = [];
 
   // Check if we have field-specific filters
@@ -260,7 +266,7 @@ function searchContent(query: ParsedQuery, index: SearchIndex): SearchResult[] {
       score *= getFieldBoost(entry.field);
 
       // Get title entry for display name
-      const titleEntry = index.titles.find(t => t.id === entry.id);
+      const titleEntry = titleMap.get(entry.id);
 
       // Create snippet
       const snippet = createSnippet(entry.text, query.terms, query.phrases);

@@ -312,16 +312,53 @@ export function activate(context: vscode.ExtensionContext): void {
         const workspaceRoot = treeProvider?.getWorkspaceRoot();
 
         await openSearchUI(index, async (result: SearchResult) => {
-          const isStructural = ['folder', 'book', 'index'].includes(result.type.toLowerCase());
+          try {
+            const isStructural = ['folder', 'book', 'index'].includes(result.type.toLowerCase());
 
-          if (isStructural) {
-            vscode.window.showInformationMessage(`Reveal: ${result.name}`);
-          } else if (workspaceRoot) {
-            const fullPath = path.join(workspaceRoot, result.path);
-            await vscode.commands.executeCommand(
-              'chapterwiseCodex.openWriterView',
-              { filePath: fullPath, nodePath: result.nodePath }
-            );
+            if (isStructural) {
+              // Reveal structural nodes in tree view
+              await vscode.commands.executeCommand(
+                'chapterwiseCodex.navigateToNode',
+                result.id
+              );
+            } else if (workspaceRoot) {
+              // Open content in Writer View
+              const fullPath = path.join(workspaceRoot, result.path);
+              const uri = vscode.Uri.file(fullPath);
+
+              // Parse the file to get a proper CodexTreeItem
+              try {
+                const fileContent = await vscode.workspace.fs.readFile(uri);
+                const content = Buffer.from(fileContent).toString('utf-8');
+                const codexDoc = isCodexFile(fullPath)
+                  ? parseCodex(content)
+                  : parseMarkdownAsCodex(content, fullPath);
+
+                if (codexDoc && codexDoc.rootNode) {
+                  // Find the target node by ID
+                  const targetNode = result.id
+                    ? codexDoc.allNodes.find(n => n.id === result.id) || codexDoc.rootNode
+                    : codexDoc.rootNode;
+
+                  const hasChildren = targetNode.children && targetNode.children.length > 0;
+                  const tempTreeItem = new CodexTreeItem(
+                    targetNode,
+                    uri,
+                    hasChildren || false,
+                    false,
+                    true
+                  );
+
+                  await writerViewManager.openWriterView(tempTreeItem);
+                }
+              } catch (parseError) {
+                // Fallback: just open the file
+                await vscode.window.showTextDocument(uri);
+              }
+            }
+          } catch (navError) {
+            outputChannel.appendLine(`[Search] Navigation error: ${navError}`);
+            vscode.window.showErrorMessage(`Failed to open: ${result.name}`);
           }
         });
       })
@@ -333,15 +370,20 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.registerCommand('chapterwiseCodex.rebuildSearchIndex', async () => {
         if (!searchIndexManager) return;
 
-        await vscode.window.withProgress({
-          location: vscode.ProgressLocation.Notification,
-          title: 'Rebuilding search index...',
-          cancellable: false
-        }, async () => {
-          await searchIndexManager!.forceRebuild();
-        });
+        try {
+          await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Rebuilding search index...',
+            cancellable: false
+          }, async () => {
+            await searchIndexManager!.forceRebuild();
+          });
 
-        vscode.window.showInformationMessage('Search index rebuilt.');
+          vscode.window.showInformationMessage('Search index rebuilt.');
+        } catch (error) {
+          outputChannel.appendLine(`[Search] Rebuild failed: ${error}`);
+          vscode.window.showErrorMessage('Failed to rebuild search index.');
+        }
       })
     );
     outputChannel.appendLine('Rebuild search index command registered');

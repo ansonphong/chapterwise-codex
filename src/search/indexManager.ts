@@ -57,7 +57,9 @@ export class SearchIndexManager {
       this.index = cached;
       this._onIndexReady.fire(this.index);
       // Background refresh for stale entries
-      this.refreshStaleEntries();
+      this.refreshStaleEntries().catch(error => {
+        console.error('[Search] Background refresh failed:', error);
+      });
     } else {
       await this.buildIndexAsync();
     }
@@ -330,11 +332,11 @@ export class SearchIndexManager {
     });
 
     // Metadata entry
-    const tags: string[] = node.tags || [];
+    const tags: string[] = Array.isArray(node.tags) ? node.tags : [];
     const attributes: Record<string, string> = {};
-    if (node.attributes) {
+    if (Array.isArray(node.attributes)) {
       for (const attr of node.attributes) {
-        if (attr.key && attr.value !== undefined) {
+        if (attr && attr.key && attr.value !== undefined) {
           attributes[attr.key] = String(attr.value);
         }
       }
@@ -481,7 +483,9 @@ export class SearchIndexManager {
       }
 
       this.updateDebounceTimer = setTimeout(() => {
-        this.processUpdates();
+        this.processUpdates().catch(error => {
+          console.error('[Search] Incremental update failed:', error);
+        });
       }, 500);
     };
 
@@ -490,7 +494,9 @@ export class SearchIndexManager {
     this.fileWatcher.onDidDelete(uri => {
       if (uri.fsPath.includes('.index.')) return;
       this.removeFromIndex(uri.fsPath);
-      this.saveToCache();
+      this.saveToCache().catch(error => {
+        console.error('[Search] Failed to save cache after delete:', error);
+      });
     });
   }
 
