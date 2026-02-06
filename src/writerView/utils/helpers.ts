@@ -3,6 +3,7 @@
  */
 
 import * as crypto from 'crypto';
+import * as path from 'path';
 
 /**
  * Generate a cryptographically secure nonce for Content Security Policy
@@ -41,8 +42,8 @@ export function isPathWithinWorkspace(targetPath: string, workspaceRoot: string)
   if (!workspaceRoot) {
     return false;
   }
-  const path = require('path');
   const resolved = path.resolve(workspaceRoot, targetPath.replace(/^\//, ''));
-  return resolved.startsWith(workspaceRoot + path.sep) || resolved === workspaceRoot;
+  const relative = path.relative(workspaceRoot, resolved);
+  return !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
