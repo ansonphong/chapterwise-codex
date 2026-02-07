@@ -11,8 +11,26 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as YAML from 'yaml';
+import * as crypto from 'crypto';
 import { CodexNode } from './codexModel';
 import { NavigatorSettings } from './settingsManager';
+
+const fsPromises = fs.promises;
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fsPromises.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isPathWithinRoot(resolvedPath: string, rootPath: string): boolean {
+  const normalizedResolved = path.resolve(resolvedPath);
+  const normalizedRoot = path.resolve(rootPath);
+  return normalizedResolved.startsWith(normalizedRoot + path.sep) || normalizedResolved === normalizedRoot;
+}
 
 /**
  * Result of file creation
@@ -53,7 +71,15 @@ export class FileOrganizer {
       );
       
       const fullPath = path.join(workspaceRoot, filePath);
-      
+
+      // Validate generated path stays within workspace
+      if (!isPathWithinRoot(fullPath, workspaceRoot)) {
+        return {
+          success: false,
+          message: 'Generated file path escapes workspace boundary'
+        };
+      }
+
       // Check if file already exists
       if (fs.existsSync(fullPath)) {
         return {
@@ -258,6 +284,9 @@ export class FileOrganizer {
     
     // Remove special characters (keep alphanumeric and hyphens)
     slug = slug.replace(/[^a-zA-Z0-9-]/g, '');
+
+    // Strip path traversal sequences
+    slug = slug.replace(/\.\./g, '');
     
     // Remove leading/trailing separators
     const separatorPattern = new RegExp(`^${namingSettings.separator}+|${namingSettings.separator}+$`, 'g');
@@ -274,11 +303,7 @@ export class FileOrganizer {
    * Generate a UUID
    */
   private generateUuid(): string {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
+    return crypto.randomUUID();
   }
   
   /**
