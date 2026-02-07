@@ -26,12 +26,6 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
-function isPathWithinRoot(resolvedPath: string, rootPath: string): boolean {
-  const normalizedResolved = path.resolve(resolvedPath);
-  const normalizedRoot = path.resolve(rootPath);
-  return normalizedResolved.startsWith(normalizedRoot + path.sep) || normalizedResolved === normalizedRoot;
-}
-
 /**
  * Result of file creation
  */
@@ -81,19 +75,11 @@ export class FileOrganizer {
         };
       }
 
-      // Check if file already exists
-      if (fs.existsSync(fullPath)) {
-        return {
-          success: false,
-          message: `File already exists: ${path.basename(filePath)}`
-        };
-      }
-
       // Symlink check: verify parent directory isn't a symlink
       const dir = path.dirname(fullPath);
-      if (fs.existsSync(dir)) {
+      if (await fileExists(dir)) {
         try {
-          const dirStat = fs.lstatSync(dir);
+          const dirStat = await fsPromises.lstat(dir);
           if (dirStat.isSymbolicLink()) {
             return {
               success: false,
@@ -105,14 +91,22 @@ export class FileOrganizer {
         }
       }
 
-      // Create directory if needed
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
+      // Create directory if needed (recursive is idempotent)
+      await fsPromises.mkdir(dir, { recursive: true });
 
-      // Create file with initial content
+      // Create file with initial content using 'wx' flag for TOCTOU-safe atomic creation
       const content = this.generateInitialContent(nodeData, settings);
-      fs.writeFileSync(fullPath, content, 'utf-8');
+      try {
+        await fsPromises.writeFile(fullPath, content, { encoding: 'utf-8', flag: 'wx' });
+      } catch (writeError: any) {
+        if (writeError.code === 'EEXIST') {
+          return {
+            success: false,
+            message: `File already exists: ${path.basename(filePath)}`
+          };
+        }
+        throw writeError;
+      }
 
       return {
         success: true,

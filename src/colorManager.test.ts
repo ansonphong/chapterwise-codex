@@ -49,3 +49,38 @@ describe('getNodeColor', () => {
     expect(cm.getNodeColor(node)).toBeNull();
   });
 });
+
+describe('updateNodeColor', () => {
+  let cm: ColorManager;
+  beforeEach(() => { cm = new ColorManager(); vi.clearAllMocks(); });
+
+  it('rejects invalid color string', async () => {
+    const node = makeNode({ path: [] });
+    const doc = { getText: () => 'id: test\ntype: chapter', uri: { fsPath: '/t.yaml' }, lineCount: 2, save: vi.fn() } as any;
+    expect(await cm.updateNodeColor(node, doc, 'not-a-color')).toBe(false);
+  });
+
+  it('rejects script injection', async () => {
+    const node = makeNode({ path: [] });
+    const doc = { getText: () => 'id: test\ntype: chapter', uri: { fsPath: '/t.yaml' }, lineCount: 2, save: vi.fn() } as any;
+    expect(await cm.updateNodeColor(node, doc, '<script>alert(1)</script>')).toBe(false);
+  });
+
+  it('accepts null (remove color) when no attributes exist', async () => {
+    const node = makeNode({ path: [] });
+    const yaml = 'id: test\ntype: chapter\nname: Test';
+    const doc = { getText: () => yaml, uri: { fsPath: '/t.yaml' }, lineCount: 3, save: vi.fn().mockResolvedValue(true) } as any;
+    const vscode = await import('vscode');
+    vi.mocked(vscode.workspace.applyEdit).mockResolvedValue(true);
+    expect(await cm.updateNodeColor(node, doc, null)).toBe(true);
+  });
+
+  it('accepts valid hex color', async () => {
+    const node = makeNode({ path: [] });
+    const yaml = 'id: test\ntype: chapter\nname: Test';
+    const doc = { getText: () => yaml, uri: { fsPath: '/t.yaml' }, lineCount: 3, save: vi.fn().mockResolvedValue(true) } as any;
+    const vscode = await import('vscode');
+    vi.mocked(vscode.workspace.applyEdit).mockResolvedValue(true);
+    expect(await cm.updateNodeColor(node, doc, '#3B82F6')).toBe(true);
+  });
+});

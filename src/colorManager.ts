@@ -187,6 +187,11 @@ export class ColorManager {
     color: string | null
   ): Promise<boolean> {
     try {
+      if (color !== null && !this.isValidHexColor(color)) {
+        vscode.window.showErrorMessage(`Invalid color format: "${color}". Expected #RRGGBB.`);
+        return false;
+      }
+
       // Parse YAML document
       const text = document.getText();
       const yamlDoc = YAML.parseDocument(text);
