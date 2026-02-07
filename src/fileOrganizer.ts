@@ -288,12 +288,15 @@ export class FileOrganizer {
     // Strip path traversal sequences
     slug = slug.replace(/\.\./g, '');
     
+    // Escape separator for safe regex construction
+    const escapedSep = namingSettings.separator.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
     // Remove leading/trailing separators
-    const separatorPattern = new RegExp(`^${namingSettings.separator}+|${namingSettings.separator}+$`, 'g');
+    const separatorPattern = new RegExp(`^${escapedSep}+|${escapedSep}+$`, 'g');
     slug = slug.replace(separatorPattern, '');
-    
+
     // Collapse multiple separators
-    const multiSeparatorPattern = new RegExp(`${namingSettings.separator}+`, 'g');
+    const multiSeparatorPattern = new RegExp(`${escapedSep}+`, 'g');
     slug = slug.replace(multiSeparatorPattern, namingSettings.separator);
     
     return slug || 'untitled';
