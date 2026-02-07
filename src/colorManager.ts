@@ -37,9 +37,15 @@ export class ColorManager {
     { name: 'No Color', hex: '', description: 'Remove color', emoji: '⚪' }
   ];
   
+  private static readonly HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/;
+
+  isValidHexColor(value: unknown): value is string {
+    return typeof value === 'string' && ColorManager.HEX_COLOR_RE.test(value);
+  }
+
   /**
    * Extract color from node attributes
-   * 
+   *
    * @param node - The codex node
    * @returns Hex color string or null
    */
@@ -47,13 +53,13 @@ export class ColorManager {
     if (!node.attributes) {
       return null;
     }
-    
+
     const colorAttr = node.attributes.find(attr => attr.key === 'color');
-    if (!colorAttr) {
+    if (!colorAttr || !this.isValidHexColor(colorAttr.value)) {
       return null;
     }
-    
-    return colorAttr.value as string;
+
+    return colorAttr.value;
   }
   
   /**
