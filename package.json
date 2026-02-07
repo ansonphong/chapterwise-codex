@@ -571,13 +571,21 @@
         },
         "chapterwiseCodex.navigator.defaultChildMode": {
           "type": "string",
-          "enum": ["inline", "separate-file", "ask"],
+          "enum": [
+            "inline",
+            "separate-file",
+            "ask"
+          ],
           "default": "ask",
           "description": "How to create new child nodes: inline (in same file), separate-file (new file), or ask (prompt each time)"
         },
         "chapterwiseCodex.navigator.fileOrganization.strategy": {
           "type": "string",
-          "enum": ["organized", "data-folder", "flat"],
+          "enum": [
+            "organized",
+            "data-folder",
+            "flat"
+          ],
           "default": "organized",
           "description": "File organization strategy: organized (hierarchical folders), data-folder (Scrivener-style UUID storage), or flat (same directory)"
         },
@@ -643,7 +651,10 @@
         },
         "chapterwiseCodex.images.organization": {
           "type": "string",
-          "enum": ["perNode", "sharedWithNodeFolders"],
+          "enum": [
+            "perNode",
+            "sharedWithNodeFolders"
+          ],
           "enumDescriptions": [
             "Images folder next to codex file (e.g., /characters/aya/images/portrait.png)",
             "Shared images folder with node subfolders (e.g., /characters/images/aya/portrait.png)"
@@ -653,7 +664,12 @@
         },
         "chapterwiseCodex.writerView.theme": {
           "type": "string",
-          "enum": ["light", "dark", "system", "theme"],
+          "enum": [
+            "light",
+            "dark",
+            "system",
+            "theme"
+          ],
           "default": "theme",
           "enumDescriptions": [
             "Always use light theme",
@@ -665,7 +681,11 @@
         },
         "chapterwiseCodex.indexDisplayMode": {
           "type": "string",
-          "enum": ["nested", "stacked", "tabs"],
+          "enum": [
+            "nested",
+            "stacked",
+            "tabs"
+          ],
           "enumDescriptions": [
             "Show all indexes merged into single tree (current behavior)",
             "Show each index as a separate collapsible section",
@@ -684,7 +704,9 @@
     "compile:tsc": "tsc -p ./",
     "pretest": "npm run compile",
     "lint": "eslint src --ext ts",
-    "package": "vsce package"
+    "package": "vsce package",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "minimatch": "^9.0.0",
@@ -696,6 +718,7 @@
     "@types/vscode": "^1.80.0",
     "@vscode/vsce": "^2.22.0",
     "esbuild": "^0.20.2",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^3.2.4"
   }
 }
