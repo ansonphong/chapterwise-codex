@@ -80,23 +80,23 @@ export class FileOrganizer {
         };
       }
 
-      // Check if file already exists
-      if (fs.existsSync(fullPath)) {
-        return {
-          success: false,
-          message: `File already exists: ${path.basename(filePath)}`
-        };
-      }
-      
       // Create directory if needed
       const dir = path.dirname(fullPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      
-      // Create file with initial content
+      await fsPromises.mkdir(dir, { recursive: true });
+
+      // Create file with exclusive flag (TOCTOU-safe: fails if file already exists)
       const content = this.generateInitialContent(nodeData, settings);
-      fs.writeFileSync(fullPath, content, 'utf-8');
+      try {
+        await fsPromises.writeFile(fullPath, content, { encoding: 'utf-8', flag: 'wx' });
+      } catch (err: any) {
+        if (err.code === 'EEXIST') {
+          return {
+            success: false,
+            message: `File already exists: ${path.basename(filePath)}`
+          };
+        }
+        throw err;
+      }
       
       return {
         success: true,
@@ -348,32 +348,32 @@ export class FileOrganizer {
    * Get next available number for auto-numbering
    * (e.g., if Chapter-01, Chapter-02 exist, returns 3)
    */
-  getNextAvailableNumber(
+  async getNextAvailableNumber(
     directoryPath: string,
     prefix: string
-  ): number {
+  ): Promise<number> {
     try {
-      if (!fs.existsSync(directoryPath)) {
+      if (!await fileExists(directoryPath)) {
         return 1;
       }
-      
-      const files = fs.readdirSync(directoryPath);
+
+      const files = await fsPromises.readdir(directoryPath);
       const numbers: number[] = [];
-      
-      // Extract numbers from filenames
-      const pattern = new RegExp(`^${prefix}-(\\d+)`, 'i');
+
+      // Escape prefix for safe regex construction
+      const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp(`^${escapedPrefix}-(\\d+)`, 'i');
       for (const file of files) {
         const match = file.match(pattern);
         if (match) {
           numbers.push(parseInt(match[1], 10));
         }
       }
-      
+
       if (numbers.length === 0) {
         return 1;
       }
-      
-      // Return max + 1
+
       return Math.max(...numbers) + 1;
     } catch (error) {
       return 1;
