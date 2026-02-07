@@ -283,32 +283,31 @@ export class FileOrganizer {
    */
   private slugifyName(name: string, namingSettings: NavigatorSettings['naming']): string {
     let slug = name;
-    
+    const sep = namingSettings.separator;
+
+    // Escape separator for use in regex
+    const escapedSep = sep.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
     // Convert to lowercase unless preserving case
     if (!namingSettings.preserveCase) {
       slug = slug.toLowerCase();
     }
-    
-    // Replace spaces and underscores with separator
-    slug = slug.replace(/[\s_]+/g, namingSettings.separator);
-    
-    // Remove special characters (keep alphanumeric and hyphens)
-    slug = slug.replace(/[^a-zA-Z0-9-]/g, '');
 
-    // Strip path traversal sequences
-    slug = slug.replace(/\.\./g, '');
-    
-    // Escape separator for safe regex construction
-    const escapedSep = namingSettings.separator.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Replace spaces and underscores with separator
+    slug = slug.replace(/[\s_]+/g, sep);
+
+    // Remove special characters (keep alphanumeric, hyphens, and the separator)
+    const allowedCharsPattern = new RegExp(`[^a-zA-Z0-9\\-${escapedSep}]`, 'g');
+    slug = slug.replace(allowedCharsPattern, '');
 
     // Remove leading/trailing separators
-    const separatorPattern = new RegExp(`^${escapedSep}+|${escapedSep}+$`, 'g');
-    slug = slug.replace(separatorPattern, '');
+    const trimPattern = new RegExp(`^${escapedSep}+|${escapedSep}+$`, 'g');
+    slug = slug.replace(trimPattern, '');
 
     // Collapse multiple separators
-    const multiSeparatorPattern = new RegExp(`${escapedSep}+`, 'g');
-    slug = slug.replace(multiSeparatorPattern, namingSettings.separator);
-    
+    const collapsePattern = new RegExp(`${escapedSep}+`, 'g');
+    slug = slug.replace(collapsePattern, sep);
+
     return slug || 'untitled';
   }
   
