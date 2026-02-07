@@ -69,35 +69,51 @@ export class FileOrganizer {
         nodeData,
         settings
       );
-      
-      const fullPath = path.join(workspaceRoot, filePath);
 
-      // Validate generated path stays within workspace
-      if (!isPathWithinRoot(fullPath, workspaceRoot)) {
+      const fullPath = path.normalize(path.join(workspaceRoot, filePath));
+
+      // Security check: ensure generated path stays within workspace
+      const relative = path.relative(workspaceRoot, fullPath);
+      if (relative.startsWith('..') || path.isAbsolute(relative)) {
         return {
           success: false,
-          message: 'Generated file path escapes workspace boundary'
+          message: `Generated path escapes workspace: ${filePath}`
         };
       }
 
-      // Create directory if needed
-      const dir = path.dirname(fullPath);
-      await fsPromises.mkdir(dir, { recursive: true });
-
-      // Create file with exclusive flag (TOCTOU-safe: fails if file already exists)
-      const content = this.generateInitialContent(nodeData, settings);
-      try {
-        await fsPromises.writeFile(fullPath, content, { encoding: 'utf-8', flag: 'wx' });
-      } catch (err: any) {
-        if (err.code === 'EEXIST') {
-          return {
-            success: false,
-            message: `File already exists: ${path.basename(filePath)}`
-          };
-        }
-        throw err;
+      // Check if file already exists
+      if (fs.existsSync(fullPath)) {
+        return {
+          success: false,
+          message: `File already exists: ${path.basename(filePath)}`
+        };
       }
-      
+
+      // Symlink check: verify parent directory isn't a symlink
+      const dir = path.dirname(fullPath);
+      if (fs.existsSync(dir)) {
+        try {
+          const dirStat = fs.lstatSync(dir);
+          if (dirStat.isSymbolicLink()) {
+            return {
+              success: false,
+              message: `Parent directory is a symlink: ${path.basename(dir)}`
+            };
+          }
+        } catch {
+          // lstat failed - proceed with caution
+        }
+      }
+
+      // Create directory if needed
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      // Create file with initial content
+      const content = this.generateInitialContent(nodeData, settings);
+      fs.writeFileSync(fullPath, content, 'utf-8');
+
       return {
         success: true,
         filePath: filePath,
