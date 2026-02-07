@@ -190,6 +190,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     // Initialize drag & drop controller (needs tree provider)
     const dragController = new CodexDragAndDropController(treeProvider);
+    context.subscriptions.push({ dispose: () => dragController.dispose() });
     outputChannel.appendLine('Drag & drop controller created');
 
     // Initialize tree view with both tree provider and drag controller

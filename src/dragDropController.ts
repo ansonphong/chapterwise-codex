@@ -6,7 +6,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as YAML from 'yaml';
 import { CodexTreeItemType, IndexNodeTreeItem, CodexTreeItem, CodexFileHeaderItem, CodexTreeProvider } from './treeProvider';
 import { getStructureEditor } from './structureEditor';
 import { getSettingsManager } from './settingsManager';
@@ -38,11 +37,68 @@ interface DropResult {
 export class CodexDragAndDropController implements vscode.TreeDragAndDropController<CodexTreeItemType> {
   dropMimeTypes = ['application/vnd.code.tree.chapterwiseCodexNavigator'];
   dragMimeTypes = ['application/vnd.code.tree.chapterwiseCodexNavigator'];
-  
+
+  private outputChannel: vscode.OutputChannel | undefined;
+
   constructor(
     private treeProvider: CodexTreeProvider
   ) {}
+
+  /**
+   * Dispose resources
+   */
+  dispose(): void {
+    this.outputChannel?.dispose();
+  }
+
+  /**
+   * Get or create the shared output channel
+   */
+  private getOutputChannel(): vscode.OutputChannel {
+    if (!this.outputChannel) {
+      this.outputChannel = vscode.window.createOutputChannel('Codex Navigator');
+    }
+    return this.outputChannel;
+  }
   
+  /**
+   * Validate and parse DragData from untrusted dataTransfer.
+   * Returns validated array or null if invalid.
+   */
+  private validateDragData(raw: unknown): DragData[] | null {
+    if (!Array.isArray(raw)) {
+      return null;
+    }
+    const validTypes = new Set(['index', 'node', 'header']);
+    const result: DragData[] = [];
+    for (const entry of raw) {
+      if (typeof entry !== 'object' || entry === null) {
+        return null;
+      }
+      const obj = entry as Record<string, unknown>;
+      if (typeof obj.type !== 'string' || !validTypes.has(obj.type)) {
+        return null;
+      }
+      if (typeof obj.id !== 'string' || typeof obj.name !== 'string') {
+        return null;
+      }
+      if (obj.filePath !== undefined && typeof obj.filePath !== 'string') {
+        return null;
+      }
+      if (obj.documentUri !== undefined && typeof obj.documentUri !== 'string') {
+        return null;
+      }
+      result.push({
+        type: obj.type as DragData['type'],
+        id: obj.id,
+        name: obj.name,
+        filePath: obj.filePath as string | undefined,
+        documentUri: obj.documentUri as string | undefined,
+      });
+    }
+    return result.length > 0 ? result : null;
+  }
+
   /**
    * Handle drag start - serialize dragged items
    */
@@ -95,16 +151,19 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
     if (!transferItem) {
       return;
     }
-    
-    const draggedItems = transferItem.value as DragData[];
+
+    const draggedItems = this.validateDragData(transferItem.value);
+    if (!draggedItems) {
+      return;
+    }
     const mode = this.treeProvider.getNavigationMode();
-    
+
     if (mode === 'index' || this.treeProvider.isInIndexMode()) {
       // INDEX MODE: Move files on disk
-      await this.handleIndexDrop(draggedItems, target);
+      await this.handleIndexDrop(draggedItems, target, token);
     } else {
       // FILES MODE: Move nodes in document
-      await this.handleFilesDrop(draggedItems, target);
+      await this.handleFilesDrop(draggedItems, target, token);
     }
   }
   
@@ -120,9 +179,12 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
     if (!transferItem) {
       return false;
     }
-    
-    const draggedItems = transferItem.value as DragData[];
-    
+
+    const draggedItems = this.validateDragData(transferItem.value);
+    if (!draggedItems) {
+      return false;
+    }
+
     // High-level validation
     const isValid = this.validateDrop(draggedItems, target);
     
@@ -157,7 +219,8 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
    */
   private async handleIndexDrop(
     draggedItems: DragData[],
-    target: CodexTreeItemType | undefined
+    target: CodexTreeItemType | undefined,
+    token: vscode.CancellationToken
   ): Promise<void> {
     const editor = getStructureEditor();
     const workspaceRoot = this.getWorkspaceRoot();
@@ -194,13 +257,16 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
         
         // Process each item (update per-folder index)
         for (let i = 0; i < draggedItems.length; i++) {
+          if (token.isCancellationRequested) {
+            break;
+          }
           const item = draggedItems[i];
-          
+
           progress.report({
             message: `${i + 1}/${draggedItems.length}: ${item.name}`,
             increment: (100 / draggedItems.length),
           });
-          
+
           try {
             // Validate THIS item
             if (!this.validateSingleDrop(item, target)) {
@@ -234,13 +300,16 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
       } else {
         // MOVE: Move files to different folder
         for (let i = 0; i < draggedItems.length; i++) {
+          if (token.isCancellationRequested) {
+            break;
+          }
           const item = draggedItems[i];
-          
+
           progress.report({
             message: `${i + 1}/${draggedItems.length}: ${item.name}`,
             increment: (100 / draggedItems.length),
           });
-          
+
           try {
             // Validate THIS item
             if (!this.validateSingleDrop(item, target)) {
@@ -286,8 +355,8 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
       );
       
       if (choice === 'Show Details') {
-        // Create output channel with details
-        const channel = vscode.window.createOutputChannel('Codex Navigator');
+        const channel = this.getOutputChannel();
+        channel.clear();
         channel.appendLine(`=== Drag & Drop Results ===\n`);
         
         if (results.succeeded.length > 0) {
@@ -320,7 +389,8 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
    */
   private async handleFilesDrop(
     draggedItems: DragData[],
-    target: CodexTreeItemType | undefined
+    target: CodexTreeItemType | undefined,
+    token: vscode.CancellationToken
   ): Promise<void> {
     const editor = getStructureEditor();
     const document = this.treeProvider.getActiveTextDocument();
@@ -341,6 +411,9 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
     const results: DropResult = { succeeded: [], failed: [] };
     
     for (const item of draggedItems) {
+      if (token.isCancellationRequested) {
+        break;
+      }
       try {
         // Validate THIS item
         if (!this.validateSingleDrop(item, target)) {
@@ -460,11 +533,14 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
     }
     
     // Check for circular references (item can't be ancestor of target)
-    // This is a simplified check - full implementation would traverse the tree
     if (target instanceof IndexNodeTreeItem && item.type === 'index') {
       const targetPath = target.getFilePath();
-      if (item.filePath && targetPath.startsWith(item.filePath)) {
-        return false; // Circular reference detected
+      if (item.filePath) {
+        const rel = path.relative(item.filePath, targetPath);
+        // If relative path doesn't start with '..', target is inside item (circular)
+        if (!rel.startsWith('..') && rel !== '') {
+          return false;
+        }
       }
     }
     
@@ -512,14 +588,13 @@ export class CodexDragAndDropController implements vscode.TreeDragAndDropControl
       if (target.indexNode.type === 'folder') {
         // Check if any dragged item is a sibling of target
         // If so, this is likely a reorder operation, not a move into folder
-        const targetParentPath = target.indexNode._computed_path 
-          ? target.indexNode._computed_path.split('/').slice(0, -1).join('/')
+        const targetParentPath = target.indexNode._computed_path
+          ? path.dirname(target.indexNode._computed_path)
           : '';
-        
+
         const hasSibling = draggedItems.some(item => {
           if (item.filePath) {
-            const itemParentPath = item.filePath.split('/').slice(0, -1).join('/');
-            return itemParentPath === targetParentPath;
+            return path.dirname(item.filePath) === targetParentPath;
           }
           return false;
         });
